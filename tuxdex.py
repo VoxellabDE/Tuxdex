@@ -381,11 +381,13 @@ COLORS = {
 # Modul-Kennfarben
 MODULES = [
     ("update", "Updates", "#2fb3a3"),
+    ("setup", "Einrichten", "#f7a072"),
     ("software", "Software", "#5aa6f0"),
     ("flatpak", "Flatpak", "#8fa8ff"),
     ("disks", "Datenträger", "#d9b95c"),
     ("storage", "Speicher", "#56c2d6"),
     ("backup", "Backup", "#e9c46a"),
+    ("restore", "Wiederherstellung", "#7fd1b9"),
     ("swap", "Swap", "#6cc56f"),
     ("tasks", "Taskmanager", "#b5d86b"),
     ("antivirus", "Antivirus", "#a98bf0"),
@@ -397,11 +399,13 @@ MODULES = [
 # zu- und abwählen. Abgewählte Module werden gar nicht erst geladen (spart RAM und Startzeit).
 MODULE_INFO = {
     "update": "System-, AUR- und Flatpak-Updates mit Hinweisen vor riskanten Updates.",
+    "setup": "Basics wie Schriften und Codecs mit einem Klick, dazu Ersatz für Windows-Programme.",
     "software": "Programme suchen, installieren und entfernen (pacman und AUR).",
     "flatpak": "Flatpak-Apps verwalten und ihre Rechte per Schalter einstellen.",
     "disks": "USB-Sticks und Festplatten einhängen, formatieren und prüfen.",
     "storage": "Sehen, was Platz belegt, und typische Platzfresser aufräumen.",
     "backup": "Sicherungen auf externe Laufwerke – mit Zeitplan und Wiederherstellen.",
+    "restore": "System-Snapshots vor Updates und Zurücksetzen per Klick (snapper oder Timeshift).",
     "swap": "Auslagerungsspeicher (Swapfile, zram) einrichten. Für Fortgeschrittene.",
     "tasks": "Laufende Programme, Leistung, Autostart und Bootzeit.",
     "antivirus": "ClamAV-Virenscanner. Auf Linux-Desktops wenig nützlich – vor allem für Server und "
@@ -423,7 +427,7 @@ def module_enabled(key, settings=None):
 FONTS = {"sans": "Sans Serif", "mono": "Monospace"}
 
 APP_ID = "tuxdex"
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.3.0"
 APP_STAGE = "alpha"        # Reifegrad – wird nur angezeigt, die Versionsnummer selbst bleibt ohne Zusatz
 
 
@@ -2150,6 +2154,9 @@ class UpdaterTab(Page):
             return
 
         steps = []
+        snap = snapshot_before_update_step() if (pacman or aur) else None
+        if snap:
+            steps.append(snap)
         if pacman and aur:
             steps.append({"cmd": ["paru", "-Syu"], "needs_sudo": False, "interactive": True,
                           "label": "paru -Syu  (Repos + AUR)"})
@@ -3585,6 +3592,681 @@ class SwapTab(Page):
             self.refresh_status()
 
         run_streaming(["bash", "-c", script], self.log, needs_sudo=True, clear_first=False, on_done=done)
+
+
+# --------------------------------------------------------------------------
+# Modul: Wiederherstellung (System-Snapshots mit snapper oder Timeshift)
+# --------------------------------------------------------------------------
+
+SNAP_DESC = "Tuxdex"
+
+
+def _findmnt(target, col):
+    return _cmd_out(["findmnt", "-n", "-o", col, "--target", target]).strip()
+
+
+def _pkg_installed(name):
+    try:
+        return subprocess.run(["pacman", "-Q", name], capture_output=True, timeout=5).returncode == 0
+    except Exception:
+        return False
+
+
+def snapshot_env():
+    """Was ist da? Dateisystem, Werkzeug, Einrichtung, automatische Snapshots bei pacman."""
+    fs = _findmnt("/", "FSTYPE")
+    home_sep = _findmnt("/home", "TARGET") == "/home"
+    e = {"fs": fs, "home_separate": home_sep, "tool": None, "configured": False,
+         "snap_pac": False, "autosnap": False, "grub_btrfs": False}
+    if which("snapper"):
+        e["tool"] = "snapper"
+        e["configured"] = os.path.exists("/etc/snapper/configs/root")
+        e["snap_pac"] = _pkg_installed("snap-pac")
+        e["grub_btrfs"] = _pkg_installed("grub-btrfs")
+    elif which("timeshift"):
+        e["tool"] = "timeshift"
+        e["configured"] = os.path.exists("/etc/timeshift/timeshift.json")
+        e["autosnap"] = _pkg_installed("timeshift-autosnap")
+    return e
+
+
+def parse_snapper_json(text):
+    try:
+        data = json.loads(text)
+    except Exception:
+        return []
+    out = []
+    for s in data.get("root", []):
+        if not s.get("number"):
+            continue                    # 0 = aktueller Zustand
+        out.append({"id": str(s["number"]), "date": (s.get("date") or "")[:16],
+                    "desc": s.get("description") or "", "kind": s.get("type") or "",
+                    "pre": s.get("pre-number")})
+    return out
+
+
+def parse_timeshift_list(text):
+    out = []
+    for line in text.splitlines():
+        m = re.match(r"^\s*\d+\s+>\s+(\S+)\s+([ODWMBH]*)\s*(.*)$", line)
+        if m:
+            name = m.group(1)
+            date = re.sub(r"^(\d{4}-\d\d-\d\d)_(\d\d)-(\d\d).*", r"\1 \2:\3", name)
+            out.append({"id": name, "date": date, "desc": m.group(3).strip(), "kind": m.group(2) or "",
+                        "pre": None})
+    return out
+
+
+def snapshot_create_cmd(tool, desc):
+    if tool == "snapper":
+        return ["snapper", "-c", "root", "create", "-d", desc, "--cleanup-algorithm", "number"]
+    return ["timeshift", "--create", "--comments", desc, "--scripted"]
+
+
+def snapshot_before_update_step():
+    """Schritt für das Update: Snapshot vorher – nur wenn eingerichtet und nicht schon snap-pac/autosnap das tun."""
+    if not load_settings().get("snap_before_update", True):
+        return None
+    e = snapshot_env()
+    if not e["tool"] or not e["configured"] or e["snap_pac"] or e["autosnap"]:
+        return None
+    return {"cmd": snapshot_create_cmd(e["tool"], f"{SNAP_DESC}: vor dem Update"), "needs_sudo": True,
+            "label": "Snapshot vor dem Update"}
+
+
+class RestoreTab(Page):
+    COLS = [("Nr.", 70), ("Datum", 180), ("Beschreibung", 420), ("Art", 90)]
+
+    def __init__(self, app):
+        super().__init__()
+        self.app = app
+        self.env = {}
+        self.snaps = []
+        self.badge = StatusBadge("off", "Lade …")
+        self.lay.addLayout(page_header("Systemwiederherstellung", self.badge,
+                                       Button("↻", "icon", self.refresh, "Aktualisieren")))
+
+        intro = Panel("So funktioniert es")
+        intro.body.addWidget(Label(
+            "Ein Snapshot hält den Stand deines Systems fest – in Sekunden und fast ohne Speicherplatz. "
+            "Geht nach einem Update etwas kaputt, setzt du das System mit einem Klick auf den Stand davor zurück. "
+            "Deine eigenen Dateien in /home bleiben dabei unberührt.", "Hint", wrap=True))
+        self.lay.addWidget(intro)
+
+        top = QHBoxLayout()
+        top.setSpacing(16)
+        st = Panel("Status")
+        self.rows = {}
+        for key, label in (("fs", "Dateisystem"), ("tool", "Werkzeug"), ("auto", "Automatisch vor Updates"),
+                           ("count", "Snapshots")):
+            r = QHBoxLayout()
+            r.addWidget(Label(label.upper(), "FieldLabel"))
+            r.addStretch(1)
+            v = Label("…", "Value")
+            r.addWidget(v)
+            self.rows[key] = v
+            st.body.addLayout(r)
+        self.setup_hint = Label("", "Hint", wrap=True)
+        st.body.addWidget(self.setup_hint)
+        b = QHBoxLayout()
+        self.b_setup = Button("Einrichten", "primary", self.setup)
+        self.b_create = Button("Snapshot jetzt erstellen", "primary", self.create)
+        b.addWidget(self.b_setup)
+        b.addWidget(self.b_create)
+        b.addStretch(1)
+        st.body.addLayout(b)
+        top.addWidget(st, 1)
+
+        opt = Panel("Vor Updates")
+        self.cb_auto = QCheckBox("Vor jedem Update in Tuxdex automatisch einen Snapshot anlegen")
+        self.cb_auto.setChecked(bool(load_settings().get("snap_before_update", True)))
+        self.cb_auto.toggled.connect(self._auto_changed)
+        opt.body.addWidget(self.cb_auto)
+        self.auto_hint = Label("", "Hint", wrap=True)
+        opt.body.addWidget(self.auto_hint)
+        opt.body.addStretch(1)
+        top.addWidget(opt, 1)
+        self.lay.addLayout(top)
+
+        lp = Panel("Snapshots")
+        self.table = QTableWidget(0, len(self.COLS))
+        self.table.setHorizontalHeaderLabels([c[0].upper() for c in self.COLS])
+        self.table.verticalHeader().setVisible(False)
+        self.table.setShowGrid(False)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table.verticalHeader().setDefaultSectionSize(32)
+        hh = self.table.horizontalHeader()
+        hh.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        for i, (_, w) in enumerate(self.COLS):
+            self.table.setColumnWidth(i, w)
+        hh.setStretchLastSection(True)
+        self.table.setMinimumHeight(260)
+        lp.body.addWidget(self.table)
+        self.list_hint = Label("", "Hint", wrap=True)
+        lp.body.addWidget(self.list_hint)
+        b = QHBoxLayout()
+        self.b_restore = Button("Auf diesen Stand zurücksetzen", "danger", self.restore)
+        self.b_delete = Button("Löschen", "ghost", self.delete)
+        self.b_login = Button("Anmelden und Snapshots anzeigen", "primary", self._login)
+        b.addWidget(self.b_restore)
+        b.addWidget(self.b_delete)
+        b.addWidget(self.b_login)
+        b.addStretch(1)
+        lp.body.addLayout(b)
+        self.lay.addWidget(lp)
+
+        out = Panel("Ausgabe")
+        self.log = LogView(140)
+        out.body.addWidget(self.log)
+        self.lay.addWidget(out)
+        self.refresh()
+
+    # --- Zustand ---------------------------------------------------------
+    def refresh(self):
+        def worker():
+            e = snapshot_env()
+            ui(lambda: self._show_env(e))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _show_env(self, e):
+        self.env = e
+        tool = e["tool"]
+        self.rows["fs"].setText(e["fs"] or "—")
+        if not tool:
+            self.rows["tool"].setText("Nicht installiert")
+        else:
+            self.rows["tool"].setText(("Snapper" if tool == "snapper" else "Timeshift")
+                                      + ("" if e["configured"] else " (nicht eingerichtet)"))
+        ready = bool(tool and e["configured"])
+        if e["snap_pac"]:
+            auto = "Ja – snap-pac (bei jeder Paketänderung)"
+        elif e["autosnap"]:
+            auto = "Ja – timeshift-autosnap"
+        elif ready and self.cb_auto.isChecked():
+            auto = "Ja – bei Updates über Tuxdex"
+        else:
+            auto = "Nein"
+        self.rows["auto"].setText(auto)
+        self.b_setup.setVisible(not ready)
+        self.b_create.setVisible(ready)
+        self.cb_auto.setEnabled(ready and not (e["snap_pac"] or e["autosnap"]))
+        if e["snap_pac"] or e["autosnap"]:
+            self.auto_hint.setText("Das übernimmt bereits " + ("snap-pac" if e["snap_pac"] else "timeshift-autosnap")
+                                   + " – auch bei Updates im Terminal. Tuxdex legt deshalb keinen zusätzlichen an.")
+        else:
+            self.auto_hint.setText("Tuxdex legt den Snapshot direkt vor „Update starten“ an. Updates im Terminal "
+                                   "sind damit nicht abgedeckt – dafür beim Einrichten snap-pac mitinstallieren.")
+        if ready:
+            self.setup_hint.setText("")
+            self.badge.set("ok", "Eingerichtet")
+        elif e["fs"] == "btrfs":
+            self.setup_hint.setText("Dein System liegt auf btrfs – ideal. „Einrichten“ installiert snapper und "
+                                    "snap-pac: dann entsteht vor und nach jeder Paketänderung automatisch ein Snapshot.")
+            self.badge.set("warn", "Nicht eingerichtet")
+        elif tool == "timeshift":
+            self.setup_hint.setText("Timeshift ist installiert, aber noch nicht eingerichtet. „Einrichten“ öffnet "
+                                    "Timeshift – dort einmal den Speicherort wählen.")
+            self.badge.set("warn", "Nicht eingerichtet")
+        else:
+            self.setup_hint.setText(f"Dein System liegt auf {e['fs'] or 'einem Dateisystem'} ohne eigene Snapshots. "
+                                    "„Einrichten“ installiert Timeshift; die Snapshots landen dann als Kopie auf "
+                                    "der Festplatte (braucht mehr Platz als bei btrfs).")
+            self.badge.set("warn", "Nicht eingerichtet")
+        self.load_snapshots()
+
+    def load_snapshots(self):
+        e = self.env
+        self.table.setRowCount(0)
+        self.snaps = []
+        ready = bool(e.get("tool") and e.get("configured"))
+        self.b_restore.setEnabled(False)
+        self.b_delete.setEnabled(False)
+        self.b_login.hide()
+        if not ready:
+            self.rows["count"].setText("—")
+            self.list_hint.setText("Noch keine Snapshots – erst einrichten.")
+            return
+        cmd = (["snapper", "--jsonout", "-c", "root", "list", "--disable-used-space"] if e["tool"] == "snapper"
+               else ["timeshift", "--list", "--scripted"])
+        self.list_hint.setText("Lade …")
+
+        def cb(rc, out, err):
+            if rc != 0:
+                self.rows["count"].setText("?")
+                self.list_hint.setText("Zum Anzeigen der Snapshots sind root-Rechte nötig.")
+                self.b_login.show()
+                return
+            self._fill(parse_snapper_json(out) if e["tool"] == "snapper" else parse_timeshift_list(out))
+        run_capture_async(cmd, cb, needs_sudo=True, timeout=60)
+
+    def _fill(self, snaps):
+        self.snaps = list(reversed(snaps))          # neueste oben
+        self.rows["count"].setText(str(len(snaps)))
+        kinds = {"pre": "vorher", "post": "nachher", "single": "einzeln"}
+        for s in self.snaps:
+            r = self.table.rowCount()
+            self.table.insertRow(r)
+            for c, v in enumerate((s["id"], s["date"], s["desc"], kinds.get(s["kind"], s["kind"]))):
+                self.table.setItem(r, c, QTableWidgetItem(v))
+        if self.snaps:
+            self.table.selectRow(0)
+        on = bool(self.snaps)
+        self.b_restore.setEnabled(on)
+        self.b_delete.setEnabled(on)
+        self.list_hint.setText("" if on else "Noch keine Snapshots vorhanden.")
+        if self.env.get("tool") == "snapper" and not self.env.get("home_separate"):
+            self.b_restore.setEnabled(False)
+            self.list_hint.setText("Zurücksetzen ist gesperrt: /home liegt nicht in einem eigenen Subvolume, "
+                                   "deine eigenen Dateien würden mit zurückgesetzt.")
+
+    def _selected(self):
+        r = self.table.currentRow()
+        return self.snaps[r] if 0 <= r < len(self.snaps) else None
+
+    def _login(self):
+        if self.app.priv.ensure(self):
+            self.load_snapshots()
+
+    def _auto_changed(self, on):
+        st = load_settings()
+        st["snap_before_update"] = bool(on)
+        save_settings(st)
+        if self.env:
+            self._show_env(self.env)
+
+    # --- Aktionen --------------------------------------------------------
+    def _run(self, steps, done=None):
+        def all_done():
+            self.refresh()
+            if done:
+                done()
+        run_sequence(steps, self.log, on_all_done=all_done)
+
+    def setup(self):
+        e = self.env
+        if e.get("tool") == "timeshift" and not e.get("configured"):
+            self._open_timeshift()
+            return
+        if e.get("fs") == "btrfs":
+            text = ("snapper und snap-pac installieren und für das System einrichten?\n\n"
+                    "Danach entsteht vor und nach jeder Paketänderung automatisch ein Snapshot. "
+                    "Alte Snapshots räumt snapper selbst auf.")
+            # @snapshots-Layout (archinstall u. a.): vorhandenes /.snapshots-Subvolume weiterverwenden
+            conf = ("if [ ! -e /etc/snapper/configs/root ]; then "
+                    "if mountpoint -q /.snapshots; then umount /.snapshots && rmdir /.snapshots && "
+                    "snapper -c root create-config / && btrfs subvolume delete /.snapshots && "
+                    "mkdir /.snapshots && mount -a && chmod 750 /.snapshots; "
+                    "else snapper -c root create-config /; fi; fi")
+            steps = [{"cmd": ["pacman", "-S", "--needed", "snapper", "snap-pac"], "needs_sudo": True,
+                      "interactive": True, "label": "sudo pacman -S snapper snap-pac"},
+                     {"cmd": ["bash", "-c", conf], "needs_sudo": True, "label": "snapper -c root create-config /"},
+                     {"cmd": snapshot_create_cmd("snapper", f"{SNAP_DESC}: erster Snapshot"), "needs_sudo": True,
+                      "label": "Erster Snapshot"}]
+        else:
+            text = ("Timeshift installieren?\n\nDanach öffnet sich Timeshift einmal, um den Speicherort "
+                    "für die Snapshots festzulegen.")
+            steps = [{"cmd": ["pacman", "-S", "--needed", "timeshift"], "needs_sudo": True, "interactive": True,
+                      "label": "sudo pacman -S timeshift"}]
+        if not ask_confirm(self, "Wiederherstellung einrichten", text, "Einrichten"):
+            return
+        if not self.app.priv.ensure(self):
+            return
+        self._run(steps, done=lambda: e.get("fs") != "btrfs" and which("timeshift") and self._open_timeshift())
+
+    def _open_timeshift(self):
+        from PySide6.QtCore import QProcess
+        exe = "timeshift-launcher" if which("timeshift-launcher") else "timeshift-gtk"
+        QProcess.startDetached(exe, [])
+        self.app.set_status("Timeshift ist geöffnet – nach dem Einrichten hier auf ↻ klicken.")
+
+    def create(self):
+        if not self.app.priv.ensure(self):
+            return
+        self._run([{"cmd": snapshot_create_cmd(self.env["tool"], f"{SNAP_DESC}: manuell"), "needs_sudo": True,
+                    "label": "Snapshot erstellen"}])
+
+    def delete(self):
+        s = self._selected()
+        if not s or not ask_confirm(self, "Snapshot löschen", f"Snapshot {s['id']} vom {s['date']} löschen?",
+                                    "Löschen", danger=True):
+            return
+        if not self.app.priv.ensure(self):
+            return
+        cmd = (["snapper", "-c", "root", "delete", s["id"]] if self.env["tool"] == "snapper"
+               else ["timeshift", "--delete", "--snapshot", s["id"], "--scripted"])
+        self._run([{"cmd": cmd, "needs_sudo": True, "label": f"Snapshot {s['id']} löschen"}])
+
+    def restore(self):
+        s = self._selected()
+        if not s:
+            return
+        tool = self.env["tool"]
+        text = (f"System auf den Stand vom {s['date']} zurücksetzen?\n\n„{s['desc']}“\n\n"
+                "Alle Systemänderungen seit diesem Snapshot werden rückgängig gemacht – auch installierte "
+                "Updates und Programme. Deine Dateien in /home bleiben unberührt.\n\n"
+                "Danach bitte neu starten.")
+        if tool == "timeshift":
+            text += "\n\nTimeshift startet den Rechner nach dem Zurücksetzen selbst neu."
+        if not ask_confirm(self, "Zurücksetzen", text, "Zurücksetzen", danger=True):
+            return
+        if not self.app.priv.ensure(self):
+            return
+        if tool == "snapper":
+            cmd = ["snapper", "-c", "root", "undochange", f"{s['id']}..0"]
+        else:
+            cmd = ["timeshift", "--restore", "--snapshot", s["id"], "--scripted", "--yes"]
+        self._run([{"cmd": snapshot_create_cmd(tool, f"{SNAP_DESC}: vor dem Zurücksetzen"), "needs_sudo": True,
+                    "label": "Sicherheits-Snapshot des jetzigen Stands"},
+                   {"cmd": cmd, "needs_sudo": True, "label": f"Zurücksetzen auf {s['id']}"}],
+                  done=lambda: self.app.set_status("Zurückgesetzt – bitte jetzt neu starten."))
+
+
+# --------------------------------------------------------------------------
+# Modul: Einrichten (Basics mit einem Klick, Ersatz für Windows-Programme)
+# --------------------------------------------------------------------------
+
+# (Kennung, Titel, Beschreibung, pacman-Pakete)
+BASICS = [
+    ("fonts", "Schriften für Office-Dokumente",
+     "Liberation (passt in der Breite zu Arial, Times New Roman und Courier New), Noto mit Emojis und DejaVu – "
+     "Word-Dokumente sehen damit aus wie unter Windows.",
+     ["ttf-liberation", "noto-fonts", "noto-fonts-emoji", "ttf-dejavu"]),
+    ("codecs", "Audio- und Video-Codecs",
+     "Damit spielen MP3, MP4, H.264/H.265 und Co. in allen Programmen ab.",
+     ["gst-plugins-good", "gst-plugins-bad", "gst-plugins-ugly", "gst-libav", "ffmpeg"]),
+    ("power", "Energieprofile",
+     "Zwischen Energiesparen, Ausgewogen und Leistung umschalten – wie unter Windows. "
+     "Nicht zusammen mit TLP nutzen.",
+     ["power-profiles-daemon"]),
+]
+
+# Windows-Programm → Alternativen: (Name, Beschreibung, Quelle, Paket/App-ID)
+# Quelle: "pacman", "flathub", "web" (nur Link) oder "tuxdex" (eingebaut, Modulkennung)
+ALTERNATIVES = [
+    (("Photoshop", "Bildbearbeitung"), [
+        ("GIMP", "Klassische Bildbearbeitung", "pacman", "gimp"),
+        ("Krita", "Malen und Bildbearbeitung", "pacman", "krita"),
+        ("Photopea", "Photoshop-ähnlich im Browser, öffnet PSD", "web", "https://www.photopea.com")]),
+    (("Lightroom", "RAW", "Fotos entwickeln"), [
+        ("darktable", "RAW-Fotos entwickeln und verwalten", "pacman", "darktable"),
+        ("RawTherapee", "RAW-Entwicklung", "pacman", "rawtherapee")]),
+    (("Illustrator", "CorelDRAW", "Vektorgrafik"), [
+        ("Inkscape", "Vektorgrafik, öffnet SVG und AI", "pacman", "inkscape")]),
+    (("Paint",), [
+        ("KolourPaint", "Einfach malen wie in Paint", "pacman", "kolourpaint"),
+        ("Pinta", "Wie Paint.NET", "flathub", "com.github.PintaProject.Pinta")]),
+    (("Microsoft Office", "Office", "Word", "Excel", "PowerPoint"), [
+        ("LibreOffice", "Texte, Tabellen, Präsentationen – öffnet DOCX, XLSX, PPTX", "pacman", "libreoffice-fresh"),
+        ("OnlyOffice", "Sieht aus wie Microsoft Office", "flathub", "org.onlyoffice.desktopeditors")]),
+    (("Outlook", "E-Mail"), [
+        ("Thunderbird", "E-Mail, Kalender, Kontakte", "pacman", "thunderbird")]),
+    (("OneNote", "Notizen", "Evernote"), [
+        ("Joplin", "Notizen mit Synchronisierung", "flathub", "net.cozic.joplin_desktop"),
+        ("Obsidian", "Notizen und Wissenssammlung", "pacman", "obsidian")]),
+    (("Adobe Reader", "Acrobat", "PDF"), [
+        ("Okular", "PDFs lesen und kommentieren", "pacman", "okular")]),
+    (("Premiere", "Vegas", "Videoschnitt"), [
+        ("Kdenlive", "Videoschnitt", "pacman", "kdenlive"),
+        ("Shotcut", "Einfacher Videoschnitt", "pacman", "shotcut")]),
+    (("Audition", "Audio bearbeiten"), [
+        ("Audacity", "Audio aufnehmen und schneiden", "pacman", "audacity")]),
+    (("OBS", "Bildschirm aufnehmen", "Streaming"), [
+        ("OBS Studio", "Aufnehmen und streamen", "pacman", "obs-studio")]),
+    (("Windows Media Player", "Video abspielen", "Musik"), [
+        ("VLC", "Spielt praktisch alles ab", "pacman", "vlc"),
+        ("Strawberry", "Musiksammlung wie iTunes", "pacman", "strawberry")]),
+    (("iTunes",), [
+        ("Strawberry", "Musiksammlung verwalten", "pacman", "strawberry")]),
+    (("Spotify",), [
+        ("Spotify", "Gibt es auch für Linux", "flathub", "com.spotify.Client")]),
+    (("Notepad++", "Editor", "Notepad"), [
+        ("Kate", "Starker Text-Editor", "pacman", "kate")]),
+    (("Visual Studio", "VS Code", "Programmieren"), [
+        ("Code – OSS", "Open-Source-Version von VS Code", "pacman", "code"),
+        ("VS Code", "Die Microsoft-Version", "flathub", "com.visualstudio.code")]),
+    (("WinRAR", "7-Zip", "ZIP", "Entpacken"), [
+        ("Ark", "Archive packen und entpacken", "pacman", "ark"),
+        ("7-Zip", "7-Zip für die Kommandozeile", "pacman", "7zip")]),
+    (("Explorer", "Dateien"), [
+        ("Dolphin", "Dateimanager von KDE", "pacman", "dolphin")]),
+    (("Snipping Tool", "Screenshot"), [
+        ("Spectacle", "Screenshots und Bildschirmaufnahmen", "pacman", "spectacle")]),
+    (("Chrome", "Edge", "Browser"), [
+        ("Firefox", "Schneller, privater Browser", "pacman", "firefox"),
+        ("Chromium", "Open-Source-Basis von Chrome", "pacman", "chromium")]),
+    (("Teams",), [
+        ("Teams for Linux", "Inoffizielle Teams-App", "flathub", "com.github.IsmaelMartinez.teams_for_linux")]),
+    (("Zoom",), [
+        ("Zoom", "Gibt es auch für Linux", "flathub", "us.zoom.Zoom")]),
+    (("Discord",), [
+        ("Discord", "Gibt es auch für Linux", "pacman", "discord")]),
+    (("Telegram",), [
+        ("Telegram", "Gibt es auch für Linux", "pacman", "telegram-desktop")]),
+    (("KeePass", "1Password", "Passwörter"), [
+        ("KeePassXC", "Passwort-Manager", "pacman", "keepassxc")]),
+    (("FileZilla", "WinSCP", "FTP"), [
+        ("FileZilla", "Gibt es auch für Linux", "pacman", "filezilla")]),
+    (("AutoCAD", "CAD"), [
+        ("FreeCAD", "3D-Konstruktion", "pacman", "freecad"),
+        ("LibreCAD", "2D-Zeichnungen", "pacman", "librecad")]),
+    (("Steam", "Spiele"), [
+        ("Steam", "Spiele-Plattform mit Proton für Windows-Spiele", "flathub", "com.valvesoftware.Steam")]),
+    (("Task-Manager", "Taskmanager"), [
+        ("Tuxdex-Taskmanager", "Ist in Tuxdex schon eingebaut", "tuxdex", "tasks")]),
+    (("Datenträgerverwaltung", "Laufwerke"), [
+        ("Tuxdex-Datenträger", "Ist in Tuxdex schon eingebaut", "tuxdex", "disks")]),
+    (("Systemwiederherstellung", "Wiederherstellungspunkt"), [
+        ("Tuxdex-Wiederherstellung", "Ist in Tuxdex schon eingebaut", "tuxdex", "restore")]),
+]
+
+POWER_PROFILES = [("power-saver", "Energiesparen"), ("balanced", "Ausgewogen"), ("performance", "Leistung")]
+
+
+def installed_pacman():
+    try:
+        return set(subprocess.run(["pacman", "-Qq"], capture_output=True, text=True, timeout=15).stdout.split())
+    except Exception:
+        return set()
+
+
+def installed_flatpaks():
+    if not which("flatpak"):
+        return set()
+    try:
+        return set(subprocess.run(["flatpak", "list", "--app", "--columns=application"],
+                                  capture_output=True, text=True, timeout=15).stdout.split())
+    except Exception:
+        return set()
+
+
+def power_profile():
+    return _cmd_out(["powerprofilesctl", "get"]).strip() if which("powerprofilesctl") else ""
+
+
+def find_alternatives(query):
+    q = query.strip().lower()
+    if not q:
+        return ALTERNATIVES
+    return [e for e in ALTERNATIVES if any(q in k.lower() or q in tr(k).lower() for k in e[0])
+            or any(q in a[0].lower() for a in e[1])]
+
+
+class SetupTab(Page):
+    def __init__(self, app):
+        super().__init__()
+        self.app = app
+        self.pac = set()
+        self.fp = set()
+        self.badge = StatusBadge("off", "Lade …")
+        self.lay.addLayout(page_header("Einrichten", self.badge))
+        self.lay.addWidget(Label("Was nach einem Umstieg von Windows fehlt – mit einem Klick erledigt.",
+                                 "Hint", wrap=True))
+
+        bp = Panel("Basics mit einem Klick")
+        self.basic_rows = {}
+        for key, title, desc, pkgs in BASICS:
+            row = QHBoxLayout()
+            row.setSpacing(12)
+            col = QVBoxLayout()
+            col.setSpacing(2)
+            t = Label(title)
+            t.setStyleSheet("font-weight:600;")
+            col.addWidget(t)
+            col.addWidget(Label(desc, "Hint", wrap=True))
+            row.addLayout(col, 1)
+            b = Button("Installieren", "primary", lambda _=False, k=key: self.install_basic(k))
+            b.setMinimumWidth(130)
+            row.addWidget(b, 0, Qt.AlignVCenter)
+            badge = StatusBadge("off", "…")
+            badge.setMinimumWidth(110)
+            row.addWidget(badge, 0, Qt.AlignVCenter)
+            bp.body.addLayout(row)
+            bp.body.addSpacing(6)
+            self.basic_rows[key] = (badge, b)
+        self.power_row = QHBoxLayout()
+        self.power_row.addWidget(Label("Aktuelles Profil".upper(), "FieldLabel"))
+        self.power_seg = Segmented([p[1] for p in POWER_PROFILES], self.set_power)
+        self.power_row.addWidget(self.power_seg)
+        self.power_row.addStretch(1)
+        self.power_box = QWidget()
+        self.power_box.setLayout(self.power_row)
+        self.power_box.hide()
+        bp.body.addWidget(self.power_box)
+        self.lay.addWidget(bp)
+
+        ap = Panel("Ersatz für Windows-Programme")
+        ap.body.addWidget(Label("Gib ein, was du unter Windows benutzt hast – z. B. „Photoshop“ oder „Office“.",
+                                "Hint", wrap=True))
+        self.search = LineEdit("", "Windows-Programm suchen …")
+        self.search.textChanged.connect(self.render_alternatives)
+        ap.body.addWidget(self.search)
+        self.alt_box = QVBoxLayout()
+        self.alt_box.setSpacing(10)
+        ap.body.addLayout(self.alt_box)
+        self.lay.addWidget(ap)
+
+        out = Panel("Ausgabe")
+        self.log = LogView(140)
+        out.body.addWidget(self.log)
+        self.lay.addWidget(out)
+        self.refresh()
+
+    def refresh(self):
+        def worker():
+            pac, fp, prof = installed_pacman(), installed_flatpaks(), power_profile()
+            ui(lambda: self._apply(pac, fp, prof))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _apply(self, pac, fp, prof):
+        self.pac, self.fp = pac, fp
+        done = 0
+        for key, _, _, pkgs in BASICS:
+            badge, b = self.basic_rows[key]
+            missing = [p for p in pkgs if p not in pac]
+            if not missing:
+                badge.set("ok", "Installiert")
+                done += 1
+            elif len(missing) < len(pkgs):
+                badge.set("warn", f"{len(pkgs) - len(missing)} von {len(pkgs)}")
+            else:
+                badge.set("off", "Fehlt")
+            b.setVisible(bool(missing))
+        self.badge.set("ok" if done == len(BASICS) else "info", f"{done} von {len(BASICS)} Basics")
+        ids = [p[0] for p in POWER_PROFILES]
+        self.power_box.setVisible(prof in ids)
+        if prof in ids:
+            self.power_seg.set(ids.index(prof))
+        self.render_alternatives()
+
+    def render_alternatives(self, *_):
+        clear_layout(self.alt_box)
+        hits = find_alternatives(self.search.text())
+        if not hits:
+            self.alt_box.addWidget(Label("Dazu kenne ich noch keinen Ersatz. Im Tab „Software“ kannst du "
+                                         "frei nach Programmen suchen.", "Muted", wrap=True))
+            return
+        for keys, alts in hits[:12]:
+            card = QFrame()
+            card.setObjectName("Panel")
+            cl = QVBoxLayout(card)
+            cl.setContentsMargins(14, 10, 14, 10)
+            cl.setSpacing(6)
+            head = Label(f"Statt {keys[0]}")
+            head.setStyleSheet("font-weight:600;")
+            cl.addWidget(head)
+            for name, desc, src, ident in alts:
+                r = QHBoxLayout()
+                r.setSpacing(10)
+                r.addWidget(Label(name), 0)
+                r.addWidget(Label(desc, "Hint"), 1)
+                r.addWidget(self._alt_button(name, src, ident), 0)
+                cl.addLayout(r)
+            self.alt_box.addWidget(card)
+        if len(hits) > 12:
+            self.alt_box.addWidget(Label(f"… und {len(hits) - 12} weitere – einfach suchen.", "Hint"))
+
+    def _alt_button(self, name, src, ident):
+        if src == "web":
+            return Button("Im Browser öffnen", "ghost", lambda: subprocess.Popen(
+                ["xdg-open", ident], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+        if src == "tuxdex":
+            return Button("Öffnen", "ghost", lambda: self.app.select([m[0] for m in MODULES].index(ident)))
+        have = ident in (self.pac if src == "pacman" else self.fp)
+        if have:
+            b = Button("Installiert", "ghost")
+            b.setEnabled(False)
+            return b
+        label = "Installieren" + (" (Flathub)" if src == "flathub" else "")
+        b = Button(label, "primary", lambda: self.install_alt(name, src, ident))
+        if src == "flathub" and not which("flatpak"):
+            b.setEnabled(False)
+            b.setToolTip("Flatpak fehlt – im Tab „Flatpak“ einrichten.")
+        return b
+
+    # --- Aktionen --------------------------------------------------------
+    def _run(self, steps):
+        def all_done():
+            self.refresh()
+            self.app.set_status("Fertig.")
+        run_sequence(steps, self.log, on_all_done=all_done)
+
+    def install_basic(self, key):
+        _, title, _, pkgs = next(b for b in BASICS if b[0] == key)
+        missing = [p for p in pkgs if p not in self.pac]
+        if not missing or not ask_confirm(self, title, f"Installieren: {', '.join(missing)}?", "Installieren"):
+            return
+        if not self.app.priv.ensure(self):
+            return
+        steps = [{"cmd": ["pacman", "-S", "--needed", "--"] + missing, "needs_sudo": True, "interactive": True,
+                  "label": "sudo pacman -S " + " ".join(missing)}]
+        if key == "power":
+            steps.append({"cmd": ["systemctl", "enable", "--now", "power-profiles-daemon"], "needs_sudo": True,
+                          "label": "systemctl enable --now power-profiles-daemon"})
+        self._run(steps)
+
+    def install_alt(self, name, src, ident):
+        where = "aus den Arch-Paketquellen" if src == "pacman" else "von Flathub"
+        if not ask_confirm(self, name, f"{name} {where} installieren?", "Installieren"):
+            return
+        if not self.app.priv.ensure(self):
+            return
+        if src == "pacman":
+            step = {"cmd": ["pacman", "-S", "--needed", "--", ident], "needs_sudo": True, "interactive": True,
+                    "label": f"sudo pacman -S {ident}"}
+        else:
+            step = {"cmd": ["flatpak", "install", "-y", "flathub", ident], "needs_sudo": True, "interactive": True,
+                    "label": f"flatpak install flathub {ident}"}
+        self._run([step])
+
+    def set_power(self, idx):
+        prof = POWER_PROFILES[idx][0]
+
+        def cb(rc, out, err):
+            self.app.set_status(f"Energieprofil: {POWER_PROFILES[idx][1]}." if rc == 0
+                                else f"Energieprofil ließ sich nicht setzen: {err.strip()}")
+        run_capture_async(["powerprofilesctl", "set", prof], cb)
 
 
 # --------------------------------------------------------------------------
@@ -12889,7 +13571,7 @@ class MainWindow(QWidget):
         # Tabs werden erst beim ersten Öffnen gebaut (spart RAM und Startzeit);
         # bis dahin steht ein leerer Platzhalter im Stack, damit die Indizes stimmen.
         self.page_classes = {
-            "update": UpdaterTab, "software": SoftwareTab, "flatpak": FlatpakTab, "swap": SwapTab,
+            "update": UpdaterTab, "software": SoftwareTab, "flatpak": FlatpakTab, "swap": SwapTab, "restore": RestoreTab, "setup": SetupTab,
             "disks": DisksTab, "storage": StorageTab, "backup": BackupTab, "tasks": TaskTab, "antivirus": AntivirusTab,
             "security": SecurityTab, "users": UsersTab,
         }
@@ -13163,6 +13845,141 @@ class MainWindow(QWidget):
 # --------------------------------------------------------------------------
 
 EN = {
+    'Wiederherstellung': 'Restore',
+    'System-Snapshots vor Updates und Zurücksetzen per Klick (snapper oder Timeshift).': 'System snapshots before updates and one-click rollback (snapper or Timeshift).',
+    'Basics wie Schriften und Codecs mit einem Klick, dazu Ersatz für Windows-Programme.': 'Basics like fonts and codecs with one click, plus alternatives for Windows programs.',
+    'Snapshot vor dem Update': 'Snapshot before the update',
+    'Tuxdex: vor dem Update': 'Tuxdex: before the update',
+    'Tuxdex: erster Snapshot': 'Tuxdex: first snapshot',
+    'Tuxdex: manuell': 'Tuxdex: manual',
+    'Tuxdex: vor dem Zurücksetzen': 'Tuxdex: before rollback',
+    'Datum': 'Date',
+    'Art': 'Type',
+    'Nr.': 'No.',
+    'Systemwiederherstellung': 'System restore',
+    'So funktioniert es': 'How it works',
+    'Ein Snapshot hält den Stand deines Systems fest – in Sekunden und fast ohne Speicherplatz. Geht nach einem Update etwas kaputt, setzt du das System mit einem Klick auf den Stand davor zurück. Deine eigenen Dateien in /home bleiben dabei unberührt.': 'A snapshot captures the state of your system – in seconds and using almost no space. If something breaks after an update, you roll the system back to the state before with one click. Your own files in /home stay untouched.',
+    'Werkzeug': 'Tool',
+    'Automatisch vor Updates': 'Automatically before updates',
+    'Snapshot jetzt erstellen': 'Create snapshot now',
+    'Vor Updates': 'Before updates',
+    'Vor jedem Update in Tuxdex automatisch einen Snapshot anlegen': 'Automatically create a snapshot before every update in Tuxdex',
+    'Auf diesen Stand zurücksetzen': 'Roll back to this state',
+    'Anmelden und Snapshots anzeigen': 'Log in and show snapshots',
+    'Snapper (nicht eingerichtet)': 'Snapper (not set up)',
+    'Timeshift (nicht eingerichtet)': 'Timeshift (not set up)',
+    'Ja – snap-pac (bei jeder Paketänderung)': 'Yes – snap-pac (on every package change)',
+    'Ja – timeshift-autosnap': 'Yes – timeshift-autosnap',
+    'Ja – bei Updates über Tuxdex': 'Yes – for updates via Tuxdex',
+    'Das übernimmt bereits snap-pac – auch bei Updates im Terminal. Tuxdex legt deshalb keinen zusätzlichen an.': "snap-pac already takes care of this – also for updates in the terminal. So Tuxdex doesn't create an extra one.",
+    'Das übernimmt bereits timeshift-autosnap – auch bei Updates im Terminal. Tuxdex legt deshalb keinen zusätzlichen an.': "timeshift-autosnap already takes care of this – also for updates in the terminal. So Tuxdex doesn't create an extra one.",
+    'Tuxdex legt den Snapshot direkt vor „Update starten“ an. Updates im Terminal sind damit nicht abgedeckt – dafür beim Einrichten snap-pac mitinstallieren.': "Tuxdex creates the snapshot right before “Start update”. Updates in the terminal aren't covered – for that, install snap-pac during setup.",
+    'Eingerichtet': 'Set up',
+    'Nicht eingerichtet': 'Not set up',
+    'Dein System liegt auf btrfs – ideal. „Einrichten“ installiert snapper und snap-pac: dann entsteht vor und nach jeder Paketänderung automatisch ein Snapshot.': 'Your system is on btrfs – ideal. “Set up” installs snapper and snap-pac: then a snapshot is created automatically before and after every package change.',
+    'Timeshift ist installiert, aber noch nicht eingerichtet. „Einrichten“ öffnet Timeshift – dort einmal den Speicherort wählen.': 'Timeshift is installed but not set up yet. “Set up” opens Timeshift – choose the storage location there once.',
+    'Dein System liegt auf {} ohne eigene Snapshots. „Einrichten“ installiert Timeshift; die Snapshots landen dann als Kopie auf der Festplatte (braucht mehr Platz als bei btrfs).': 'Your system is on {} without built-in snapshots. “Set up” installs Timeshift; snapshots are then stored as a copy on the drive (needs more space than btrfs).',
+    'Noch keine Snapshots – erst einrichten.': 'No snapshots yet – set up first.',
+    'Zum Anzeigen der Snapshots sind root-Rechte nötig.': 'Showing snapshots needs root rights.',
+    'Noch keine Snapshots vorhanden.': 'No snapshots yet.',
+    'Zurücksetzen ist gesperrt: /home liegt nicht in einem eigenen Subvolume, deine eigenen Dateien würden mit zurückgesetzt.': "Rollback is blocked: /home isn't on its own subvolume, so your own files would be rolled back too.",
+    'snapper und snap-pac installieren und für das System einrichten?\n\nDanach entsteht vor und nach jeder Paketänderung automatisch ein Snapshot. Alte Snapshots räumt snapper selbst auf.': 'Install snapper and snap-pac and set them up for the system?\n\nAfterwards a snapshot is created automatically before and after every package change. snapper cleans up old snapshots itself.',
+    'Erster Snapshot': 'First snapshot',
+    'Timeshift installieren?\n\nDanach öffnet sich Timeshift einmal, um den Speicherort für die Snapshots festzulegen.': 'Install Timeshift?\n\nTimeshift then opens once so you can choose where snapshots are stored.',
+    'Wiederherstellung einrichten': 'Set up system restore',
+    'Timeshift ist geöffnet – nach dem Einrichten hier auf ↻ klicken.': 'Timeshift is open – click ↻ here after setting it up.',
+    'Snapshot erstellen': 'Create snapshot',
+    'Snapshot löschen': 'Delete snapshot',
+    'Snapshot {} vom {} löschen?': 'Delete snapshot {} from {}?',
+    'Snapshot {} löschen': 'Delete snapshot {}',
+    'System auf den Stand vom {} zurücksetzen?\n\n„{}“\n\nAlle Systemänderungen seit diesem Snapshot werden rückgängig gemacht – auch installierte Updates und Programme. Deine Dateien in /home bleiben unberührt.\n\nDanach bitte neu starten.': 'Roll the system back to the state of {}?\n\n“{}”\n\nAll system changes since this snapshot are undone – including installed updates and programs. Your files in /home stay untouched.\n\nPlease restart afterwards.',
+    'Timeshift startet den Rechner nach dem Zurücksetzen selbst neu.': 'Timeshift restarts the computer by itself after the rollback.',
+    'Sicherheits-Snapshot des jetzigen Stands': 'Safety snapshot of the current state',
+    'Zurücksetzen auf {}': 'Roll back to {}',
+    'Zurückgesetzt – bitte jetzt neu starten.': 'Rolled back – please restart now.',
+    'vorher': 'before',
+    'nachher': 'after',
+    'einzeln': 'single',
+    'Schriften für Office-Dokumente': 'Fonts for Office documents',
+    'Liberation (passt in der Breite zu Arial, Times New Roman und Courier New), Noto mit Emojis und DejaVu – Word-Dokumente sehen damit aus wie unter Windows.': 'Liberation (same widths as Arial, Times New Roman and Courier New), Noto with emojis and DejaVu – Word documents look just like on Windows.',
+    'Audio- und Video-Codecs': 'Audio and video codecs',
+    'Damit spielen MP3, MP4, H.264/H.265 und Co. in allen Programmen ab.': 'So MP3, MP4, H.264/H.265 and friends play in every program.',
+    'Energieprofile': 'Power profiles',
+    'Zwischen Energiesparen, Ausgewogen und Leistung umschalten – wie unter Windows. Nicht zusammen mit TLP nutzen.': "Switch between power saver, balanced and performance – like on Windows. Don't use together with TLP.",
+    'Energiesparen': 'Power saver',
+    'Aktuelles Profil': 'Current profile',
+    'Bildbearbeitung': 'Image editing',
+    'Klassische Bildbearbeitung': 'Classic image editing',
+    'Malen und Bildbearbeitung': 'Painting and image editing',
+    'Photoshop-ähnlich im Browser, öffnet PSD': 'Photoshop-like in the browser, opens PSD',
+    'Fotos entwickeln': 'Photo development',
+    'RAW-Fotos entwickeln und verwalten': 'Develop and manage RAW photos',
+    'RAW-Entwicklung': 'RAW development',
+    'Vektorgrafik': 'Vector graphics',
+    'Vektorgrafik, öffnet SVG und AI': 'Vector graphics, opens SVG and AI',
+    'Einfach malen wie in Paint': 'Simple painting like in Paint',
+    'Wie Paint.NET': 'Like Paint.NET',
+    'Texte, Tabellen, Präsentationen – öffnet DOCX, XLSX, PPTX': 'Documents, spreadsheets, presentations – opens DOCX, XLSX, PPTX',
+    'Sieht aus wie Microsoft Office': 'Looks like Microsoft Office',
+    'E-Mail, Kalender, Kontakte': 'Email, calendar, contacts',
+    'Notizen': 'Notes',
+    'Notizen mit Synchronisierung': 'Notes with sync',
+    'Notizen und Wissenssammlung': 'Notes and knowledge base',
+    'PDFs lesen und kommentieren': 'Read and annotate PDFs',
+    'Videoschnitt': 'Video editing',
+    'Einfacher Videoschnitt': 'Simple video editing',
+    'Audio bearbeiten': 'Audio editing',
+    'Audio aufnehmen und schneiden': 'Record and edit audio',
+    'Bildschirm aufnehmen': 'Screen recording',
+    'Aufnehmen und streamen': 'Record and stream',
+    'Video abspielen': 'Play videos',
+    'Spielt praktisch alles ab': 'Plays practically everything',
+    'Musiksammlung wie iTunes': 'Music library like iTunes',
+    'Musiksammlung verwalten': 'Manage your music library',
+    'Gibt es auch für Linux': 'Also available for Linux',
+    'Starker Text-Editor': 'Powerful text editor',
+    'Programmieren': 'Programming',
+    'Open-Source-Version von VS Code': 'Open-source version of VS Code',
+    'Die Microsoft-Version': 'The Microsoft version',
+    'Entpacken': 'Unzip',
+    'Archive packen und entpacken': 'Create and extract archives',
+    '7-Zip für die Kommandozeile': '7-Zip for the command line',
+    'Dateimanager von KDE': "KDE's file manager",
+    'Screenshots und Bildschirmaufnahmen': 'Screenshots and screen recordings',
+    'Schneller, privater Browser': 'Fast, private browser',
+    'Open-Source-Basis von Chrome': 'Open-source base of Chrome',
+    'Inoffizielle Teams-App': 'Unofficial Teams app',
+    'Passwörter': 'Passwords',
+    'Passwort-Manager': 'Password manager',
+    'Spiele': 'Games',
+    'Spiele-Plattform mit Proton für Windows-Spiele': 'Gaming platform with Proton for Windows games',
+    'Ist in Tuxdex schon eingebaut': 'Already built into Tuxdex',
+    'Datenträgerverwaltung': 'Disk Management',
+    'Laufwerke': 'Drives',
+    'Wiederherstellungspunkt': 'Restore point',
+    '3D-Konstruktion': '3D design',
+    '2D-Zeichnungen': '2D drawings',
+    'Tuxdex-Taskmanager': 'Tuxdex task manager',
+    'Tuxdex-Datenträger': 'Tuxdex drives',
+    'Tuxdex-Wiederherstellung': 'Tuxdex restore',
+    'Was nach einem Umstieg von Windows fehlt – mit einem Klick erledigt.': "What's missing after switching from Windows – done with one click.",
+    'Basics mit einem Klick': 'One-click basics',
+    'Ersatz für Windows-Programme': 'Alternatives for Windows programs',
+    'Gib ein, was du unter Windows benutzt hast – z. B. „Photoshop“ oder „Office“.': 'Type what you used on Windows – e.g. “Photoshop” or “Office”.',
+    'Windows-Programm suchen …': 'Search for a Windows program …',
+    '{} von {} Basics': '{} of {} basics',
+    'Dazu kenne ich noch keinen Ersatz. Im Tab „Software“ kannst du frei nach Programmen suchen.': "I don't know an alternative for that yet. In the “Software” tab you can search freely for programs.",
+    'Statt {}': 'Instead of {}',
+    '… und {} weitere – einfach suchen.': '… and {} more – just search.',
+    'Im Browser öffnen': 'Open in browser',
+    'Installieren (Flathub)': 'Install (Flathub)',
+    'Flatpak fehlt – im Tab „Flatpak“ einrichten.': 'Flatpak is missing – set it up in the “Flatpak” tab.',
+    'Installieren: {}?': 'Install: {}?',
+    '{} aus den Arch-Paketquellen installieren?': 'Install {} from the Arch repositories?',
+    '{} von Flathub installieren?': 'Install {} from Flathub?',
+    'Energieprofil: {}.': 'Power profile: {}.',
+    'Energieprofil ließ sich nicht setzen: {}': "Couldn't set the power profile: {}",
+    'Fertig.': 'Done.',
     'System-, AUR- und Flatpak-Updates mit Hinweisen vor riskanten Updates.': 'System, AUR and Flatpak updates with warnings before risky updates.',
     'Programme suchen, installieren und entfernen (pacman und AUR).': 'Search, install and remove programs (pacman and AUR).',
     'Flatpak-Apps verwalten und ihre Rechte per Schalter einstellen.': 'Manage Flatpak apps and set their permissions with switches.',

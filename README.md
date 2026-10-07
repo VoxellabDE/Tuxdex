@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.2.0--alpha-2fb3a3">
+  <img alt="Version" src="https://img.shields.io/badge/version-1.3.0--alpha-2fb3a3">
   <img alt="Lizenz" src="https://img.shields.io/badge/lizenz-MIT-2fb3a3">
   <img alt="Für Arch Linux" src="https://img.shields.io/badge/f%C3%BCr-Arch%20Linux-1793d1">
   <img alt="Python" src="https://img.shields.io/badge/python-3.11%2B-3776ab">
@@ -45,7 +45,7 @@ Für Profis, die alles im Terminal machen, ist Tuxdex nicht gedacht – aber als
 **Sprache:** Deutsch und Englisch. Tuxdex richtet sich nach der Systemsprache; umstellen unter **Einstellungen (Zahnrad unten links) → Sprache**.
 
 <p align="center">
-  <img src="docs/readme/modules.png" alt="Die 11 Module von Tuxdex" width="100%">
+  <img src="docs/readme/modules.png" alt="Die Module von Tuxdex" width="100%">
 </p>
 
 ## Module
@@ -55,11 +55,13 @@ Tuxdex ist ein **Baukasten**: Unter **Einstellungen → Module** wählst du selb
 | Modul | Was es kann |
 |---|---|
 | **Updates** | Prüft beim Start automatisch auf Updates (pacman, AUR über paru, Flatpak – abschaltbar) und zeigt die Anzahl am Tab und unten rechts · einspielen per Klick · **Major-Updates** und Kernel/System-Pakete werden markiert · Neustart-Hinweis · Prüfergebnis bleibt nach dem Schließen erhalten |
+| **Einrichten** | Basics mit einem Klick: Schriften für Office-Dokumente, Audio-/Video-Codecs, Energieprofile · **Ersatz für Windows-Programme**: „Photoshop“, „Office“ & Co. eingeben, Linux-Alternative direkt installieren |
 | **Software** | Alle Pakete mit Icon, Version, Größe, Quelle/Ort und Installationsdatum · per Kästchen auswählen und gemeinsam deinstallieren · installieren aus pacman, AUR (paru) oder Flathub |
 | **Flatpak** | Rechte jeder Flatpak-App per Schalter – Netzwerk, Dateien & Ordner, Geräte, Ton, Bildschirm, Umgebungsvariablen, Portal-Freigaben · Regeln für alle Apps · riskante Rechte sind markiert, Änderungen hervorgehoben · Flathub einrichten, Apps starten, aktualisieren, deinstallieren |
 | **Datenträger** | Laufwerke und Partitionen als Baum · Einhängen, Aushängen, Umbenennen, Prüfen, **Formatieren** (ext4, btrfs, xfs, exFAT, FAT32, NTFS), sicher entfernen · erkennt neue USB-Sticks automatisch · System-Partitionen sind geschützt |
 | **Speicher** | Belegung je Festplatte · „Was belegt den Platz?“ mit Drill-down in Ordner · Aufräumen: Paket-Cache, verwaiste Pakete, Journal, Papierkorb, Flatpak |
 | **Backup** | Snapshots (versioniert, platzsparend), Spiegel oder komprimierte Archive (zstd/xz/gzip, optional mit Passwort) · **mehrere Ziele gleichzeitig** · Prüfung nach dem Schreiben · eigene Namen mit Datum ([so geht’s](#backups-benennen)) · alte Versionen automatisch aufräumen · wiederherstellen · Zeitplan täglich/wöchentlich |
+| **Wiederherstellung** | System-Snapshots mit snapper (btrfs) oder Timeshift · **Snapshot vor jedem Update** · Liste, erstellen, löschen · **auf einen Stand zurücksetzen** per Klick |
 | **Swap** *(anfangs ausgeblendet)* | Swapfile anlegen und entfernen, Swappiness einstellen |
 | **Taskmanager** | Prozesse mit Programm-Icons, CPU, RAM, Datenträger-I/O, Energie-Schätzung · Leistung: CPU (Takt, Temperatur), RAM, GPU, Netzwerk, Datenträger, Akku · System: CPU-/GPU-Name, Mainboard, IP-Adressen, DNS · **Autostart & Bootzeit** · **Versionsstand** von Grafiktreiber, Microcode, BIOS, Kernel, Firmware |
 | **Antivirus** *(anfangs ausgeblendet)* | ClamAV ist vor allem für Server gedacht und auf Linux-Desktops wenig nützlich – ein eigenes Werkzeug für Desktop-Nutzer steht auf der [Roadmap](#roadmap). Bedienung für ein bereits installiertes ClamAV (optional): Signaturen aktualisieren, Ordner oder ganzes System scannen – mit **Live-Fortschritt** (Dateien, Datenmenge, Tempo, Restzeit) und Status, ob der Scan läuft oder hängt · Quarantäne mit Wiederherstellen |
@@ -71,13 +73,11 @@ Tuxdex ist ein **Baukasten**: Unter **Einstellungen → Module** wählst du selb
 Ziele und Planung – was schon da ist und was als Nächstes kommt.
 
 **Geplant**
-- [ ] **Systemwiederherstellung**: automatischer Snapshot vor jedem Update (Timeshift oder snapper), Rollback per Klick.
 - [ ] **Treiber-Assistent**: NVIDIA, WLAN, Drucker und Bluetooth erkennen und mit einem Klick einrichten.
-- [ ] **„Ersatz finden“**: „Photoshop“ eingeben → GIMP, Krita, Photopea; „Office“ → LibreOffice, OnlyOffice – jeweils mit Installieren-Knopf.
 - [ ] **Spiele-Setup**: Steam, Proton, Lutris/Heroic und Wine/Bottles in einem Schritt, dazu ein Hinweis, welche Spiele wegen Anti-Cheat nicht laufen.
 - [ ] **Windows-Daten**: NTFS-Partition einbinden, Dual-Boot erkennen, Dateien aus „C:\Users“ übernehmen.
 - [ ] **Fehlerdiagnose in Klartext**: „Warum ist mein WLAN weg?“ statt Logs, dazu ein Gerätemanager.
-- [ ] **Basics mit einem Klick**: Microsoft-Schriften und Codecs, Standard-Apps festlegen, Energieprofile.
+- [ ] **Standard-Apps festlegen** (Browser, E-Mail, PDF …) mit einem Klick.
 - [ ] **CachyOS-Unterstützung**: CachyOS-Kernel erkennen und anzeigen.
 - [ ] **Interaktive Lernsoftware** für Arch Linux, verbunden mit Tuxdex: Befehle Schritt für Schritt lernen – zu jeder Aktion in Tuxdex den passenden Befehl sehen, verstehen und selbst ausprobieren.
 - [ ] **Fertige, geprüfte ISOs**: Arch Linux mit KDE Plasma und Tuxdex, schon eingerichtet – mit einem Installer, der viel einfacher ist als die heutige Arch-Installation.
@@ -85,6 +85,9 @@ Ziele und Planung – was schon da ist und was als Nächstes kommt.
 - [ ] **Modul-Markt**: weitere Module, die man sich nach Bedarf dazuholt.
 
 **Erledigt**
+- [x] **Systemwiederherstellung**: Snapshot vor jedem Update (snapper oder Timeshift), Zurücksetzen per Klick (1.3.0)
+- [x] **„Ersatz finden“** für Windows-Programme mit Installieren-Knopf (1.3.0)
+- [x] **Basics mit einem Klick**: Schriften, Codecs, Energieprofile (1.3.0)
 - [x] Module als Baukasten – ab- und zuwählbar (1.2.0)
 - [x] Englische Oberfläche und README (1.1.0)
 - [x] Eigenes pacman-Repository, ohne AUR (1.1.0)
@@ -109,6 +112,8 @@ Ideen und Wünsche gern als [Issue](../../issues).
 | ![Sicherheit](docs/screenshots/security.png) | ![Taskmanager](docs/screenshots/tasks.png) |
 | **Checkliste** | **Module (Einstellungen)** |
 | ![Checkliste](docs/screenshots/checklist.png) | ![Module](docs/screenshots/modules.png) |
+| **Wiederherstellung** | **Einrichten** |
+| ![Wiederherstellung](docs/screenshots/restore.png) | ![Einrichten](docs/screenshots/setup.png) |
 
 <sub>Die Screenshots zeigen Beispieldaten.</sub>
 

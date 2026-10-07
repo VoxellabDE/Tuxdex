@@ -2,6 +2,13 @@
 
 English version of [CHANGELOG.md](CHANGELOG.md). Entries before 1.0.0 are only available in German.
 
+## 1.3.0
+System restore and setup for switchers.
+
+- **New module "Restore"**: system snapshots with snapper (btrfs) or Timeshift. One-click setup (on btrfs with snap-pac, so a snapshot is created before and after every package change), list of all snapshots, create a snapshot now, delete, and **roll back to a state**. Before rolling back, Tuxdex creates a safety snapshot of the current state. Rollback with snapper is blocked when /home isn't on its own subvolume – otherwise your own files would be rolled back too.
+- **Snapshot before every update**: once restore is set up, Tuxdex creates a snapshot right before "Start update" (can be turned off; skipped when snap-pac or timeshift-autosnap already do it).
+- **New module "Setup"**: one-click basics – fonts for Office documents, audio and video codecs, power profiles with a switch (power saver, balanced, performance). Plus **"Alternatives for Windows programs"**: type "Photoshop", "Office", "Outlook" and so on and install the matching Linux alternative right away (Arch repositories or Flathub).
+
 ## 1.2.0
 Modules as a toolkit, clearer audience, roadmap.
 

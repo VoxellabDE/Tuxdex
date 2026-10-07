@@ -106,7 +106,17 @@ DF = """Filesystem        Type       1B-blocks         Used        Avail Mounted
 /dev/sda1         exfat    32014630912  12240656384  19773974528 /run/media/user/STICK
 """
 PKGS = ["base", "firefox", "gimp", "htop", "vlc", "git", "neovim", "thunderbird", "obs-studio", "steam",
-        "libreoffice-fresh", "kdenlive"]
+        "libreoffice-fresh", "kdenlive", "ttf-liberation", "noto-fonts", "noto-fonts-emoji", "ttf-dejavu",
+        "gst-plugins-good", "gst-libav", "power-profiles-daemon", "snapper", "snap-pac"]
+SNAPS = {"root": [{"number": 0, "type": "single", "date": "", "description": "current"}] + [
+    {"number": n, "type": k, "pre-number": None, "date": d, "description": desc}
+    for n, k, d, desc in [
+        (41, "single", "2026-09-20 18:02:11", "Tuxdex: erster Snapshot"),
+        (52, "pre", "2026-09-24 20:14:55", "pacman -Syu"),
+        (53, "post", "2026-09-24 20:16:31", "linux mesa python firefox"),
+        (60, "single", "2026-09-25 09:30:02", "Tuxdex: manuell"),
+        (61, "pre", "2026-09-26 19:40:12", "pacman -Syu"),
+        (62, "post", "2026-09-26 19:42:48", "linux systemd python htop")]]}
 FLATPAK_LIST = "\n".join("\t".join(c) for c in [
     ("org.gimp.GIMP", "GNU Image Manipulation Program", "2.10.38", "stable", "flathub", "system", "297.9 MB",
      "Create images and edit photographs"),
@@ -158,6 +168,10 @@ def fake_run(args, *a, **k):
             keys = ["source", "fstype", "size", "used", "avail", "target"]
             return r("header\n" + "\n".join(" ".join(rw[keys.index(c)] for c in cols) for rw in rows) + "\n")
         return r(DF)
+    if s.startswith("snapper --jsonout"):
+        return r(json.dumps(SNAPS))
+    if s.startswith("powerprofilesctl get"):
+        return r("balanced\n")
     if s.startswith("pacman -Qeq") or s.startswith("pacman -Qq"):
         return r("\n".join(PKGS))
     if s.startswith("pacman -Qmq"):
@@ -217,7 +231,7 @@ subprocess.run = fake_run
 # ---- Python-Funktionen mit festen Beispielwerten -----------------------------------------------
 TOOLS = {"pacman", "paru", "flatpak", "mullvad", "ufw", "clamscan", "freshclam", "udisksctl", "makepkg", "arch-audit",
          "reflector", "paccache", "checkupdates", "systemctl", "journalctl", "timedatectl", "lsblk", "findmnt",
-         "gpg", "zstd", "rsync", "sbctl"}
+         "gpg", "zstd", "rsync", "sbctl", "snapper", "powerprofilesctl"}
 _which = t.which
 t.which = lambda c: c in TOOLS or _which(c)
 t.kernel_modules_missing = lambda: False
@@ -477,6 +491,23 @@ def prep_checklist():
     QTimer.singleShot(300, lambda: p.verticalScrollBar().setValue(p.cl_rows["sig"].parentWidget().y() - 8))
 
 
+t.snapshot_env = lambda: {"fs": "btrfs", "home_separate": True, "tool": "snapper", "configured": True,
+                          "snap_pac": True, "autosnap": False, "grub_btrfs": False}
+
+
+def prep_restore():
+    page("restore")
+
+
+def prep_setup():
+    page("setup")
+
+
+def prep_setup_search():
+    p = page("setup")
+    p.search.setText("Photoshop")
+
+
 def prep_modules():
     win.open_settings()
     sp = win.settings_page
@@ -487,6 +518,7 @@ def prep_modules():
 PLAN = [("update", prep_update, 2500), ("software", prep_software, 3000), ("flatpak", prep_flatpak, 3000),
         ("disks", prep_disks, 2500), ("storage", prep_storage, 2500), ("backup", prep_backup, 3000),
         ("tasks", prep_tasks, 9000), ("security", prep_security, 4500), ("checklist", prep_checklist, 1500),
+        ("restore", prep_restore, 2500), ("setup", prep_setup, 2500), ("setup_search", prep_setup_search, 1000),
         ("modules", prep_modules, 1500)]
 
 

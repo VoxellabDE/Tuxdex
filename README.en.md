@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.2.0--alpha-2fb3a3">
+  <img alt="Version" src="https://img.shields.io/badge/version-1.3.0--alpha-2fb3a3">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-2fb3a3">
   <img alt="For Arch Linux" src="https://img.shields.io/badge/for-Arch%20Linux-1793d1">
   <img alt="Python" src="https://img.shields.io/badge/python-3.11%2B-3776ab">
@@ -45,7 +45,7 @@ Tuxdex isn't meant for pros who do everything in the terminal – but it's still
 **Language:** English and German. Tuxdex follows your system language; you can switch under **Settings (gear at the bottom left) → Language**.
 
 <p align="center">
-  <img src="docs/readme/modules.png" alt="The 11 modules of Tuxdex" width="100%">
+  <img src="docs/readme/modules.png" alt="The modules of Tuxdex" width="100%">
 </p>
 
 ## Modules
@@ -55,11 +55,13 @@ Tuxdex is a **toolkit**: under **Settings → Modules** you choose which tools a
 | Module | What it does |
 |---|---|
 | **Updates** | Checks for updates automatically at startup (pacman, AUR via paru, Flatpak – can be turned off) and shows the count on the tab and at the bottom right · install with one click · **major updates** and kernel/system packages are marked · restart notice · the check result is kept after closing |
+| **Setup** | One-click basics: fonts for Office documents, audio/video codecs, power profiles · **Alternatives for Windows programs**: type "Photoshop", "Office" and so on, install the Linux alternative right away |
 | **Software** | All packages with icon, version, size, source/location and install date · select with checkboxes and uninstall together · install from pacman, AUR (paru) or Flathub |
 | **Flatpak** | Permissions of every Flatpak app with switches – network, files & folders, devices, sound, display, environment variables, portal permissions · rules for all apps · risky permissions are marked, changes highlighted · set up Flathub, start, update and uninstall apps |
 | **Drives** | Drives and partitions as a tree · mount, unmount, rename, check, **format** (ext4, btrfs, xfs, exFAT, FAT32, NTFS), safely remove · detects new USB sticks automatically · system partitions are protected |
 | **Storage** | Usage per drive · “What is using the space?” with drill-down into folders · cleanup: package cache, orphaned packages, journal, trash, Flatpak |
 | **Backup** | Snapshots (versioned, space-saving), mirror or compressed archives (zstd/xz/gzip, optionally with password) · **several targets at once** · verification after writing · custom names with date ([how it works](#naming-backups)) · old versions cleaned up automatically · restore · daily/weekly schedule |
+| **Restore** | System snapshots with snapper (btrfs) or Timeshift · **snapshot before every update** · list, create, delete · **roll back to a state** with one click |
 | **Swap** *(hidden at first)* | Create and remove a swap file, set swappiness |
 | **Task manager** | Processes with program icons, CPU, RAM, disk I/O, energy estimate · performance tiles with details on click: CPU (clock, caches, virtualization), RAM (speed, slots, type), drives, GPU (clock, power, VRAM, PCIe), network, battery, fans · system: CPU/GPU name, mainboard, IP addresses, DNS · **autostart & boot time** · **version status** of graphics driver, microcode, BIOS, kernel, firmware |
 | **Antivirus** *(hidden at first)* | ClamAV is mainly meant for servers and of little use on Linux desktops – an own tool for desktop users is on the [roadmap](#roadmap). Front end for an already installed ClamAV (optional): update signatures, scan folders or the whole system – with **live progress** (files, data, speed, time left) and whether the scan is running or stuck · quarantine with restore |
@@ -71,13 +73,11 @@ Tuxdex is a **toolkit**: under **Settings → Modules** you choose which tools a
 Goals and plans – what's already there and what comes next.
 
 **Planned**
-- [ ] **System restore**: automatic snapshot before every update (Timeshift or snapper), rollback with one click.
 - [ ] **Driver assistant**: detect NVIDIA, Wi-Fi, printers and Bluetooth and set them up with one click.
-- [ ] **"Find an alternative"**: type "Photoshop" → GIMP, Krita, Photopea; "Office" → LibreOffice, OnlyOffice – each with an install button.
 - [ ] **Gaming setup**: Steam, Proton, Lutris/Heroic and Wine/Bottles in one step, plus a note on which games won't run because of anti-cheat.
 - [ ] **Windows data**: mount NTFS partitions, detect dual boot, bring over files from "C:\Users".
 - [ ] **Troubleshooting in plain language**: "Why is my Wi-Fi gone?" instead of logs, plus a device manager.
-- [ ] **One-click basics**: Microsoft fonts and codecs, default apps, power profiles.
+- [ ] **Set default apps** (browser, email, PDF …) with one click.
 - [ ] **CachyOS support**: detect and show CachyOS kernels.
 - [ ] **Interactive learning software** for Arch Linux, connected to Tuxdex: learn commands step by step – see the matching command for every action in Tuxdex, understand it and try it yourself.
 - [ ] **Ready-made, tested ISOs**: Arch Linux with KDE Plasma and Tuxdex, already set up – with an installer that's much simpler than today's Arch installation.
@@ -85,6 +85,9 @@ Goals and plans – what's already there and what comes next.
 - [ ] **Module market**: more modules you add as needed.
 
 **Done**
+- [x] **System restore**: snapshot before every update (snapper or Timeshift), one-click rollback (1.3.0)
+- [x] **"Find an alternative"** for Windows programs with an install button (1.3.0)
+- [x] **One-click basics**: fonts, codecs, power profiles (1.3.0)
 - [x] Modules as a toolkit – add and remove them (1.2.0)
 - [x] English interface and README (1.1.0)
 - [x] Own pacman repository, no AUR needed (1.1.0)
@@ -109,6 +112,8 @@ Ideas and wishes are welcome as an [issue](../../issues).
 | ![Security](docs/screenshots/en/security.png) | ![Task manager](docs/screenshots/en/tasks.png) |
 | **Checklist** | **Modules (settings)** |
 | ![Checklist](docs/screenshots/en/checklist.png) | ![Modules](docs/screenshots/en/modules.png) |
+| **Restore** | **Setup** |
+| ![Restore](docs/screenshots/en/restore.png) | ![Setup](docs/screenshots/en/setup.png) |
 
 <sub>The screenshots show sample data.</sub>
 
