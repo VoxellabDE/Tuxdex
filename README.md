@@ -71,6 +71,14 @@ Tuxdex ist ein **Baukasten**: Unter **Einstellungen → Module** wählst du selb
 Ziele und Planung – was schon da ist und was als Nächstes kommt.
 
 **Geplant**
+- [ ] **Systemwiederherstellung**: automatischer Snapshot vor jedem Update (Timeshift oder snapper), Rollback per Klick.
+- [ ] **Treiber-Assistent**: NVIDIA, WLAN, Drucker und Bluetooth erkennen und mit einem Klick einrichten.
+- [ ] **„Ersatz finden“**: „Photoshop“ eingeben → GIMP, Krita, Photopea; „Office“ → LibreOffice, OnlyOffice – jeweils mit Installieren-Knopf.
+- [ ] **Spiele-Setup**: Steam, Proton, Lutris/Heroic und Wine/Bottles in einem Schritt, dazu ein Hinweis, welche Spiele wegen Anti-Cheat nicht laufen.
+- [ ] **Windows-Daten**: NTFS-Partition einbinden, Dual-Boot erkennen, Dateien aus „C:\Users“ übernehmen.
+- [ ] **Fehlerdiagnose in Klartext**: „Warum ist mein WLAN weg?“ statt Logs, dazu ein Gerätemanager.
+- [ ] **Basics mit einem Klick**: Microsoft-Schriften und Codecs, Standard-Apps festlegen, Energieprofile.
+- [ ] **CachyOS-Unterstützung**: CachyOS-Kernel erkennen und anzeigen.
 - [ ] **Interaktive Lernsoftware** für Arch Linux, verbunden mit Tuxdex: Befehle Schritt für Schritt lernen – zu jeder Aktion in Tuxdex den passenden Befehl sehen, verstehen und selbst ausprobieren.
 - [ ] **Fertige, geprüfte ISOs**: Arch Linux mit KDE Plasma und Tuxdex, schon eingerichtet – mit einem Installer, der viel einfacher ist als die heutige Arch-Installation.
 - [ ] **Eigenes Sicherheits-Werkzeug für Desktop-Nutzer** als Ersatz für ClamAV.
