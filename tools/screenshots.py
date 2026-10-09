@@ -495,6 +495,23 @@ t.snapshot_env = lambda: {"fs": "btrfs", "home_separate": True, "tool": "snapper
                           "snap_pac": True, "autosnap": False, "grub_btrfs": False}
 
 
+t.multilib_enabled = lambda: True
+_APPS = {"browser": ("firefox.desktop", [("Chromium", "chromium.desktop"), ("Firefox", "firefox.desktop")]),
+         "mail": ("thunderbird.desktop", [("Thunderbird", "thunderbird.desktop")]),
+         "pdf": ("okularApplication_pdf.desktop", [("Firefox", "firefox.desktop"),
+                                                   ("Okular", "okularApplication_pdf.desktop")]),
+         "image": ("org.kde.gwenview.desktop", [("GIMP", "gimp.desktop"), ("Gwenview", "org.kde.gwenview.desktop")]),
+         "video": ("vlc.desktop", [("Haruna", "org.kde.haruna.desktop"), ("VLC", "vlc.desktop")]),
+         "audio": ("", [("Elisa", "org.kde.elisa.desktop"), ("VLC", "vlc.desktop")]),
+         "text": ("org.kde.kate.desktop", [("Kate", "org.kde.kate.desktop"), ("Neovim", "nvim.desktop")])}
+t.default_apps_state = lambda: _APPS
+
+
+def prep_setup_games():
+    p = page("setup")
+    QTimer.singleShot(300, lambda: p.verticalScrollBar().setValue(p.defaults_panel.y() - 8))
+
+
 def prep_restore():
     page("restore")
 
@@ -519,6 +536,7 @@ PLAN = [("update", prep_update, 2500), ("software", prep_software, 3000), ("flat
         ("disks", prep_disks, 2500), ("storage", prep_storage, 2500), ("backup", prep_backup, 3000),
         ("tasks", prep_tasks, 9000), ("security", prep_security, 4500), ("checklist", prep_checklist, 1500),
         ("restore", prep_restore, 2500), ("setup", prep_setup, 2500), ("setup_search", prep_setup_search, 1000),
+        ("setup_games", prep_setup_games, 1200),
         ("modules", prep_modules, 1500)]
 
 

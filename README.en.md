@@ -55,7 +55,7 @@ Tuxdex is a **toolkit**: under **Settings → Modules** you choose which tools a
 | Module | What it does |
 |---|---|
 | **Updates** | Checks for updates automatically at startup (pacman, AUR via paru, Flatpak – can be turned off) and shows the count on the tab and at the bottom right · install with one click · **major updates** and kernel/system packages are marked · restart notice · the check result is kept after closing |
-| **Setup** | One-click basics: fonts for Office documents, audio/video codecs, power profiles · **Alternatives for Windows programs**: type "Photoshop", "Office" and so on, install the Linux alternative right away |
+| **Setup** | One-click basics: fonts for Office documents, audio/video codecs, power profiles · set **default apps** · **gaming setup** (Steam, GameMode, MangoHud, Lutris, Heroic, Bottles, Wine, 32-bit support) · **Alternatives for Windows programs**: type "Photoshop", "Office" and so on, install the Linux alternative right away |
 | **Software** | All packages with icon, version, size, source/location and install date · select with checkboxes and uninstall together · install from pacman, AUR (paru) or Flathub |
 | **Flatpak** | Permissions of every Flatpak app with switches – network, files & folders, devices, sound, display, environment variables, portal permissions · rules for all apps · risky permissions are marked, changes highlighted · set up Flathub, start, update and uninstall apps |
 | **Drives** | Drives and partitions as a tree · mount, unmount, rename, check, **format** (ext4, btrfs, xfs, exFAT, FAT32, NTFS), safely remove · detects new USB sticks automatically · system partitions are protected |
@@ -74,17 +74,17 @@ Goals and plans – what's already there and what comes next.
 
 **Planned**
 - [ ] **Driver assistant**: detect NVIDIA, Wi-Fi, printers and Bluetooth and set them up with one click.
-- [ ] **Gaming setup**: Steam, Proton, Lutris/Heroic and Wine/Bottles in one step, plus a note on which games won't run because of anti-cheat.
 - [ ] **Windows data**: mount NTFS partitions, detect dual boot, bring over files from "C:\Users".
 - [ ] **Troubleshooting in plain language**: "Why is my Wi-Fi gone?" instead of logs, plus a device manager.
-- [ ] **Set default apps** (browser, email, PDF …) with one click.
-- [ ] **CachyOS support**: detect and show CachyOS kernels.
 - [ ] **Interactive learning software** for Arch Linux, connected to Tuxdex: learn commands step by step – see the matching command for every action in Tuxdex, understand it and try it yourself.
 - [ ] **Ready-made, tested ISOs**: Arch Linux with KDE Plasma and Tuxdex, already set up – with an installer that's much simpler than today's Arch installation.
 - [ ] **Own security tool for desktop users** to replace ClamAV.
 - [ ] **Module market**: more modules you add as needed.
 
 **Done**
+- [x] **Gaming setup**: Steam, GameMode, MangoHud, Lutris, Heroic, Bottles, Wine – with an anti-cheat note (1.3.0)
+- [x] **Set default apps** (browser, email, PDF, images, videos, music, text) (1.3.0)
+- [x] **CachyOS support**: CachyOS kernels are detected (1.3.0)
 - [x] **System restore**: snapshot before every update (snapper or Timeshift), one-click rollback (1.3.0)
 - [x] **"Find an alternative"** for Windows programs with an install button (1.3.0)
 - [x] **One-click basics**: fonts, codecs, power profiles (1.3.0)
@@ -114,6 +114,8 @@ Ideas and wishes are welcome as an [issue](../../issues).
 | ![Checklist](docs/screenshots/en/checklist.png) | ![Modules](docs/screenshots/en/modules.png) |
 | **Restore** | **Setup** |
 | ![Restore](docs/screenshots/en/restore.png) | ![Setup](docs/screenshots/en/setup.png) |
+| **Default apps & games** | |
+| ![Default apps and games](docs/screenshots/en/setup_games.png) | |
 
 <sub>The screenshots show sample data.</sub>
 

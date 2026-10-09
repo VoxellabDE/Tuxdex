@@ -1834,6 +1834,31 @@ RAPID_RELEASE = {"firefox", "firefox-developer-edition", "librewolf", "chromium"
 MINOR_IS_MAJOR = {"python", "perl", "ruby", "php", "llvm", "llvm-libs", "qt6-base", "qt5-base",
                   "boost", "boost-libs", "icu", "protobuf"}
 
+# Kernel-Pakete: Arch (linux, -lts, -zen, -hardened, -rt) und CachyOS (linux-cachyos, -bore, -lts, -hardened …),
+# auch passende Modul-Pakete wie linux-cachyos-nvidia-open – aber keine Header/Doku
+KERNEL_RE = re.compile(r"linux(-(lts|zen|hardened|rt|rt-lts|cachyos(-[a-z0-9]+)*))?")
+
+
+def is_kernel_pkg(name):
+    return bool(KERNEL_RE.fullmatch(name)) and not re.search(r"-(headers|docs|dbg|api-headers)$", name)
+
+
+def needs_reboot(name):
+    return name in REBOOT_PKGS or is_kernel_pkg(name)
+
+
+def running_kernel_pkg():
+    """Paketname des laufenden Kernels (aus /usr/lib/modules/<release>/pkgbase), z. B. linux-cachyos."""
+    return _first_line(f"/usr/lib/modules/{os.uname().release}/pkgbase") or ""
+
+
+def distro_id():
+    for line in _read("/etc/os-release").splitlines():
+        if line.startswith("ID="):
+            return line[3:].strip().strip('"')
+    return ""
+
+
 UPDATE_RE = re.compile(r"^(\S+)\s+(\S+)\s+->\s+(\S+)")
 
 
@@ -1851,7 +1876,7 @@ def classify_update(name, old, new):
         e2, m2 = _version_key(new, depth)
         if e1 != e2 or (m1 is not None and m2 is not None and m1 != m2):
             return "major"
-    if name in CRITICAL_PKGS:
+    if name in CRITICAL_PKGS or is_kernel_pkg(name):
         return "system"
     return ""
 
@@ -1993,7 +2018,7 @@ class UpdaterTab(Page):
             r = self.table.rowCount()
             self.table.insertRow(r)
             hint = {"major": "▲ Major-Version", "system": "▲ System/Kernel"}.get(u["kind"], "")
-            if u["name"] in REBOOT_PKGS:
+            if needs_reboot(u["name"]):
                 hint = (hint + " · Neustart") if hint else "Neustart nötig"
             for c, v in enumerate((u["name"], u["source"], u["old"], u["new"], hint)):
                 it = QTableWidgetItem(v)
@@ -2008,7 +2033,7 @@ class UpdaterTab(Page):
         if self.checked_at is not None and hasattr(self.app, "show_sys_updates"):
             self.app.show_sys_updates(n, len(important))
         majors = [u for u in ups if u["kind"] == "major"]
-        reboot = [u["name"] for u in ups if u["name"] in REBOOT_PKGS]
+        reboot = [u["name"] for u in ups if needs_reboot(u["name"])]
         if self.checked_at is None:
             self.badge.set("off", "Noch nicht geprüft")
         elif n == 0:
@@ -4061,6 +4086,67 @@ ALTERNATIVES = [
         ("Tuxdex-Wiederherstellung", "Ist in Tuxdex schon eingebaut", "tuxdex", "restore")]),
 ]
 
+# Standard-Apps: (Kennung, Titel, MIME-Typen) – der erste Typ entscheidet, was als „aktuell“ gilt
+DEFAULT_APP_TYPES = [
+    ("browser", "Browser", ["x-scheme-handler/http", "x-scheme-handler/https", "text/html"]),
+    ("mail", "E-Mail", ["x-scheme-handler/mailto"]),
+    ("pdf", "PDF", ["application/pdf"]),
+    ("image", "Bilder", ["image/jpeg", "image/png", "image/gif", "image/webp"]),
+    ("video", "Videos", ["video/mp4", "video/x-matroska", "video/webm", "video/quicktime"]),
+    ("audio", "Musik", ["audio/mpeg", "audio/flac", "audio/ogg", "audio/x-wav"]),
+    ("text", "Textdateien", ["text/plain"]),
+]
+
+
+def apps_for_mime(mime):
+    """[(Name, desktop-id)] aller Programme, die den MIME-Typ öffnen können."""
+    seen, res = set(), []
+    for d in APP_DIRS:
+        try:
+            files = sorted(os.listdir(d))
+        except OSError:
+            continue
+        for fn in files:
+            if not fn.endswith(".desktop") or fn in seen:
+                continue
+            e = read_desktop(os.path.join(d, fn))
+            if e.get("NoDisplay", "").lower() == "true" or mime not in e.get("MimeType", "").split(";"):
+                continue
+            seen.add(fn)
+            res.append((e.get("Name", fn[:-8]), fn))
+    return sorted(res, key=lambda x: x[0].lower())
+
+
+def default_app(mime):
+    return _cmd_out(["xdg-mime", "query", "default", mime]).strip() if which("xdg-mime") else ""
+
+
+def default_apps_state():
+    """{Kennung: (aktuelle desktop-id, [(Name, desktop-id)])}"""
+    return {key: (default_app(mimes[0]), apps_for_mime(mimes[0])) for key, _, mimes in DEFAULT_APP_TYPES}
+
+
+def multilib_enabled():
+    return any(line.strip() == "[multilib]" for line in _read("/etc/pacman.conf").splitlines())
+
+
+# Spiele: (Kennung, Name, Beschreibung, Quelle, Paket/App-ID, braucht multilib)
+GAMES = [
+    ("steam", "Steam", "Spiele-Plattform – mit Proton laufen viele Windows-Spiele", "pacman", "steam", True),
+    ("gamemode", "GameMode", "Holt beim Spielen mehr Leistung aus CPU und Grafikkarte", "pacman", "gamemode", False),
+    ("mangohud", "MangoHud", "FPS, Temperaturen und Auslastung im Spiel einblenden", "pacman", "mangohud", False),
+    ("lutris", "Lutris", "Spiele aus vielen Quellen (Battle.net, Ubisoft, GOG …) an einem Ort", "pacman", "lutris",
+     False),
+    ("heroic", "Heroic", "Epic Games, GOG und Amazon Prime Gaming", "flathub", "com.heroicgameslauncher.hgl", False),
+    ("bottles", "Bottles", "Windows-Programme und -Spiele in getrennten Umgebungen", "flathub",
+     "com.usebottles.bottles", False),
+    ("wine", "Wine", "Windows-Programme direkt starten (für Fortgeschrittene)", "pacman", "wine", True),
+]
+GAMES_RECOMMENDED = ("steam", "gamemode", "mangohud")
+# Steam ohne multilib: die Flathub-Version bringt ihre 32-Bit-Bibliotheken selbst mit
+STEAM_FLATHUB = "com.valvesoftware.Steam"
+
+
 POWER_PROFILES = [("power-saver", "Energiesparen"), ("balanced", "Ausgewogen"), ("performance", "Leistung")]
 
 
@@ -4136,6 +4222,58 @@ class SetupTab(Page):
         bp.body.addWidget(self.power_box)
         self.lay.addWidget(bp)
 
+        dp = self.defaults_panel = Panel("Standard-Apps")
+        dp.body.addWidget(Label("Womit sich Links, PDFs, Bilder und Co. öffnen. Änderungen gelten sofort.",
+                                "Hint", wrap=True))
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(16)
+        grid.setVerticalSpacing(8)
+        self.default_cbs = {}
+        for i, (key, title, _) in enumerate(DEFAULT_APP_TYPES):
+            cb = QComboBox()
+            cb.setMinimumHeight(34)
+            cb.currentIndexChanged.connect(lambda _=0, k=key: self.set_default_app(k))
+            grid.addWidget(Label(title.upper(), "FieldLabel"), i // 2, (i % 2) * 2)
+            grid.addWidget(cb, i // 2, (i % 2) * 2 + 1)
+            self.default_cbs[key] = cb
+        grid.setColumnStretch(1, 1)
+        grid.setColumnStretch(3, 1)
+        dp.body.addLayout(grid)
+        self.lay.addWidget(dp)
+
+        gp = Panel("Spiele")
+        gp.body.addWidget(Label("Steam mit Proton startet die meisten Windows-Spiele. Spiele mit Kernel-Anti-Cheat "
+                                "wie Valorant, League of Legends oder Fortnite laufen unter Linux aber nicht – vor "
+                                "dem Kauf auf areweanticheatyet.com oder protondb.com nachsehen.", "Hint", wrap=True))
+        self.multilib_row = QHBoxLayout()
+        self.multilib_label = Label("", "Hint", wrap=True)
+        self.multilib_row.addWidget(self.multilib_label, 1)
+        self.b_multilib = Button("32-Bit-Unterstützung einschalten", "primary", self.enable_multilib)
+        self.multilib_row.addWidget(self.b_multilib)
+        gp.body.addLayout(self.multilib_row)
+        self.game_rows = {}
+        for key, name, desc, _, _, _ in GAMES:
+            r = QHBoxLayout()
+            r.setSpacing(10)
+            n = Label(name)
+            n.setMinimumWidth(110)
+            r.addWidget(n)
+            r.addWidget(Label(desc, "Hint"), 1)
+            b = Button("Installieren", "primary", lambda _=False, k=key: self.install_games([k]))
+            b.setMinimumWidth(130)
+            r.addWidget(b)
+            gp.body.addLayout(r)
+            self.game_rows[key] = b
+        r = QHBoxLayout()
+        self.b_games = Button("", "primary",
+                              lambda: self.install_games(list(GAMES_RECOMMENDED)))
+        r.addWidget(self.b_games)
+        r.addWidget(Button("ProtonDB öffnen", "ghost", lambda: subprocess.Popen(
+            ["xdg-open", "https://www.protondb.com"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)))
+        r.addStretch(1)
+        gp.body.addLayout(r)
+        self.lay.addWidget(gp)
+
         ap = Panel("Ersatz für Windows-Programme")
         ap.body.addWidget(Label("Gib ein, was du unter Windows benutzt hast – z. B. „Photoshop“ oder „Office“.",
                                 "Hint", wrap=True))
@@ -4156,7 +4294,8 @@ class SetupTab(Page):
     def refresh(self):
         def worker():
             pac, fp, prof = installed_pacman(), installed_flatpaks(), power_profile()
-            ui(lambda: self._apply(pac, fp, prof))
+            defaults, ml = default_apps_state(), multilib_enabled()
+            ui(lambda: (self._apply_defaults(defaults), self._apply_games(pac, fp, ml), self._apply(pac, fp, prof)))
         threading.Thread(target=worker, daemon=True).start()
 
     def _apply(self, pac, fp, prof):
@@ -4179,6 +4318,114 @@ class SetupTab(Page):
         if prof in ids:
             self.power_seg.set(ids.index(prof))
         self.render_alternatives()
+
+    def _apply_defaults(self, state):
+        for key, cb in self.default_cbs.items():
+            cur, apps = state.get(key, ("", []))
+            cb.blockSignals(True)
+            cb.clear()
+            if not apps:
+                cb.addItem("Kein passendes Programm installiert", "")
+            elif cur not in [a[1] for a in apps]:
+                cb.addItem("Nicht festgelegt", "")
+            for name, ident in apps:
+                cb.addItem(name, ident)
+            idx = cb.findData(cur)
+            cb.setCurrentIndex(idx if idx >= 0 else 0)
+            cb.setEnabled(bool(apps))
+            cb.blockSignals(False)
+
+    def _apply_games(self, pac, fp, ml):
+        self.multilib = ml
+        self.multilib_label.setText("" if ml else "Steam und Wine aus den Arch-Paketquellen brauchen die "
+                                    "32-Bit-Unterstützung (multilib). Ohne sie installiert Tuxdex Steam von Flathub.")
+        self.b_multilib.setVisible(not ml)
+        self.multilib_label.setVisible(not ml)
+        missing = []
+        for key, name, _, src, ident, _ in GAMES:
+            have = ident in pac if src == "pacman" else ident in fp
+            if key == "steam":
+                have = "steam" in pac or STEAM_FLATHUB in fp
+            b = self.game_rows[key]
+            b.setEnabled(not have)
+            b.setText("Installiert" if have else "Installieren" + (" (Flathub)" if src == "flathub" else ""))
+            b.setProperty("variant", "ghost" if have else "primary")
+            repolish(b)
+            if key in GAMES_RECOMMENDED and not have:
+                missing.append(name)
+        self.b_games.setVisible(bool(missing))
+        self.b_games.setText("Empfohlen installieren: " + ", ".join(missing))
+
+    def set_default_app(self, key):
+        cb = self.default_cbs[key]
+        ident = cb.currentData()
+        if not ident:
+            return
+        mimes = next(m for k, _, m in DEFAULT_APP_TYPES if k == key)
+        cmds = [["xdg-mime", "default", ident] + mimes]
+        if key == "browser" and which("xdg-settings"):
+            cmds.append(["xdg-settings", "set", "default-web-browser", ident])
+
+        def worker():
+            ok = True
+            for c in cmds:
+                try:
+                    ok = subprocess.run(c, capture_output=True, timeout=15).returncode == 0 and ok
+                except Exception:
+                    ok = False
+            ui(lambda: self.app.set_status(f"Standard für {cb.currentText()} gesetzt." if ok
+                                           else "Standard-App ließ sich nicht setzen."))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def enable_multilib(self):
+        if not ask_confirm(self, "32-Bit-Unterstützung", "Die Paketquelle „multilib“ in /etc/pacman.conf "
+                           "einschalten?\n\nSie enthält 32-Bit-Bibliotheken, die Steam und Wine brauchen. "
+                           "Vorher wird eine Sicherung als /etc/pacman.conf.tuxdex.bak angelegt.", "Einschalten"):
+            return
+        if not self.app.priv.ensure(self):
+            return
+        script = ("grep -q '^\\[multilib\\]' /etc/pacman.conf || "
+                  "(cp -a /etc/pacman.conf /etc/pacman.conf.tuxdex.bak && "
+                  "sed -i '/^#\\[multilib\\]$/,/^#Include/ s/^#//' /etc/pacman.conf)")
+        # danach ein volles -Syu: nur -Sy und dann installieren wäre ein Teil-Update
+        self._run([{"cmd": ["bash", "-c", script], "needs_sudo": True, "label": "multilib einschalten"},
+                   {"cmd": ["pacman", "-Syu"], "needs_sudo": True, "interactive": True, "label": "sudo pacman -Syu"}])
+
+    def install_games(self, keys):
+        pac_pkgs, fp_ids = [], []
+        for key, name, _, src, ident, needs_ml in GAMES:
+            if key not in keys or not self.game_rows[key].isEnabled():
+                continue
+            if key == "steam" and not getattr(self, "multilib", True):
+                fp_ids.append(STEAM_FLATHUB)
+            elif needs_ml and not getattr(self, "multilib", True):
+                continue
+            elif src == "pacman":
+                pac_pkgs.append(ident)
+            else:
+                fp_ids.append(ident)
+        if "gamemode" in pac_pkgs and getattr(self, "multilib", False):
+            pac_pkgs.append("lib32-gamemode")
+        if not pac_pkgs and not fp_ids:
+            if any(GAMES[[g[0] for g in GAMES].index(k)][5] for k in keys):
+                show_info(self, "32-Bit-Unterstützung", "Dafür zuerst die 32-Bit-Unterstützung einschalten.")
+            return
+        names = ", ".join(pac_pkgs + fp_ids)
+        if not ask_confirm(self, "Spiele einrichten", f"Installieren: {names}?", "Installieren"):
+            return
+        if not self.app.priv.ensure(self):
+            return
+        steps = []
+        if pac_pkgs:
+            steps.append({"cmd": ["pacman", "-S", "--needed", "--"] + pac_pkgs, "needs_sudo": True,
+                          "interactive": True, "label": "sudo pacman -S " + " ".join(pac_pkgs)})
+        if fp_ids:
+            if not which("flatpak"):
+                show_warning(self, "Flatpak fehlt", "Flatpak fehlt – im Tab „Flatpak“ einrichten.")
+                return
+            steps.append({"cmd": ["flatpak", "install", "-y", "flathub"] + fp_ids, "needs_sudo": True,
+                          "interactive": True, "label": "flatpak install flathub " + " ".join(fp_ids)})
+        self._run(steps)
 
     def render_alternatives(self, *_):
         clear_layout(self.alt_box)
@@ -6592,7 +6839,7 @@ def version_status():
     # --- Kernel ---
     kpkg = {"lts": "linux-lts", "zen": "linux-zen", "hardened": "linux-hardened"}
     rel = os.uname().release
-    kp = next((v for k, v in kpkg.items() if k in rel), "linux")
+    kp = running_kernel_pkg() or next((v for k, v in kpkg.items() if k in rel), "linux")
     _, kver = _pkg_version(kp)
     new = _pending_update(kp)
     kbase = re.match(r"\d+(?:\.\d+)+", kver or "")
@@ -9475,9 +9722,9 @@ def checklist_state():
     c["paclog"] = _pacman_log_issues()
     c["reboot"] = kernel_modules_missing()
     c["kernel"] = os.uname().release
-    c["kernel_pkgs"] = [k for k in ("linux", "linux-lts", "linux-zen", "linux-hardened")
-                        if os.path.exists(f"/usr/lib/modules/{c['kernel']}/pkgbase")
-                        and _read(f"/usr/lib/modules/{c['kernel']}/pkgbase").strip() == k]
+    kp = running_kernel_pkg()
+    c["kernel_pkgs"] = [kp] if kp else []
+    c["distro"] = distro_id()
     # Zugriff
     r = subprocess.run(["sudo", "-n", "sh", "-c", "cat /etc/sudoers /etc/sudoers.d/* 2>/dev/null"],
                        capture_output=True, text=True, timeout=5) if which("sudo") else None
@@ -10381,7 +10628,10 @@ class SecurityTab(Page):
                           "Neustart fehlen Module (z. B. für USB-Sticks) und der neue Kernel ist nicht aktiv.")
         else:
             R["kern"].set("ok", "Aktuell", f"Läuft: {kv}."
-                          + ("" if "hardened" in kv else " Für erhöhten Schutzbedarf gibt es linux-hardened "
+                          + ("" if "hardened" in kv else
+                             " Für erhöhten Schutzbedarf gibt es linux-cachyos-hardened (manche Programme laufen "
+                             "damit eingeschränkt)." if c.get("distro") == "cachyos" else
+                             " Für erhöhten Schutzbedarf gibt es linux-hardened "
                              "(manche Programme laufen damit eingeschränkt)."))
         # --- Zugriff
         if c["nopasswd"] is None:
@@ -13845,6 +14095,34 @@ class MainWindow(QWidget):
 # --------------------------------------------------------------------------
 
 EN = {
+    'Standard-Apps': 'Default apps',
+    'Womit sich Links, PDFs, Bilder und Co. öffnen. Änderungen gelten sofort.': 'What opens links, PDFs, images and so on. Changes apply right away.',
+    'Browser': 'Browser',
+    'E-Mail': 'Email',
+    'PDF': 'PDF',
+    'Videos': 'Videos',
+    'Textdateien': 'Text files',
+    'Kein passendes Programm installiert': 'No matching program installed',
+    'Nicht festgelegt': 'Not set',
+    'Standard für {} gesetzt.': 'Default set to {}.',
+    'Standard-App ließ sich nicht setzen.': "Couldn't set the default app.",
+    'Steam mit Proton startet die meisten Windows-Spiele. Spiele mit Kernel-Anti-Cheat wie Valorant, League of Legends oder Fortnite laufen unter Linux aber nicht – vor dem Kauf auf areweanticheatyet.com oder protondb.com nachsehen.': "Steam with Proton runs most Windows games. Games with kernel anti-cheat like Valorant, League of Legends or Fortnite don't run on Linux, though – check areweanticheatyet.com or protondb.com before buying.",
+    'Steam und Wine aus den Arch-Paketquellen brauchen die 32-Bit-Unterstützung (multilib). Ohne sie installiert Tuxdex Steam von Flathub.': 'Steam and Wine from the Arch repositories need 32-bit support (multilib). Without it, Tuxdex installs Steam from Flathub.',
+    '32-Bit-Unterstützung einschalten': 'Turn on 32-bit support',
+    '32-Bit-Unterstützung': '32-bit support',
+    'Die Paketquelle „multilib“ in /etc/pacman.conf einschalten?\n\nSie enthält 32-Bit-Bibliotheken, die Steam und Wine brauchen. Vorher wird eine Sicherung als /etc/pacman.conf.tuxdex.bak angelegt.': 'Turn on the “multilib” repository in /etc/pacman.conf?\n\nIt contains 32-bit libraries that Steam and Wine need. A backup is saved as /etc/pacman.conf.tuxdex.bak first.',
+    'multilib einschalten': 'Turn on multilib',
+    'Dafür zuerst die 32-Bit-Unterstützung einschalten.': 'Turn on 32-bit support first.',
+    'Spiele einrichten': 'Set up gaming',
+    'Empfohlen installieren: {}': 'Install recommended: {}',
+    'ProtonDB öffnen': 'Open ProtonDB',
+    'Spiele-Plattform – mit Proton laufen viele Windows-Spiele': 'Gaming platform – many Windows games run with Proton',
+    'Holt beim Spielen mehr Leistung aus CPU und Grafikkarte': 'Gets more performance out of CPU and GPU while gaming',
+    'FPS, Temperaturen und Auslastung im Spiel einblenden': 'Show FPS, temperatures and load in game',
+    'Spiele aus vielen Quellen (Battle.net, Ubisoft, GOG …) an einem Ort': 'Games from many sources (Battle.net, Ubisoft, GOG …) in one place',
+    'Epic Games, GOG und Amazon Prime Gaming': 'Epic Games, GOG and Amazon Prime Gaming',
+    'Windows-Programme und -Spiele in getrennten Umgebungen': 'Windows programs and games in separate environments',
+    'Windows-Programme direkt starten (für Fortgeschrittene)': 'Run Windows programs directly (for advanced users)',
     'Wiederherstellung': 'Restore',
     'System-Snapshots vor Updates und Zurücksetzen per Klick (snapper oder Timeshift).': 'System snapshots before updates and one-click rollback (snapper or Timeshift).',
     'Basics wie Schriften und Codecs mit einem Klick, dazu Ersatz für Windows-Programme.': 'Basics like fonts and codecs with one click, plus alternatives for Windows programs.',
@@ -14484,6 +14762,7 @@ EN = {
     'fwupd hat nicht geantwortet.': "fwupd didn't respond.",
     'fwupd kennt keine neueren Firmware-Versionen (BIOS, SSD, Dock …).': 'fwupd knows no newer firmware versions (BIOS, SSD, dock …).',
     'Für diese Desktop-Umgebung kann Tuxdex die Sperre nicht auslesen – bitte in den Systemeinstellungen prüfen.': "Tuxdex can't read the lock setting for this desktop environment – please check in the system settings.",
+    'Für erhöhten Schutzbedarf gibt es linux-cachyos-hardened (manche Programme laufen damit eingeschränkt).': "If you need extra protection, there is linux-cachyos-hardened (some programs run with restrictions).",
     'Für erhöhten Schutzbedarf gibt es linux-hardened (manche Programme laufen damit eingeschränkt).': "If you need extra protection, there is linux-hardened (some programs run with restrictions).",
     'Für manche Spiele und Kommunikations-Apps nötig.': 'Needed by some games and communication apps.',
     'Für sie „Archiv“ oder „Spiegel“ verwenden – oder abhaken.': 'Use “Archive” or “Mirror” for them – or uncheck them.',

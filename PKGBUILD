@@ -42,7 +42,7 @@ source=(
         tuxdex-256.png
         tuxdex-512.png
         LICENSE)
-sha256sums=('40eb230de8d081d097b00c8f51dd8b7aa464741a94705a31eccc594032421949'
+sha256sums=('e79e4bc8002669cda2ffbd934c641456c41396343d7ee11368c4b7e91ae99540'
             '27c40e4efe990d8cc8e5e3484caab4dfb6c4577e04c9dc1ae903344440f19519'
             '992bab031982cb434b9a6ba4648cf29187ee8b956a0ca7aefe2909c62dc62fe6'
             '8f26609520915020bbd6da6d90bf3cbf59b8d8eb223072ad53cee0e0d2bdb010'

@@ -6,6 +6,9 @@ Systemwiederherstellung und Einrichten für Umsteiger.
 - **Neues Modul „Wiederherstellung“**: Snapshots des Systems mit snapper (btrfs) oder Timeshift. Einrichten per Klick (auf btrfs mit snap-pac, dann entsteht vor und nach jeder Paketänderung ein Snapshot), Liste aller Snapshots, Snapshot jetzt erstellen, löschen und **auf einen Stand zurücksetzen**. Vor dem Zurücksetzen legt Tuxdex einen Sicherheits-Snapshot des jetzigen Stands an. Zurücksetzen mit snapper ist gesperrt, wenn /home nicht in einem eigenen Subvolume liegt – sonst würden eigene Dateien mit zurückgesetzt.
 - **Snapshot vor jedem Update**: Ist die Wiederherstellung eingerichtet, legt Tuxdex direkt vor „Update starten“ einen Snapshot an (abschaltbar; entfällt, wenn snap-pac oder timeshift-autosnap das schon tun).
 - **Neues Modul „Einrichten“**: Basics mit einem Klick – Schriften für Office-Dokumente, Audio- und Video-Codecs, Energieprofile mit Umschalter (Energiesparen, Ausgewogen, Leistung). Dazu **„Ersatz für Windows-Programme“**: „Photoshop“, „Office“, „Outlook“ & Co. eingeben und die passende Linux-Alternative direkt installieren (Arch-Paketquellen oder Flathub).
+- **Standard-Apps**: Browser, E-Mail, PDF, Bilder, Videos, Musik und Textdateien per Auswahl festlegen (gilt sofort, ohne root).
+- **Spiele-Setup**: Steam, GameMode, MangoHud, Lutris, Heroic, Bottles und Wine einzeln oder als Empfehlung installieren. Fehlt die 32-Bit-Unterstützung (multilib), schaltet Tuxdex sie auf Wunsch ein (mit Sicherung der pacman.conf und anschließendem vollem Update) – sonst kommt Steam von Flathub. Dazu ein Hinweis, dass Spiele mit Kernel-Anti-Cheat (Valorant, League of Legends, Fortnite) nicht laufen.
+- **CachyOS**: CachyOS-Kernel (linux-cachyos, -bore, -lts, -hardened …) werden als Kernel erkannt – für Update-Markierung, Neustart-Hinweis, Versionsstand und Checkliste.
 
 ## 1.2.0
 Module als Baukasten, klarere Zielgruppe, Roadmap.

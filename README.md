@@ -55,7 +55,7 @@ Tuxdex ist ein **Baukasten**: Unter **Einstellungen → Module** wählst du selb
 | Modul | Was es kann |
 |---|---|
 | **Updates** | Prüft beim Start automatisch auf Updates (pacman, AUR über paru, Flatpak – abschaltbar) und zeigt die Anzahl am Tab und unten rechts · einspielen per Klick · **Major-Updates** und Kernel/System-Pakete werden markiert · Neustart-Hinweis · Prüfergebnis bleibt nach dem Schließen erhalten |
-| **Einrichten** | Basics mit einem Klick: Schriften für Office-Dokumente, Audio-/Video-Codecs, Energieprofile · **Ersatz für Windows-Programme**: „Photoshop“, „Office“ & Co. eingeben, Linux-Alternative direkt installieren |
+| **Einrichten** | Basics mit einem Klick: Schriften für Office-Dokumente, Audio-/Video-Codecs, Energieprofile · **Standard-Apps** festlegen · **Spiele-Setup** (Steam, GameMode, MangoHud, Lutris, Heroic, Bottles, Wine, 32-Bit-Unterstützung) · **Ersatz für Windows-Programme**: „Photoshop“, „Office“ & Co. eingeben, Linux-Alternative direkt installieren |
 | **Software** | Alle Pakete mit Icon, Version, Größe, Quelle/Ort und Installationsdatum · per Kästchen auswählen und gemeinsam deinstallieren · installieren aus pacman, AUR (paru) oder Flathub |
 | **Flatpak** | Rechte jeder Flatpak-App per Schalter – Netzwerk, Dateien & Ordner, Geräte, Ton, Bildschirm, Umgebungsvariablen, Portal-Freigaben · Regeln für alle Apps · riskante Rechte sind markiert, Änderungen hervorgehoben · Flathub einrichten, Apps starten, aktualisieren, deinstallieren |
 | **Datenträger** | Laufwerke und Partitionen als Baum · Einhängen, Aushängen, Umbenennen, Prüfen, **Formatieren** (ext4, btrfs, xfs, exFAT, FAT32, NTFS), sicher entfernen · erkennt neue USB-Sticks automatisch · System-Partitionen sind geschützt |
@@ -74,17 +74,17 @@ Ziele und Planung – was schon da ist und was als Nächstes kommt.
 
 **Geplant**
 - [ ] **Treiber-Assistent**: NVIDIA, WLAN, Drucker und Bluetooth erkennen und mit einem Klick einrichten.
-- [ ] **Spiele-Setup**: Steam, Proton, Lutris/Heroic und Wine/Bottles in einem Schritt, dazu ein Hinweis, welche Spiele wegen Anti-Cheat nicht laufen.
 - [ ] **Windows-Daten**: NTFS-Partition einbinden, Dual-Boot erkennen, Dateien aus „C:\Users“ übernehmen.
 - [ ] **Fehlerdiagnose in Klartext**: „Warum ist mein WLAN weg?“ statt Logs, dazu ein Gerätemanager.
-- [ ] **Standard-Apps festlegen** (Browser, E-Mail, PDF …) mit einem Klick.
-- [ ] **CachyOS-Unterstützung**: CachyOS-Kernel erkennen und anzeigen.
 - [ ] **Interaktive Lernsoftware** für Arch Linux, verbunden mit Tuxdex: Befehle Schritt für Schritt lernen – zu jeder Aktion in Tuxdex den passenden Befehl sehen, verstehen und selbst ausprobieren.
 - [ ] **Fertige, geprüfte ISOs**: Arch Linux mit KDE Plasma und Tuxdex, schon eingerichtet – mit einem Installer, der viel einfacher ist als die heutige Arch-Installation.
 - [ ] **Eigenes Sicherheits-Werkzeug für Desktop-Nutzer** als Ersatz für ClamAV.
 - [ ] **Modul-Markt**: weitere Module, die man sich nach Bedarf dazuholt.
 
 **Erledigt**
+- [x] **Spiele-Setup**: Steam, GameMode, MangoHud, Lutris, Heroic, Bottles, Wine – mit Anti-Cheat-Hinweis (1.3.0)
+- [x] **Standard-Apps festlegen** (Browser, E-Mail, PDF, Bilder, Videos, Musik, Text) (1.3.0)
+- [x] **CachyOS-Unterstützung**: CachyOS-Kernel werden erkannt (1.3.0)
 - [x] **Systemwiederherstellung**: Snapshot vor jedem Update (snapper oder Timeshift), Zurücksetzen per Klick (1.3.0)
 - [x] **„Ersatz finden“** für Windows-Programme mit Installieren-Knopf (1.3.0)
 - [x] **Basics mit einem Klick**: Schriften, Codecs, Energieprofile (1.3.0)
@@ -114,6 +114,8 @@ Ideen und Wünsche gern als [Issue](../../issues).
 | ![Checkliste](docs/screenshots/checklist.png) | ![Module](docs/screenshots/modules.png) |
 | **Wiederherstellung** | **Einrichten** |
 | ![Wiederherstellung](docs/screenshots/restore.png) | ![Einrichten](docs/screenshots/setup.png) |
+| **Standard-Apps & Spiele** | |
+| ![Standard-Apps und Spiele](docs/screenshots/setup_games.png) | |
 
 <sub>Die Screenshots zeigen Beispieldaten.</sub>
 
