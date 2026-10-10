@@ -2443,7 +2443,10 @@ class SoftwareTab(Page):
         row.addLayout(Field("Woher", self.inst_src))
         btns = QVBoxLayout()
         btns.addStretch(1)
-        btns.addWidget(Button("Installieren", "primary", self.install))
+        self.b_install = Button(install_text("pacman"), "primary", self.install)
+        self.inst_src.currentIndexChanged.connect(
+            lambda i: self.b_install.setText(install_text(("pacman", "aur", "flathub")[i])))
+        btns.addWidget(self.b_install)
         row.addLayout(btns)
         act.body.addLayout(row)
         self.cb_user_flatpak = QCheckBox("Flatpak: nur für mich installieren (--user, ohne Passwort)")
@@ -2814,7 +2817,7 @@ class FlatpakTab(Page):
         self.setup_text.setTextFormat(Qt.RichText)
         self.setup.body.addWidget(self.setup_text)
         sb = QHBoxLayout()
-        self.b_install_fp = Button("Flatpak installieren", "primary", self.install_flatpak)
+        self.b_install_fp = Button("Flatpak installieren (pacman)", "primary", self.install_flatpak)
         self.b_flathub = Button("Flathub hinzufügen", "primary", self.add_flathub)
         self.b_unused = Button("Ungenutzte Laufzeiten entfernen", "ghost", self.remove_unused)
         for b in (self.b_install_fp, self.b_flathub, self.b_unused):
@@ -3815,6 +3818,8 @@ class RestoreTab(Page):
             auto = "Nein"
         self.rows["auto"].setText(auto)
         self.b_setup.setVisible(not ready)
+        self.b_setup.setText("Timeshift öffnen" if tool == "timeshift" and not e["configured"]
+                             else "Einrichten (pacman)")
         self.b_create.setVisible(ready)
         self.cb_auto.setEnabled(ready and not (e["snap_pac"] or e["autosnap"]))
         if e["snap_pac"] or e["autosnap"]:
@@ -4150,6 +4155,14 @@ STEAM_FLATHUB = "com.valvesoftware.Steam"
 POWER_PROFILES = [("power-saver", "Energiesparen"), ("balanced", "Ausgewogen"), ("performance", "Leistung")]
 
 
+SRC_LABEL = {"pacman": "pacman", "flathub": "Flatpak", "aur": "AUR"}
+
+
+def install_text(src):
+    """Knopftext mit Quelle, z. B. „Installieren (pacman)“ – man sieht immer, woher etwas kommt."""
+    return f"Installieren ({SRC_LABEL.get(src, src)})"
+
+
 def installed_pacman():
     try:
         return set(subprocess.run(["pacman", "-Qq"], capture_output=True, text=True, timeout=15).stdout.split())
@@ -4202,7 +4215,7 @@ class SetupTab(Page):
             col.addWidget(t)
             col.addWidget(Label(desc, "Hint", wrap=True))
             row.addLayout(col, 1)
-            b = Button("Installieren", "primary", lambda _=False, k=key: self.install_basic(k))
+            b = Button(install_text("pacman"), "primary", lambda _=False, k=key: self.install_basic(k))
             b.setMinimumWidth(130)
             row.addWidget(b, 0, Qt.AlignVCenter)
             badge = StatusBadge("off", "…")
@@ -4348,11 +4361,13 @@ class SetupTab(Page):
                 have = "steam" in pac or STEAM_FLATHUB in fp
             b = self.game_rows[key]
             b.setEnabled(not have)
-            b.setText("Installiert" if have else "Installieren" + (" (Flathub)" if src == "flathub" else ""))
+            if key == "steam" and not ml:
+                src = "flathub"                      # ohne multilib kommt Steam von Flathub
+            b.setText("Installiert" if have else install_text(src))
             b.setProperty("variant", "ghost" if have else "primary")
             repolish(b)
             if key in GAMES_RECOMMENDED and not have:
-                missing.append(name)
+                missing.append(f"{name} ({SRC_LABEL[src]})")
         self.b_games.setVisible(bool(missing))
         self.b_games.setText("Empfohlen installieren: " + ", ".join(missing))
 
@@ -4410,8 +4425,9 @@ class SetupTab(Page):
             if any(GAMES[[g[0] for g in GAMES].index(k)][5] for k in keys):
                 show_info(self, "32-Bit-Unterstützung", "Dafür zuerst die 32-Bit-Unterstützung einschalten.")
             return
-        names = ", ".join(pac_pkgs + fp_ids)
-        if not ask_confirm(self, "Spiele einrichten", f"Installieren: {names}?", "Installieren"):
+        text = "\n".join(([f"pacman: {', '.join(pac_pkgs)}"] if pac_pkgs else [])
+                         + ([f"Flatpak (Flathub): {', '.join(fp_ids)}"] if fp_ids else []))
+        if not ask_confirm(self, "Spiele einrichten", f"Installieren?\n\n{text}", "Installieren"):
             return
         if not self.app.priv.ensure(self):
             return
@@ -4465,8 +4481,7 @@ class SetupTab(Page):
             b = Button("Installiert", "ghost")
             b.setEnabled(False)
             return b
-        label = "Installieren" + (" (Flathub)" if src == "flathub" else "")
-        b = Button(label, "primary", lambda: self.install_alt(name, src, ident))
+        b = Button(install_text(src), "primary", lambda: self.install_alt(name, src, ident))
         if src == "flathub" and not which("flatpak"):
             b.setEnabled(False)
             b.setToolTip("Flatpak fehlt – im Tab „Flatpak“ einrichten.")
@@ -4482,7 +4497,8 @@ class SetupTab(Page):
     def install_basic(self, key):
         _, title, _, pkgs = next(b for b in BASICS if b[0] == key)
         missing = [p for p in pkgs if p not in self.pac]
-        if not missing or not ask_confirm(self, title, f"Installieren: {', '.join(missing)}?", "Installieren"):
+        if not missing or not ask_confirm(self, title, f"Installieren?\n\npacman: {', '.join(missing)}",
+                                          "Installieren"):
             return
         if not self.app.priv.ensure(self):
             return
@@ -4494,7 +4510,7 @@ class SetupTab(Page):
         self._run(steps)
 
     def install_alt(self, name, src, ident):
-        where = "aus den Arch-Paketquellen" if src == "pacman" else "von Flathub"
+        where = "aus den Arch-Paketquellen (pacman)" if src == "pacman" else "als Flatpak von Flathub"
         if not ask_confirm(self, name, f"{name} {where} installieren?", "Installieren"):
             return
         if not self.app.priv.ensure(self):
@@ -10050,7 +10066,7 @@ class SecurityTab(Page):
         self.b_fw_on = Button("Aktivieren", "primary", self.fw_enable)
         self.b_fw_status = Button("Regeln anzeigen", "ghost", self.fw_status)
         self.b_fw_off = Button("Deaktivieren", "danger", self.fw_disable)
-        self.b_fw_install = Button("ufw installieren", "primary", self.fw_install)
+        self.b_fw_install = Button("ufw installieren (pacman)", "primary", self.fw_install)
         for b in (self.b_fw_install, self.b_fw_on, self.b_fw_status, self.b_fw_off):
             fh.addWidget(b)
         fw.body.addLayout(fh)
@@ -10231,7 +10247,7 @@ class SecurityTab(Page):
         else:
             warn += 1
             self.rows["ucode"].set("warn", "Fehlt", f"{pkg} fehlt – bekannte CPU-Sicherheitslücken bleiben offen. "
-                                   "Wirkt nach dem nächsten Neustart.", "Installieren", self.install_ucode)
+                                   "Wirkt nach dem nächsten Neustart.", install_text("pacman"), self.install_ucode)
         # Swap
         plain = [p for p, enc in r["swap"] if not enc]
         if not r["swap"]:
@@ -10279,7 +10295,7 @@ class SecurityTab(Page):
         cve = r["cve"]
         if cve is None:
             self.rows["cve"].set("off", "Nicht installiert", "Optional: arch-audit gleicht die installierten Pakete "
-                                 "mit der Arch-Sicherheitsdatenbank ab (security.archlinux.org).", "Installieren",
+                                 "mit der Arch-Sicherheitsdatenbank ab (security.archlinux.org).", install_text("pacman"),
                                  lambda: self._root(["pacman", "-S", "--needed", "arch-audit"], interactive=True))
         elif cve == "error":
             self.rows["cve"].set("off", "Nicht prüfbar", "arch-audit konnte die Sicherheitsdatenbank nicht abrufen "
@@ -10606,7 +10622,7 @@ class SecurityTab(Page):
             R["mirror"].set("off", "Unbekannt", "Keine /etc/pacman.d/mirrorlist gefunden.")
         else:
             act = ("Jetzt aktualisieren", self.cl_mirrors) if c["reflector"] else \
-                ("reflector installieren", lambda: self._root(["pacman", "-S", "--needed", "reflector"],
+                ("reflector installieren (pacman)", lambda: self._root(["pacman", "-S", "--needed", "reflector"],
                                                              interactive=True))
             R["mirror"].set("ok" if age < 90 else "warn", f"{age:.0f} Tage alt",
                             "Die Liste der Download-Server. Ältere Listen führen zu langsamen oder veralteten "
@@ -14095,6 +14111,19 @@ class MainWindow(QWidget):
 # --------------------------------------------------------------------------
 
 EN = {
+    'Installieren ({})': 'Install ({})',
+    'Installieren (pacman)': 'Install (pacman)',
+    'Installieren (Flatpak)': 'Install (Flatpak)',
+    'Installieren (AUR)': 'Install (AUR)',
+    'Installieren?\n\n{}': 'Install?\n\n{}',
+    'Installieren?\n\npacman: {}': 'Install?\n\npacman: {}',
+    'Flatpak installieren (pacman)': 'Install Flatpak (pacman)',
+    'ufw installieren (pacman)': 'Install ufw (pacman)',
+    'reflector installieren (pacman)': 'Install reflector (pacman)',
+    'Einrichten (pacman)': 'Set up (pacman)',
+    'Timeshift öffnen': 'Open Timeshift',
+    '{} aus den Arch-Paketquellen (pacman) installieren?': 'Install {} from the Arch repositories (pacman)?',
+    '{} als Flatpak von Flathub installieren?': 'Install {} as a Flatpak from Flathub?',
     'Standard-Apps': 'Default apps',
     'Womit sich Links, PDFs, Bilder und Co. öffnen. Änderungen gelten sofort.': 'What opens links, PDFs, images and so on. Changes apply right away.',
     'Browser': 'Browser',
