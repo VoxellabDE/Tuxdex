@@ -30,9 +30,11 @@
 
 ## Was ist Tuxdex?
 
-Tuxdex bündelt in einer übersichtlichen Oberfläche, wofür man sonst ein Dutzend Terminal-Befehle braucht: Updates, Pakete, USB-Sticks, Speicherplatz, Backups, Prozesse, Virenscan, Firewall und VPN.
+Tuxdex bündelt in einer übersichtlichen Oberfläche, wofür man sonst ein Dutzend Terminal-Befehle braucht: Updates, Programme, USB-Sticks, Speicherplatz, Backups, **System-Snapshots mit Zurücksetzen per Klick**, Prozesse, Firewall und VPN – dazu ein Bereich **„Einrichten“** für Umsteiger mit Schriften, Codecs, Standard-Apps, Spiele-Setup und Linux-Ersatz für Windows-Programme.
 
-Jeder Befehl läuft **sichtbar** im Ausgabefeld mit, du siehst also immer, was passiert. Rückfragen von `pacman` oder `paru` erscheinen als Fenster. Das sudo-Passwort wird **einmal pro Sitzung** abgefragt und nie gespeichert.
+Jeder Befehl läuft **sichtbar** im Ausgabefeld mit, du siehst also immer, was passiert. Bei jedem Installieren-Knopf steht, woher das Programm kommt – **pacman, AUR oder Flatpak**. Rückfragen von `pacman` oder `paru` erscheinen als Fenster. Das sudo-Passwort wird **einmal pro Sitzung** abgefragt und nie gespeichert.
+
+**Läuft auf:** Arch Linux und Arch-basierten Systemen wie **CachyOS** oder EndeavourOS. Die CachyOS-Kernel erkennt Tuxdex automatisch.
 
 ### Für wen ist Tuxdex?
 
@@ -153,6 +155,8 @@ makepkg -si
 
 ### Aktualisieren
 
+Es gibt zwei Kanäle: **Stabil** (Branch `main`) und **Beta** (Branch `beta`, neue Funktionen früher). Umschalten unter **Zahnrad unten links → Aktualisierung → Version**.
+
 Tuxdex prüft beim Start automatisch, ob es eine neue Version gibt, und bietet sie in einem Fenster an (abschaltbar unter **Zahnrad unten links → Aktualisierung**). Dort lässt sich auch jederzeit von Hand prüfen: Tuxdex prüft das GitHub-Repository, zeigt die Neuerungen und installiert die neue Version per Klick (baut mit makepkg, installiert mit pacman, startet neu). Alternativ „Aus Datei …“ (tuxdex-X.Y.Z.tar.gz) oder „Aus Ordner …“ (z. B. dein Git-Klon – vorher wird automatisch `git pull` ausgeführt).
 
 Oder im Terminal:
@@ -227,6 +231,11 @@ Beispiele (Sicherung am 27.09.2026 um 10:15 Uhr):
 | `ufw` | Firewall |
 | `mullvad-vpn-daemon` | Mullvad VPN |
 | `sbctl` | Secure Boot einrichten |
+| `snapper` + `snap-pac` (btrfs) oder `timeshift` | Systemwiederherstellung – richtet Tuxdex im Tab „Wiederherstellung“ auf Wunsch selbst ein |
+| `power-profiles-daemon` | Energieprofile umschalten (Tab „Einrichten“) |
+| `xdg-utils` | Standard-Apps festlegen |
+
+Programme aus „Einrichten“ (Steam, Lutris, Schriften, Codecs …) installiert Tuxdex nur, wenn du auf den Knopf klickst – vorher steht immer dabei, ob aus pacman, AUR oder Flatpak.
 
 ## Datenschutz & Sicherheit
 
@@ -238,6 +247,7 @@ Beispiele (Sicherung am 27.09.2026 um 10:15 Uhr):
 - **Passwort:** Das sudo-Passwort geht direkt an `sudo -v` und wird weder gespeichert noch protokolliert. Weitere Befehle nutzen die bestehende sudo-Sitzung (`sudo -n`).
 - **Mullvad-Kontonummer:** geht direkt an `mullvad account login` und wird weder angezeigt noch protokolliert.
 - **Schutz vor Fehlbedienung:** System-Partitionen (`/`, `/boot`, `/home`, Swap) lassen sich nicht aushängen oder formatieren. Formatieren verlangt das Eintippen des Gerätenamens, direkt davor prüft Tuxdex noch einmal, ob die Partition wirklich ausgehängt ist. Destruktive Aktionen fragen immer nach.
+- **Zurücksetzen mit Netz:** Vor dem Zurücksetzen auf einen Snapshot legt Tuxdex einen Snapshot des jetzigen Stands an. Mit snapper ist Zurücksetzen gesperrt, wenn `/home` kein eigenes Subvolume ist – sonst würden eigene Dateien mit zurückgesetzt. Änderungen an `/etc/pacman.conf` (multilib) und `/etc/fstab` werden vorher gesichert.
 
 ## Projektstruktur
 
@@ -264,6 +274,8 @@ Nach Änderungen an Dateien, die im `PKGBUILD` stehen, die Prüfsummen aktualisi
 ```bash
 updpkgsums   # aus pacman-contrib
 ```
+
+**Branches:** Entwickelt wird in `develop`. Was getestet werden soll, kommt nach `beta` (Beta-Kanal im Updater), fertige Versionen nach `main` – daraus entstehen automatisch das GitHub-Release und das pacman-Paket. Pull Requests bitte gegen `develop`.
 
 Neue oder geänderte Oberflächentexte brauchen eine englische Übersetzung im Katalog `EN` am Ende von `tuxdex.py`. `python3 tools/i18n_extract.py` listet fehlende auf.
 

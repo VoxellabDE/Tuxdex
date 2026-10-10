@@ -30,9 +30,11 @@
 
 ## What is Tuxdex?
 
-Tuxdex bundles into one clear interface what otherwise takes a dozen terminal commands: updates, packages, USB sticks, disk space, backups, processes, virus scans, firewall and VPN.
+Tuxdex bundles into one clear interface what otherwise takes a dozen terminal commands: updates, programs, USB sticks, disk space, backups, **system snapshots with one-click rollback**, processes, firewall and VPN – plus a **"Setup"** area for switchers with fonts, codecs, default apps, gaming setup and Linux alternatives for Windows programs.
 
-Every command runs **visibly** in the output box, so you always see what's happening. Questions from `pacman` or `paru` appear as windows. The sudo password is asked **once per session** and never stored.
+Every command runs **visibly** in the output box, so you always see what's happening. Every install button says where the program comes from – **pacman, AUR or Flatpak**. Questions from `pacman` or `paru` appear as windows. The sudo password is asked **once per session** and never stored.
+
+**Runs on:** Arch Linux and Arch-based systems like **CachyOS** or EndeavourOS. Tuxdex detects the CachyOS kernels automatically.
 
 ### Who is Tuxdex for?
 
@@ -153,6 +155,8 @@ makepkg -si
 
 ### Updating
 
+There are two channels: **Stable** (branch `main`) and **Beta** (branch `beta`, new features earlier). Switch under **gear at the bottom left → Updating → Version**.
+
 Tuxdex checks for a new version at startup and offers it in a window (can be turned off under **gear at the bottom left → Updating**). You can also check manually there at any time: Tuxdex checks the GitHub repository, shows what's new and installs the new version with one click (builds with makepkg, installs with pacman, restarts). Alternatively “From file …” (tuxdex-X.Y.Z.tar.gz) or “From folder …” (e.g. your Git clone – `git pull` runs automatically first).
 
 Or in the terminal:
@@ -227,6 +231,11 @@ Examples (backup on 27 Sep 2026 at 10:15):
 | `ufw` | Firewall |
 | `mullvad-vpn-daemon` | Mullvad VPN |
 | `sbctl` | Set up Secure Boot |
+| `snapper` + `snap-pac` (btrfs) or `timeshift` | System restore – Tuxdex sets it up for you in the "Restore" tab if you want |
+| `power-profiles-daemon` | Switch power profiles ("Setup" tab) |
+| `xdg-utils` | Set default apps |
+
+Programs from "Setup" (Steam, Lutris, fonts, codecs …) are only installed when you click the button – which always says whether they come from pacman, AUR or Flatpak.
 | `arch-audit` | Check packages for known vulnerabilities |
 
 ## Privacy & security
@@ -239,6 +248,7 @@ Examples (backup on 27 Sep 2026 at 10:15):
 - **Password:** the sudo password goes straight to `sudo -v` and is neither stored nor logged. Further commands use the existing sudo session (`sudo -n`).
 - **Mullvad account number:** goes straight to `mullvad account login`, is hidden by default (eye button to show it) and never logged.
 - **Protection against mistakes:** system partitions (`/`, `/boot`, `/home`, swap) can't be unmounted or formatted. Formatting requires typing the device name, and right before it Tuxdex checks again that nothing below the device is mounted, open or used as swap. Swap files are never created over existing files. Destructive actions always ask first.
+- **Rollback with a safety net:** before rolling back to a snapshot, Tuxdex creates a snapshot of the current state. With snapper, rollback is blocked when `/home` isn't its own subvolume – otherwise your own files would be rolled back too. Changes to `/etc/pacman.conf` (multilib) and `/etc/fstab` are backed up first.
 - **Reporting security issues:** please by email, see [SECURITY.md](SECURITY.md).
 
 ## Project structure
@@ -266,6 +276,8 @@ After changing files listed in the `PKGBUILD`, update the checksums:
 ```bash
 updpkgsums   # from pacman-contrib
 ```
+
+**Branches:** development happens in `develop`. What should be tested goes to `beta` (beta channel in the updater), finished versions go to `main` – that automatically creates the GitHub release and the pacman package. Please open pull requests against `develop`.
 
 New or changed interface texts need an English translation in the `EN` catalog at the end of `tuxdex.py`. `python3 tools/i18n_extract.py` lists the missing ones.
 
