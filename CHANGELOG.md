@@ -8,6 +8,7 @@ Systemwiederherstellung und Einrichten für Umsteiger.
 - **Neues Modul „Einrichten“**: Basics mit einem Klick – Schriften für Office-Dokumente, Audio- und Video-Codecs, Energieprofile mit Umschalter (Energiesparen, Ausgewogen, Leistung). Dazu **„Ersatz für Windows-Programme“**: „Photoshop“, „Office“, „Outlook“ & Co. eingeben und die passende Linux-Alternative direkt installieren (Arch-Paketquellen oder Flathub).
 - **Standard-Apps**: Browser, E-Mail, PDF, Bilder, Videos, Musik und Textdateien per Auswahl festlegen (gilt sofort, ohne root).
 - **Spiele-Setup**: Steam, GameMode, MangoHud, Lutris, Heroic, Bottles und Wine einzeln oder als Empfehlung installieren. Fehlt die 32-Bit-Unterstützung (multilib), schaltet Tuxdex sie auf Wunsch ein (mit Sicherung der pacman.conf und anschließendem vollem Update) – sonst kommt Steam von Flathub. Dazu ein Hinweis, dass Spiele mit Kernel-Anti-Cheat (Valorant, League of Legends, Fortnite) nicht laufen.
+- **Speicher: Tortendiagramm** – woraus der belegte Platz besteht: Betriebssystem, Anwendungen, Systemdaten, Fotos & Videos (inkl. GIFs), weitere eigene Dateien und Sonstiges, dazu der freie Platz. Ungefähre Werte, mit Anmeldung genauer.
 - **Quelle immer sichtbar**: Jeder Installieren-Knopf zeigt, woher das Programm kommt – „Installieren (pacman)“, „(Flatpak)“ oder „(AUR)“, auch im Software-Tab und bei den Sicherheits-Werkzeugen.
 - **CachyOS**: CachyOS-Kernel (linux-cachyos, -bore, -lts, -hardened …) werden als Kernel erkannt – für Update-Markierung, Neustart-Hinweis, Versionsstand und Checkliste.
 

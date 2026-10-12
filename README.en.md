@@ -61,7 +61,7 @@ Tuxdex is a **toolkit**: under **Settings → Modules** you choose which tools a
 | **Software** | All packages with icon, version, size, source/location and install date · select with checkboxes and uninstall together · install from pacman, AUR (paru) or Flathub |
 | **Flatpak** | Permissions of every Flatpak app with switches – network, files & folders, devices, sound, display, environment variables, portal permissions · rules for all apps · risky permissions are marked, changes highlighted · set up Flathub, start, update and uninstall apps |
 | **Drives** | Drives and partitions as a tree · mount, unmount, rename, check, **format** (ext4, btrfs, xfs, exFAT, FAT32, NTFS), safely remove · detects new USB sticks automatically · system partitions are protected |
-| **Storage** | Usage per drive · “What is using the space?” with drill-down into folders · cleanup: package cache, orphaned packages, journal, trash, Flatpak |
+| **Storage** | Usage per drive · **pie chart**: operating system, applications, system data, photos & videos, personal files · “What is using the space?” with drill-down into folders · cleanup: package cache, orphaned packages, journal, trash, Flatpak |
 | **Backup** | Snapshots (versioned, space-saving), mirror or compressed archives (zstd/xz/gzip, optionally with password) · **several targets at once** · verification after writing · custom names with date ([how it works](#naming-backups)) · old versions cleaned up automatically · restore · daily/weekly schedule |
 | **Restore** | System snapshots with snapper (btrfs) or Timeshift · **snapshot before every update** · list, create, delete · **roll back to a state** with one click |
 | **Swap** *(hidden at first)* | Create and remove a swap file, set swappiness |

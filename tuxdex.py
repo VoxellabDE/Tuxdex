@@ -5251,6 +5251,141 @@ def _du_size(path, use_sudo, timeout=120):
 _SIZE_UNITS = {"B": 1, "KiB": 1024, "MiB": 1024 ** 2, "GiB": 1024 ** 3, "TiB": 1024 ** 4}
 
 
+# Kategorien fürs Tortendiagramm: (Kennung, Titel, Farbe)
+STORAGE_CATS = [
+    ("os", "Betriebssystem", "#5aa6f0"),
+    ("apps", "Anwendungen", "#b5d86b"),
+    ("sys", "Systemdaten", "#e9c46a"),
+    ("media", "Fotos & Videos", "#e87fa8"),
+    ("home", "Weitere eigene Dateien", "#56c2d6"),
+    ("other", "Sonstiges", "#8a99a1"),
+    ("free", "Frei", "#2f3c43"),
+]
+MEDIA_EXT = ("jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "avif", "bmp", "tif", "tiff", "svg", "raw",
+             "cr2", "cr3", "nef", "arw", "dng", "orf", "rw2", "mp4", "mkv", "mov", "avi", "webm", "m4v", "wmv",
+             "mts", "m2ts", "3gp", "flv")
+
+
+def _fs_usage(path):
+    try:
+        st = os.statvfs(path)
+        return (st.f_blocks - st.f_bfree) * st.f_frsize, st.f_bavail * st.f_frsize, os.stat(path).st_dev
+    except OSError:
+        return 0, 0, None
+
+
+def _media_bytes(home):
+    """Summe aller Bilder, GIFs und Videos im Home (versteckte Ordner wie ~/.cache zählen nicht)."""
+    names = []
+    for ext in MEDIA_EXT:
+        names += ["-iname", f"*.{ext}", "-o"]
+    cmd = ["find", home, "-xdev", "(", "-path", "*/.*", "-prune", ")", "-o", "-type", "f",
+           "(", *names[:-1], ")", "-printf", "%s\n"]
+    total = 0
+    try:
+        with subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True) as p:
+            for line in p.stdout:
+                if line.strip().isdigit():
+                    total += int(line)
+    except Exception:
+        pass
+    return total
+
+
+def _gui_app_packages():
+    """pacman-Pakete, die ein Programm im Startmenü mitbringen (.desktop-Datei) – „Anwendungen“."""
+    files = [os.path.join("/usr/share/applications", f) for f in _listdir("/usr/share/applications")
+             if f.endswith(".desktop")]
+    if not files:
+        return []
+    out = _cmd_out(["env", "LC_ALL=C", "pacman", "-Qqo"] + files, timeout=60)
+    return sorted(set(out.split()))
+
+
+def _listdir(path):
+    try:
+        return os.listdir(path)
+    except OSError:
+        return []
+
+
+def storage_breakdown(use_sudo=False):
+    """{Kennung: Bytes} – ungefähre Aufteilung von System- und Home-Laufwerk."""
+    home = os.path.expanduser("~")
+    used = free = 0
+    devs = set()
+    for mp in ("/", home):
+        u, f, dev = _fs_usage(mp)
+        if dev is not None and dev not in devs:
+            devs.add(dev)
+            used, free = used + u, free + f
+    flat = sum(_du_size(p, use_sudo) or 0 for p in ("/var/lib/flatpak", os.path.join(home, ".local/share/flatpak"))
+               if os.path.isdir(p))
+    apps_pkgs = _gui_app_packages()
+    apps_pac = sum(i["size"] for i in pacman_infos(apps_pkgs).values()) if apps_pkgs else 0
+    opt = _du_size("/opt", use_sudo) or 0 if os.path.isdir("/opt") else 0
+    system_tree = sum(_du_size(p, use_sudo) or 0 for p in ("/usr", "/boot", "/etc"))
+    var = _du_size("/var", use_sudo) or 0
+    home_all = _du_size(home, False) or 0
+    media = min(_media_bytes(home), home_all)
+    res = {
+        "apps": apps_pac + flat + opt,
+        "os": max(system_tree - apps_pac, 0),
+        "sys": max(var - (flat if os.path.isdir("/var/lib/flatpak") else 0), 0),
+        "media": media,
+        "home": max(home_all - media - (_du_size(os.path.join(home, ".local/share/flatpak"), False) or 0), 0),
+    }
+    res["other"] = max(used - sum(res.values()), 0)
+    res["free"] = free
+    return res
+
+
+class DonutChart(QWidget):
+    """Ring-Diagramm: data = [(Titel, Bytes, Farbe)]; in der Mitte steht der belegte Platz."""
+
+    def __init__(self, size=220):
+        super().__init__()
+        self.data = []
+        self.center = ("", "")
+        self.setFixedSize(size, size)
+
+    def set_data(self, data, center=("", "")):
+        self.data, self.center = data, center
+        self.update()
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        w = self.width()
+        ring = w * 0.16
+        rect = QRectF(ring / 2 + 2, ring / 2 + 2, w - ring - 4, w - ring - 4)
+        total = sum(v for _, v, _ in self.data)
+        if total <= 0:
+            pen = QPen(QColor(COLORS["bg3"]), ring)
+            pen.setCapStyle(Qt.FlatCap)
+            p.setPen(pen)
+            p.drawArc(rect, 0, 360 * 16)
+        else:
+            start = 90 * 16
+            for _, v, color in self.data:
+                span = -round(v / total * 360 * 16)
+                if span:
+                    pen = QPen(QColor(color), ring)
+                    pen.setCapStyle(Qt.FlatCap)
+                    p.setPen(pen)
+                    p.drawArc(rect, start, span)
+                    start += span
+        big = QFont(FONTS["sans"], 15)
+        big.setWeight(QFont.DemiBold)
+        p.setFont(big)
+        p.setPen(QColor(COLORS["ink"]))
+        p.drawText(QRectF(0, w / 2 - 26, w, 28), Qt.AlignCenter, self.center[0])
+        p.setFont(QFont(FONTS["sans"], 9))
+        p.setPen(QColor(COLORS["muted"]))
+        p.drawText(QRectF(0, w / 2 + 2, w, 22), Qt.AlignCenter, self.center[1])
+        p.end()
+
+
 class StorageTab(Page):
     def __init__(self, app):
         super().__init__()
@@ -5268,6 +5403,26 @@ class StorageTab(Page):
         self.fs_box.setSpacing(12)
         fsp.body.addLayout(self.fs_box)
         self.lay.addWidget(fsp)
+
+        self.b_pie = Button("Neu berechnen", "ghost", self.refresh_pie)
+        pie = Panel("Woraus besteht der belegte Platz?", [self.b_pie])
+        prow = QHBoxLayout()
+        prow.setSpacing(28)
+        self.donut = DonutChart()
+        prow.addWidget(self.donut, 0, Qt.AlignTop)
+        self.pie_legend = QGridLayout()
+        self.pie_legend.setHorizontalSpacing(14)
+        self.pie_legend.setVerticalSpacing(8)
+        self.pie_legend.setColumnStretch(1, 1)
+        leg = QVBoxLayout()
+        leg.addLayout(self.pie_legend)
+        self.pie_hint = Label("", "Hint", wrap=True)
+        leg.addWidget(self.pie_hint)
+        leg.addStretch(1)
+        prow.addLayout(leg, 1)
+        pie.body.addLayout(prow)
+        self.lay.addWidget(pie)
+        self.pie_done = False
 
         ana = Panel("Was belegt den Platz?")
         top = QHBoxLayout()
@@ -5344,6 +5499,55 @@ class StorageTab(Page):
 
         self._build_cleanup_rows()
         self.refresh_fs()
+        self.refresh_pie()
+
+    # ---- Tortendiagramm -------------------------------------------------
+
+    def refresh_pie(self):
+        self.b_pie.setEnabled(False)
+        self.pie_hint.setText("Wird berechnet … das kann bei vielen Dateien eine Minute dauern.")
+        use_sudo = self.app.priv.is_authenticated_nonblocking() if hasattr(self.app, "priv") else False
+
+        def worker():
+            try:
+                data = storage_breakdown(use_sudo)
+            except Exception as ex:
+                data = {"_error": str(ex)}
+            ui(lambda: self._show_pie(data, use_sudo))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _show_pie(self, data, use_sudo):
+        self.b_pie.setEnabled(True)
+        clear_layout(self.pie_legend)
+        if "_error" in data:
+            self.pie_hint.setText(f"Konnte nicht berechnet werden: {data['_error']}")
+            return
+        used = sum(v for k, v in data.items() if k != "free")
+        total = used + data.get("free", 0)
+        # Ring zeigt nur den belegten Platz – sonst gehen die Kategorien neben „Frei“ unter
+        rows = [(title, data.get(key, 0), color) for key, title, color in STORAGE_CATS if key != "free"]
+        self.donut.set_data(list(rows), (fmt_bytes(used), f"von {fmt_bytes(total)} belegt"))
+        rows.append(("Frei", data.get("free", 0), STORAGE_CATS[-1][2]))
+        for i, (title, val, color) in enumerate(rows):
+            dot = QLabel()
+            dot.setFixedSize(12, 12)
+            dot.setStyleSheet(f"background:{color}; border-radius:3px;")
+            self.pie_legend.addWidget(dot, i, 0, Qt.AlignVCenter)
+            self.pie_legend.addWidget(Label(title), i, 1)
+            v = Label(fmt_bytes(val), "Value")
+            v.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            self.pie_legend.addWidget(v, i, 2)
+            base = total if title == "Frei" else used
+            pct = Label(f"{val / base * 100:.0f} %" if base else "—", "Muted")
+            pct.setMinimumWidth(48)
+            pct.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            self.pie_legend.addWidget(pct, i, 3)
+        self.pie_hint.setText(
+            "Prozente beziehen sich auf den belegten Platz, bei „Frei“ auf die Gesamtgröße. "
+            "Ungefähre Werte für System- und Home-Laufwerk. Anwendungen = Programme mit Eintrag im Startmenü, "
+            "Flatpaks und /opt · Systemdaten = /var (Caches, Protokolle, Datenbanken) · Fotos & Videos = Bilder, "
+            "GIFs und Videos in deinem Home-Ordner."
+            + ("" if use_sudo else " Ohne Anmeldung sind manche Systemordner nicht lesbar – mit Anmeldung genauer."))
 
     # ---- Dateisysteme ---------------------------------------------------
 
@@ -14111,6 +14315,19 @@ class MainWindow(QWidget):
 # --------------------------------------------------------------------------
 
 EN = {
+    'Woraus besteht der belegte Platz?': 'What is taking up the space?',
+    'Neu berechnen': 'Recalculate',
+    'Anwendungen': 'Applications',
+    'Systemdaten': 'System data',
+    'Fotos & Videos': 'Photos & videos',
+    'Weitere eigene Dateien': 'Other personal files',
+    'Sonstiges': 'Other',
+    'Frei': 'Free',
+    'von {} belegt': 'of {} used',
+    'Wird berechnet … das kann bei vielen Dateien eine Minute dauern.': 'Calculating … this can take a minute with many files.',
+    'Konnte nicht berechnet werden: {}': "Couldn't be calculated: {}",
+    'Prozente beziehen sich auf den belegten Platz, bei „Frei“ auf die Gesamtgröße. Ungefähre Werte für System- und Home-Laufwerk. Anwendungen = Programme mit Eintrag im Startmenü, Flatpaks und /opt · Systemdaten = /var (Caches, Protokolle, Datenbanken) · Fotos & Videos = Bilder, GIFs und Videos in deinem Home-Ordner.': 'Percentages refer to the used space, for “Free” to the total size. Approximate values for the system and home drive. Applications = programs with a start menu entry, Flatpaks and /opt · System data = /var (caches, logs, databases) · Photos & videos = images, GIFs and videos in your home folder.',
+    'Prozente beziehen sich auf den belegten Platz, bei „Frei“ auf die Gesamtgröße. Ungefähre Werte für System- und Home-Laufwerk. Anwendungen = Programme mit Eintrag im Startmenü, Flatpaks und /opt · Systemdaten = /var (Caches, Protokolle, Datenbanken) · Fotos & Videos = Bilder, GIFs und Videos in deinem Home-Ordner. Ohne Anmeldung sind manche Systemordner nicht lesbar – mit Anmeldung genauer.': "Percentages refer to the used space, for “Free” to the total size. Approximate values for the system and home drive. Applications = programs with a start menu entry, Flatpaks and /opt · System data = /var (caches, logs, databases) · Photos & videos = images, GIFs and videos in your home folder. Without logging in, some system folders can't be read – more accurate when logged in.",
     'Installieren ({})': 'Install ({})',
     'Installieren (pacman)': 'Install (pacman)',
     'Installieren (Flatpak)': 'Install (Flatpak)',

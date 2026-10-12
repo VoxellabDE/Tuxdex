@@ -10,6 +10,7 @@ System restore and setup for switchers.
 - **New module "Setup"**: one-click basics – fonts for Office documents, audio and video codecs, power profiles with a switch (power saver, balanced, performance). Plus **"Alternatives for Windows programs"**: type "Photoshop", "Office", "Outlook" and so on and install the matching Linux alternative right away (Arch repositories or Flathub).
 - **Default apps**: choose browser, email, PDF, images, videos, music and text files (applies right away, no root).
 - **Gaming setup**: install Steam, GameMode, MangoHud, Lutris, Heroic, Bottles and Wine one by one or as a recommended set. If 32-bit support (multilib) is missing, Tuxdex turns it on when asked (backing up pacman.conf, followed by a full update) – otherwise Steam comes from Flathub. Plus a note that games with kernel anti-cheat (Valorant, League of Legends, Fortnite) don't run.
+- **Storage: pie chart** – what the used space consists of: operating system, applications, system data, photos & videos (incl. GIFs), other personal files and other, plus free space. Approximate values, more accurate when logged in.
 - **Source always visible**: every install button shows where the program comes from – "Install (pacman)", "(Flatpak)" or "(AUR)", also in the Software tab and for the security tools.
 - **CachyOS**: CachyOS kernels (linux-cachyos, -bore, -lts, -hardened …) are recognized as kernels – for update marking, restart notice, version status and checklist.
 

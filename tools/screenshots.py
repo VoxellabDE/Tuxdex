@@ -496,6 +496,10 @@ t.snapshot_env = lambda: {"fs": "btrfs", "home_separate": True, "tool": "snapper
 
 
 t.multilib_enabled = lambda: True
+_G = 1024 ** 3
+t.storage_breakdown = lambda use_sudo=False: {"os": 9.4 * _G, "apps": 21.7 * _G, "sys": 6.1 * _G,
+                                              "media": 48.3 * _G, "home": 52.3 * _G, "other": 4.2 * _G,
+                                              "free": 369.0 * _G}
 _APPS = {"browser": ("firefox.desktop", [("Chromium", "chromium.desktop"), ("Firefox", "firefox.desktop")]),
          "mail": ("thunderbird.desktop", [("Thunderbird", "thunderbird.desktop")]),
          "pdf": ("okularApplication_pdf.desktop", [("Firefox", "firefox.desktop"),
