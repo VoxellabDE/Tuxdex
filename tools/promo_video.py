@@ -317,7 +317,84 @@ def clips(shots):
                                  (36, 390, 620, 330), where="Tab „Einrichten“")),
         (3.4, end_card("Alles für dein Arch Linux")),
     ])
-    return [v1, v2, v3]
+    # --- Cartoon: Windows → Arch-Verzweiflung → Tuxdex ---
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import promo_cartoon as pc
+    logo_path = os.path.join(ROOT, "docs/logo/wordmark-dark.png")
+
+    def cap(p, t, head, sub=None, color=ACCENT):
+        text(p, head, 150, 84, INK, t, 0.1)
+        if sub:
+            text(p, sub, 262, 54, color, t, 0.35)
+
+    def c1(p, t, d):
+        pc.stage(p)
+        pc.room(p)
+        pc.person(p, t, "happy")
+        pc.arms(p, t, "happy")
+        pc.laptop_front(p, pc.screen_windows, t)
+        pc.hands(p, t, "happy")
+        p.restore()
+        cap(p, t, "Windows.", "Alles easy.")
+        fade_out(p, t, d, 0.15)
+
+    def c2(p, t, d):
+        mood = "neutral" if t < 1.0 else "worried"
+        pc.stage(p)
+        pc.room(p)
+        pc.person(p, t, mood)
+        pc.arms(p, t, mood)
+        pc.laptop_front(p, pc.screen_terminal, t)
+        pc.hands(p, t, mood)
+        p.restore()
+        cap(p, t, "Dann: Arch Linux.", "Wie schwer kann’s sein?", WARN)
+
+    def c3(p, t, d):
+        pc.stage(p)
+        pc.room(p, mood_dark=min(1, t / 0.6))
+        pc.person(p, t, "despair")
+        pc.arms(p, t, "despair", "head")
+        pc.laptop_front(p, pc.screen_terminal_panic, t, glow=DANGER)
+        pc.hands(p, t, "despair", "head")
+        pc.rain_cloud(p, t)
+        pc.question_marks(p, t)
+        p.restore()
+        cap(p, t, "pacman? fstab?", "Hilfe!", DANGER)
+        fade_out(p, t, d, 0.15)
+
+    def c4(p, t, d):
+        pc.stage(p)
+        pc.room(p, mood_dark=max(0, 1 - t / 0.8))
+        pc.person(p, t, "amazed")
+        pc.arms(p, t, "amazed")
+        pc.laptop_front(p, lambda q, r, tt: pc.screen_logo(q, r, tt, logo_path), t, glow=ACCENT)
+        pc.hands(p, t, "amazed")
+        pc.lightbulb(p, t)
+        p.restore()
+        cap(p, t, "Dann kam Tuxdex.")
+
+    def c5(p, t, d):
+        pc.stage(p)
+        pc.room(p)
+        pose = "thumbs" if t > 0.6 else "desk"
+        pc.person(p, t, "joy")
+        pc.arms(p, t, "joy", pose)
+        pc.laptop_front(p, lambda q, r, tt: pc.screen_tuxdex(q, r, tt, S("update")), t, glow=ACCENT)
+        pc.hands(p, t, "joy", pose)
+        p.restore()
+        pc.confetti(p, t)
+        cap(p, t, "Alles per Klick.", "Updates · Apps · Backups")
+        fade_out(p, t, d)
+
+    v4 = Clip("tuxdex_cartoon", [
+        (2.8, c1),
+        (2.6, c2),
+        (3.2, c3),
+        (2.2, c4),
+        (3.4, c5),
+        (3.6, end_card("Arch Linux ohne Terminal-Stress")),
+    ])
+    return [v1, v2, v3, v4]
 
 
 def main():
