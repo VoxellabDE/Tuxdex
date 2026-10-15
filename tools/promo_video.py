@@ -5,7 +5,8 @@
 
 Braucht ffmpeg. Die Screenshots erzeugt tools/screenshots.py (Beispieldaten), am besten scharf:
   QT_SCALE_FACTOR=2 QT_QPA_PLATFORM=offscreen python3 tools/screenshots.py --out /tmp/shots
-Ton gibt es keinen – auf Instagram einfach einen passenden Sound wählen.
+Ton: eingebauter, selbst erzeugter Beat plus Tuxdex-Sound-Logo (lizenzfrei, tools/promo_audio.py).
+Eigene Musik, z. B. ein NCS-Track:  --music track.mp3  (Titel dann in der Beschreibung nennen).
 """
 import argparse
 import math
@@ -75,6 +76,20 @@ class Clip:
             ff.stdin.write(img.constBits().tobytes())
         ff.stdin.close()
         ff.wait()
+
+    def add_sound(self, video, music=None):
+        """Beat bzw. eigene Musik plus Tuxdex-Sound-Logo beim Start der Endkarte unterlegen."""
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from promo_audio import soundtrack
+        wav = video + ".wav"
+        soundtrack(wav, self.duration, self.duration - self.scenes[-1][0], music)
+        tmp = video + ".tmp.mp4"
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", video, "-i", wav, "-map", "0:v", "-map", "1:a",
+                        "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest", tmp], check=True)
+        os.replace(tmp, video)
+        for f in (wav, wav + ".jingle.wav"):
+            if os.path.exists(f):
+                os.remove(f)
 
 
 # --- Bausteine ---------------------------------------------------------------
@@ -310,6 +325,8 @@ def main():
     ap.add_argument("--shots", required=True, help="Screenshots in doppelter Auflösung: QT_SCALE_FACTOR=2 tools/screenshots.py --out DIR")
     ap.add_argument("--out", default=".")
     ap.add_argument("--only")
+    ap.add_argument("--music", help="eigene Musik (z. B. NCS-Track) statt des eingebauten Beats")
+    ap.add_argument("--silent", action="store_true", help="ohne Ton")
     a = ap.parse_args()
     QGuiApplication(sys.argv)
     os.makedirs(a.out, exist_ok=True)
@@ -318,6 +335,8 @@ def main():
             continue
         out = os.path.join(a.out, c.name + ".mp4")
         c.render(out)
+        if not a.silent:
+            c.add_sound(out, a.music)
         print(f"{out}  ({c.duration:.1f} s)")
 
 
