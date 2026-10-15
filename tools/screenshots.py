@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Erzeugt die README-Screenshots mit Beispieldaten – nichts davon stammt vom echten System.
 
-    QT_QPA_PLATFORM=offscreen python3 tools/screenshots.py [--lang en] [--out docs/screenshots]
+    QT_QPA_PLATFORM=offscreen python3 tools/screenshots.py [--lang en] [--out docs/screenshots] [--size 1440x900]
 
 Tuxdex läuft dabei mit einem eigenen, leeren Home-Ordner; Befehle wie pacman, flatpak, lsblk oder df
 werden abgefangen und liefern feste Beispielausgaben. Braucht die Schrift IBM Plex (ttf-ibm-plex).
@@ -18,6 +18,8 @@ LANG = sys.argv[sys.argv.index("--lang") + 1] if "--lang" in sys.argv else "de"
 OUT = os.path.abspath(sys.argv[sys.argv.index("--out") + 1] if "--out" in sys.argv
                       else os.path.join(ROOT, "docs", "screenshots"))
 W, H = 1440, 900
+if "--size" in sys.argv:                 # z. B. --size 800x1400 für Hochkant-Ausschnitte (Werbevideos)
+    W, H = map(int, sys.argv[sys.argv.index("--size") + 1].split("x"))
 
 # ---- eigener Home-Ordner mit Beispiel-Einstellungen -------------------------------------------
 HOME = tempfile.mkdtemp(prefix="tuxdex-demo-")
@@ -527,6 +529,7 @@ def prep_setup():
 def prep_setup_search():
     p = page("setup")
     p.search.setText("Photoshop")
+    QTimer.singleShot(300, lambda: p.verticalScrollBar().setValue(p.search.parentWidget().y() - 8))
 
 
 def prep_modules():
