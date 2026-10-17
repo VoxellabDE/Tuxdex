@@ -45,8 +45,9 @@ def font(size, weight=QFont.Bold):
 class Clip:
     """Ein Video aus Szenen; jede Szene zeichnet sich für ihre lokale Zeit t (Sekunden)."""
 
-    def __init__(self, name, scenes):
+    def __init__(self, name, scenes, voice=None):
         self.name, self.scenes = name, scenes      # [(dauer, funktion(p, t, d))]
+        self.voice = voice or {}                   # {Szenen-Nr.: (Sprechtext, Versatz in s)}
 
     @property
     def duration(self):
@@ -77,17 +78,41 @@ class Clip:
         ff.stdin.close()
         ff.wait()
 
-    def add_sound(self, video, music=None):
-        """Beat bzw. eigene Musik plus Tuxdex-Sound-Logo beim Start der Endkarte unterlegen."""
+    def add_sound(self, video, music=None, voice_model=None):
+        """Beat bzw. eigene Musik plus Tuxdex-Sound-Logo beim Start der Endkarte unterlegen,
+        optional mit Sprecher (piper-Stimme, Musik wird dann leiser)."""
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         from promo_audio import soundtrack
         wav = video + ".wav"
         soundtrack(wav, self.duration, self.duration - self.scenes[-1][0], music)
+        inputs, chains, temp = ["-i", video, "-i", wav], [], [wav, wav + ".jingle.wav"]
+        if self.voice and voice_model:
+            starts, acc = [], 0.0
+            for d, _ in self.scenes:
+                starts.append(acc)
+                acc += d
+            chains.append("[1:a]volume=0.4[bed]")
+            for k, (idx, (line, off)) in enumerate(sorted(self.voice.items())):
+                vw = f"{video}.v{k}.wav"
+                subprocess.run([sys.executable, "-m", "piper", "-m", voice_model, "-c", voice_model + ".json",
+                                "--length-scale", "0.95", "-f", vw], input=line.encode(), check=True,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                temp.append(vw)
+                inputs += ["-i", vw]
+                ms = int((starts[idx] + off) * 1000)
+                chains.append(f"[{k + 2}:a]aresample=44100,highpass=f=90,acompressor=threshold=-20dB:ratio=3:"
+                              f"makeup=2,pan=stereo|c0=c0|c1=c0,volume=1.8,adelay={ms}|{ms}[v{k}]")
+            mix = "[bed]" + "".join(f"[v{k}]" for k in range(len(self.voice)))
+            chains.append(f"{mix}amix=inputs={len(self.voice) + 1}:duration=first:normalize=0,"
+                          "alimiter=limit=0.95[a]")
+            amap = ["-filter_complex", ";".join(chains), "-map", "0:v", "-map", "[a]"]
+        else:
+            amap = ["-map", "0:v", "-map", "1:a"]
         tmp = video + ".tmp.mp4"
-        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", video, "-i", wav, "-map", "0:v", "-map", "1:a",
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", *inputs, *amap,
                         "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest", tmp], check=True)
         os.replace(tmp, video)
-        for f in (wav, wav + ".jingle.wav"):
+        for f in temp:
             if os.path.exists(f):
                 os.remove(f)
 
@@ -386,14 +411,20 @@ def clips(shots):
         cap(p, t, "Alles per Klick.", "Updates · Apps · Backups")
         fade_out(p, t, d)
 
+    # Sprechtexte lautschriftlich geschrieben, damit die deutsche Stimme sie richtig ausspricht
     v4 = Clip("tuxdex_cartoon", [
         (2.8, c1),
         (2.6, c2),
         (3.2, c3),
         (2.2, c4),
-        (3.4, c5),
-        (3.6, end_card("Arch Linux ohne Terminal-Stress")),
-    ])
+        (3.8, c5),
+        (4.6, end_card("Arch Linux ohne Terminal-Stress")),
+    ], voice={0: ("Windows? Alles iesi.", 0.4),
+              1: ("Dann wechselst du auf Aartsch Linux.", 0.4),
+              2: ("Und plötzlich nur noch Fehlermeldungen. Hilfe!", 0.3),
+              3: ("Dann kam Tuxdex.", 0.5),
+              4: ("Updates, Äpps und Bäckapps. Alles per Klick.", 0.3),
+              5: ("Tuxdex. Kostenlos und Ohpen ßohrs. Link in der Bio.", 1.2)})
     return [v1, v2, v3, v4]
 
 
@@ -404,6 +435,8 @@ def main():
     ap.add_argument("--only")
     ap.add_argument("--music", help="eigene Musik (z. B. NCS-Track) statt des eingebauten Beats")
     ap.add_argument("--silent", action="store_true", help="ohne Ton")
+    ap.add_argument("--voice-model", help="piper-Stimme (.onnx, daneben .onnx.json) für den Sprecher, "
+                                          "z. B. de-thorsten-low (CC0)")
     a = ap.parse_args()
     QGuiApplication(sys.argv)
     os.makedirs(a.out, exist_ok=True)
@@ -413,7 +446,7 @@ def main():
         out = os.path.join(a.out, c.name + ".mp4")
         c.render(out)
         if not a.silent:
-            c.add_sound(out, a.music)
+            c.add_sound(out, a.music, a.voice_model)
         print(f"{out}  ({c.duration:.1f} s)")
 
 
