@@ -21,6 +21,42 @@ W, H, FPS = 1080, 1920, 30
 BG, BG2, INK, MUTED, ACCENT, WARN, DANGER = (
     "#0e1113", "#1c2327", "#e6edf0", "#9aa9b0", "#2fb3a3", "#e8a33d", "#f0726a")
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+LANG = "de"
+# Texte der Videos auf Englisch (--lang en); Schlüssel = deutscher Text
+EN_TEXT = {
+    "Kostenlos · Open Source · Deutsch & Englisch": "Free · Open source · English & German",
+    "Alpha – Feedback willkommen!": "Alpha – feedback welcome!",
+    "Von Windows": "From Windows", "zu Arch Linux?": "to Arch Linux?", "Ohne Terminal.": "No terminal.",
+    "Updates": "Updates", "mit einem Klick": "with one click",
+    "Photoshop?": "Photoshop?", "Hier ist dein Ersatz": "Here's your alternative",
+    "Update kaputt?": "Update broke it?", "Ein Klick zurück": "One click back",
+    "Gaming?": "Gaming?", "Steam & Co. in einem Schritt": "Steam & co. in one step",
+    "Dein Arch Linux in einem Fenster": "Your Arch Linux in one window",
+    "Tab „Updates“": "“Updates” tab", "Tab „Einrichten“": "“Setup” tab",
+    "Tab „Wiederherstellung“": "“Restore” tab", "Tab „Speicher“": "“Storage” tab",
+    "Tab „Taskmanager“": "“Task manager” tab",
+    "Arch-Update": "An Arch update", "hat dein System": "broke your", "zerschossen?": "system?",
+    "Kein Problem.": "No problem.",
+    "Snapshot auswählen": "Pick a snapshot", "Zurücksetzen. Fertig.": "Roll back. Done.",
+    "Vorher wird der jetzige Stand gesichert": "Your current state is saved first",
+    "Vor jedem Update": "Before every update", "ein Snapshot.": "a snapshot.", "Automatisch.": "Automatically.",
+    "Systemwiederherstellung für Arch": "System restore for Arch",
+    "Wo ist mein": "Where did my", "Speicher hin?": "storage go?",
+    "Auf einen Blick": "At a glance", "Fotos, Apps, System": "Photos, apps, system",
+    "Live im Blick": "Live overview", "CPU, RAM, Grafik, Lüfter": "CPU, RAM, GPU, fans",
+    "Spielen?": "Gaming?", "Steam, GameMode, MangoHud": "Steam, GameMode, MangoHud",
+    "Alles für dein Arch Linux": "Everything for your Arch Linux",
+    "Windows.": "Windows.", "Alles easy.": "Easy.",
+    "Dann: Arch Linux.": "Then: Arch Linux.", "Wie schwer kann’s sein?": "How hard can it be?",
+    "pacman? fstab?": "pacman? fstab?", "Hilfe!": "Help!",
+    "Dann kam Tuxdex.": "Then came Tuxdex.",
+    "Alles per Klick.": "All with one click.", "Updates · Apps · Backups": "Updates · Apps · Backups",
+    "Arch Linux ohne Terminal-Stress": "Arch Linux without terminal stress",
+}
+
+
+def L(s):
+    return EN_TEXT.get(s, s) if LANG == "en" else s
 
 
 def ease(x):
@@ -134,6 +170,7 @@ def glow(p, t):
 
 def text(p, s, y, size, color=INK, t=1.0, delay=0.0, weight=QFont.Bold, pop=True, width=W - 120):
     """Zentrierter Text mit Pop-in; gibt die Höhe zurück."""
+    s = L(s)
     k = (t - delay) / 0.35
     if k <= 0:
         return 0
@@ -157,6 +194,7 @@ def text(p, s, y, size, color=INK, t=1.0, delay=0.0, weight=QFont.Bold, pop=True
 
 
 def pill(p, s, y, t, delay=0.0, color=ACCENT):
+    s = L(s)
     k = ease((t - delay) / 0.3)
     if k <= 0:
         return
@@ -419,7 +457,7 @@ def clips(shots):
         (2.2, c4),
         (3.8, c5),
         (4.6, end_card("Arch Linux ohne Terminal-Stress")),
-    ], voice={0: ("Windows? Alles iesi.", 0.4),
+    ], voice=None if LANG == "en" else {0: ("Windows? Alles iesi.", 0.4),
               1: ("Dann wechselst du auf Aartsch Linux.", 0.4),
               2: ("Und plötzlich nur noch Fehlermeldungen. Hilfe!", 0.3),
               3: ("Dann kam Tuxdex.", 0.5),
@@ -433,6 +471,7 @@ def main():
     ap.add_argument("--shots", required=True, help="Screenshots in doppelter Auflösung: QT_SCALE_FACTOR=2 tools/screenshots.py --out DIR")
     ap.add_argument("--out", default=".")
     ap.add_argument("--only")
+    ap.add_argument("--lang", default="de", choices=("de", "en"))
     ap.add_argument("--music", help="eigene Musik (z. B. NCS-Track) statt des eingebauten Beats")
     ap.add_argument("--silent", action="store_true", help="ohne Ton")
     ap.add_argument("--voice-model", help="piper-Stimme (.onnx, daneben .onnx.json) für den Sprecher, "
@@ -440,7 +479,11 @@ def main():
     a = ap.parse_args()
     QGuiApplication(sys.argv)
     os.makedirs(a.out, exist_ok=True)
+    global LANG
+    LANG = a.lang
     for c in clips(a.shots):
+        if LANG == "en":
+            c.name += "_en"
         if a.only and a.only not in c.name:
             continue
         out = os.path.join(a.out, c.name + ".mp4")
