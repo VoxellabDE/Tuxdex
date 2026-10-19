@@ -44,8 +44,8 @@ def _pen(c, w):
     return pen
 
 
-def tom(p, t, mood, talk=0.0):
-    """Tom hinter dem Laptop. talk = Mundöffnung 0…1 (aus der Stimme)."""
+def tom(p, t, mood, talk=0.0, shades=0.0):
+    """Tom hinter dem Laptop. talk = Mundöffnung 0…1 (aus der Stimme), shades = „Deal with it“-Brille 0…1."""
     bob = pc._bob(t, mood)
     hx, hy = CX, HEAD_Y + bob
     tilt = {"despair": math.sin(t * 9) * 4, "joy": math.sin(t * 3) * 3}.get(mood, math.sin(t * 1.3) * 1.5)
@@ -106,6 +106,8 @@ def tom(p, t, mood, talk=0.0):
     _eyes(p, t, hx, hy, mood)
     _glasses(p, hx, hy)
     _mouth(p, t, hx, hy, mood, talk)
+    if shades > 0:
+        _deal_with_it(p, hx, hy - 4 - (1 - shades) * 760)
     if mood in ("worried", "despair"):
         pc._sweat(p, t, hx, hy, heavy=mood == "despair")
     p.restore()
@@ -180,6 +182,26 @@ def _glasses(p, hx, hy):
     for side in (-1, 1):
         x = hx + side * 46
         p.drawLine(QPointF(x - 22, ey - 16), QPointF(x - 10, ey - 24))
+
+
+def _deal_with_it(p, hx, y):
+    """Pixel-Sonnenbrille aus dem „Deal with it“-Meme."""
+    px = 12
+    rows = ["XXXXXXXXXXXXXXXXXXXXXXXXXXX",
+            "XXXXXXXXXXXXXXXXXXXXXXXXXXX",
+            "  XWWXXXXXXX   XWWXXXXXXX  ",
+            "  XXWWXXXXXX   XXWWXXXXXX  ",
+            "   XXXXXXXX     XXXXXXXX   ",
+            "    XXXXXX       XXXXXX    "]
+    x0 = hx - len(rows[0]) * px / 2
+    y0 = y - 30
+    p.setPen(Qt.NoPen)
+    for r, row in enumerate(rows):
+        for c, ch in enumerate(row):
+            if ch == " ":
+                continue
+            p.setBrush(QColor("#ffffff" if ch == "W" else "#0a0a0a"))
+            p.drawRect(QRectF(x0 + c * px, y0 + r * px, px + 0.5, px + 0.5))
 
 
 def _mouth(p, t, hx, hy, mood, talk):
@@ -283,6 +305,58 @@ def room(p, t, mood_dark=0.0, led=None):
         p.fillRect(QRectF(-400, -400, 1880, 2800), QColor(5, 8, 12, int(150 * mood_dark)))
 
 
+# --- Meme-Karte --------------------------------------------------------------------------
+
+def meme_card(p, t, label):
+    """Zwischentitel wie „3 hours later…“: Streifen-Hintergrund, Text mit dicker Kontur."""
+    p.fillRect(0, 0, W, H, QColor("#2a1f4a"))
+    p.save()
+    p.setPen(Qt.NoPen)
+    p.setBrush(QColor("#33285c"))
+    off = (t * 120) % 160
+    for k in range(-20, 30):
+        path = QPainterPath()
+        x = k * 160 + off
+        path.moveTo(x, 0)
+        path.lineTo(x + 80, 0)
+        path.lineTo(x + 80 - 900, H)
+        path.lineTo(x - 900, H)
+        path.closeSubpath()
+        p.drawPath(path)
+    p.restore()
+    k = pv.back(t / 0.4)
+    f = QFont("IBM Plex Sans", 1)
+    f.setPixelSize(118)
+    f.setWeight(QFont.Black)
+    f.setItalic(True)
+    path = QPainterPath()
+    path.addText(0, 0, f, label)
+    br = path.boundingRect()
+    p.save()
+    p.translate(W / 2, H / 2 - 40)
+    p.rotate(-4)
+    p.scale(k, k)
+    p.translate(-br.width() / 2, br.height() / 2)
+    p.setPen(_pen("#0b0f14", 22))
+    p.setBrush(Qt.NoBrush)
+    p.drawPath(path)
+    p.setPen(Qt.NoPen)
+    p.setBrush(QColor("#ffd166"))
+    p.drawPath(path)
+    p.restore()
+    # Uhr-Zeiger dreht sich
+    p.save()
+    p.translate(W / 2, H / 2 + 230)
+    p.setPen(_pen("#ffd166", 10))
+    p.setBrush(QColor("#1b1530"))
+    p.drawEllipse(QPointF(0, 0), 90, 90)
+    p.rotate(t * 720)
+    p.drawLine(QPointF(0, 0), QPointF(0, -66))
+    p.rotate(-t * 660)
+    p.drawLine(QPointF(0, 0), QPointF(44, 0))
+    p.restore()
+
+
 # --- Untertitel -----------------------------------------------------------------------
 
 def caption(p, words, t_line):
@@ -333,10 +407,16 @@ def caption(p, words, t_line):
         p.setBrush(Qt.NoBrush)
         p.drawPath(path)
         p.setPen(Qt.NoPen)
-        p.setBrush(QColor(pv.ACCENT if g0 + i == idx else "#ffffff"))
+        key = re.sub(r"[^\w]", "", w).lower()
+        col = KEYWORDS.get(key)
+        p.setBrush(QColor(col or (pv.ACCENT if g0 + i == idx else "#ffffff")))
         p.drawPath(path)
         p.restore()
         x += widths[i] + space
+
+
+KEYWORDS = {"errors": pv.DANGER, "hard": pv.DANGER, "everywhere": pv.DANGER, "tuxdex": pv.ACCENT,
+            "arch": "#1793d1", "windows": "#5fb0ff", "click": pv.ACCENT, "free": "#b5d86b"}
 
 
 def word_times(line, start, end):
@@ -399,6 +479,29 @@ def sfx_buzz(dur=0.28, f=110):
     return sq * np.minimum(1, (dur - tt) * 20)
 
 
+def sfx_scratch():
+    """Plattenkratzer: schneller Pitch-Sweep mit Rauschen."""
+    n = int(0.32 * SR)
+    tt = np.arange(n) / SR
+    f = 1400 * np.exp(-tt * 9) + 180
+    tone = np.sin(2 * np.pi * np.cumsum(f) / SR)
+    noise = np.random.default_rng(9).uniform(-1, 1, n) * 0.4
+    return (tone * 0.5 + noise) * np.exp(-tt * 6) * 0.7
+
+
+def sfx_tick():
+    n = int(0.03 * SR)
+    tt = np.arange(n) / SR
+    return np.sin(2 * np.pi * 2200 * tt) * np.exp(-tt * 220) * 0.5
+
+
+def sfx_boom():
+    n = int(0.9 * SR)
+    tt = np.arange(n) / SR
+    f = 38 + 70 * np.exp(-tt * 12)
+    return np.tanh(np.sin(2 * np.pi * np.cumsum(f) / SR) * 2.5) * np.exp(-tt * 3.5) * 0.9
+
+
 def sfx_ding():
     return pa._tone(pa._note("E6"), 1.2, 0.5, ((1, 1.0), (2.76, 0.3), (5.4, 0.1))) * 0.5
 
@@ -418,18 +521,20 @@ def build(shots, kokoro, voice):
         # (Bildschirm, Stimmung, Pose, Sprechtext, Mindestdauer, Extras)
         ("windows", "happy", "desk", "I'm Tom. On Windows, everything just worked.", 3.0, {"typing"}),
         ("terminal", "worried", "desk", "Then I switched to Arch Linux. How hard can it be?", 3.0, {"typing"}),
+        ("card", None, None, "", 1.4, {"scratch"}),
         ("panic", "despair", "head", "Turns out, pretty hard. Errors everywhere!", 3.0, {"panic"}),
-        ("logo", "amazed", "desk", "Then I found Tux dex.", 2.4, {"ding"}),
-        ("tuxdex", "joy", "thumbs", "Updates, apps, backups and snapshots. All with one click.", 3.4, {"confetti"}),
+        ("logo", "amazed", "desk", "Then I found Tux dex.", 2.4, {"ding", "boom"}),
+        ("tuxdex", "joy", "thumbs", "Updates, apps, backups and snapshots. All with one click.", 3.6,
+         {"confetti", "shades"}),
         ("end", None, None, "Tux dex. Free and open source. Download now, link in bio.", 4.2, {"jingle"}),
     ]
     lines, t0 = [], 0.0
     for scr, mood, pose, text, mind, extra in beats:
-        audio = tts(kokoro, text, voice)
+        audio = tts(kokoro, text, voice) if text else np.zeros(1)
         # Endkarte: erst das Sound-Logo (1,6 s), dann Tom, danach 1,5 s Ruhe
         lead = 1.9 if scr == "end" else 0.25
-        a, b = speech_bounds(audio)
-        dur = max(mind, lead + len(audio) / SR + (1.5 if scr == "end" else 0.35))
+        a, b = speech_bounds(audio) if text else (0, 0)
+        dur = mind if not text else max(mind, lead + len(audio) / SR + (1.5 if scr == "end" else 0.35))
         shown = text.replace("Tux dex", "Tuxdex")
         lines.append({"scr": scr, "mood": mood, "pose": pose, "start": t0, "dur": dur, "lead": lead,
                       "audio": audio, "extra": extra,
@@ -464,11 +569,16 @@ def build(shots, kokoro, voice):
             pv.glow(p, t)
             end(p, lt, ln["dur"])
             return
+        if ln["scr"] == "card":
+            meme_card(p, lt, "3 hours later…")
+            return
         mood = ln["mood"]
         if ln["scr"] == "terminal" and lt < 0.8:
             mood = "neutral"
         # Kamera: langsamer Zoom, Wackeln bei Panik
         z = 1.0 + 0.05 * pv.ease(lt / ln["dur"])
+        if ln["scr"] in ("panic", "logo"):                  # Impact-Zoom zu Beginn
+            z += 0.14 * (1 - pv.ease(lt / 0.35))
         shake = (math.sin(t * 47) * 6, math.cos(t * 39) * 6) if ln["scr"] == "panic" else (0, 0)
         p.save()
         p.translate(W / 2 + shake[0], H / 2 + shake[1])
@@ -481,7 +591,8 @@ def build(shots, kokoro, voice):
         dark = min(1, lt / 0.5) if ln["scr"] == "panic" else max(0, 1 - lt / 0.8) if ln["scr"] == "logo" else 0
         led = 0 if ln["scr"] == "panic" else None
         room(p, t, dark, led)
-        tom(p, t, mood, talk)
+        shades = pv.ease((lt - 1.4) / 0.7) if "shades" in ln["extra"] else 0.0
+        tom(p, t, mood, talk, shades)
         pc.arms(p, t, mood, ln["pose"] if not (ln["pose"] == "thumbs" and lt < 0.6) else "desk")
         glow = pv.DANGER if ln["scr"] == "panic" else pv.ACCENT if ln["scr"] in ("logo", "tuxdex") else None
         pc.laptop_front(p, screen_fn(ln["scr"]), lt, glow=glow)
@@ -518,6 +629,14 @@ def build(shots, kokoro, voice):
         if "confetti" in ln["extra"]:
             for k in range(6):
                 pa._add(fx, sfx_pop() * 0.6, st + 0.1 + k * 0.07)
+        if "scratch" in ln["extra"]:
+            pa._add(fx, sfx_scratch(), st - 0.05)
+            for k in range(1, 9):
+                pa._add(fx, sfx_tick() * (0.7 if k % 2 else 0.45), st + 0.15 * k)
+        if "boom" in ln["extra"]:
+            pa._add(fx, sfx_boom(), st)
+        if "shades" in ln["extra"]:
+            pa._add(fx, sfx_boom() * 0.5, st + 2.1)
         if "jingle" in ln["extra"]:
             pa._add(fx, pa.jingle() * 0.8, st)
     bed = pa.beat(total)

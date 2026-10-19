@@ -354,6 +354,8 @@ def _arms(p, t, arms, hx, hy, part="arm"):
     else:  # thumbs
         targets = (QPointF(CX - 160, 1240), QPointF(CX + 352, 930 + math.sin(t * 6) * 10))
     for sh, tg in zip((sh_l, sh_r), targets):
+        if part == "hand" and arms == "thumbs" and tg is targets[1]:
+            continue                                   # Daumen-hoch-Hand wird unten gezeichnet
         if part == "hand":
             p.setPen(Qt.NoPen)
             p.setBrush(QColor(SKIN))
@@ -366,9 +368,20 @@ def _arms(p, t, arms, hx, hy, part="arm"):
         p.setBrush(Qt.NoBrush)
         p.drawPath(path)
     if arms == "thumbs" and part == "hand":
-        tg = targets[1]
-        p.setBrush(QColor(SKIN))
-        p.drawRoundedRect(QRectF(tg.x() - 10, tg.y() - 66, 22, 50), 11, 11)
+        _thumbs_up(p, targets[1])
+
+
+def _thumbs_up(p, tg, outline="#1b232c"):
+    """Faust mit eingerollten Fingern (nach links) und Daumen nach oben – klar als „Daumen hoch“ lesbar."""
+    x, y = tg.x(), tg.y()
+    p.setPen(_pen(outline, 4))
+    p.setBrush(QColor(SKIN))
+    p.drawRoundedRect(QRectF(x - 6, y - 30, 46, 66), 16, 16)            # Handballen
+    for k in range(4):                                                  # eingerollte Finger
+        p.drawRoundedRect(QRectF(x - 34, y - 30 + k * 16.5, 44, 17), 8, 8)
+    p.drawRoundedRect(QRectF(x - 26, y - 78, 24, 54), 12, 12)           # Daumen
+    p.setPen(Qt.NoPen)
+    p.drawRect(QRectF(x - 22, y - 32, 16, 10))                          # Übergang Daumen–Faust glätten
 
 
 # --- Effekte ----------------------------------------------------------------------
