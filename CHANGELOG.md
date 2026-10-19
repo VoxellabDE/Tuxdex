@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.3.0
+Systemwiederherstellung und Einrichten für Umsteiger.
+
+- **Ein-Befehl-Installer**: `install.sh` trägt das pacman-Repository ein und installiert Tuxdex – eine Zeile zum Einfügen genügt (siehe README → Installation). Er fragt vorher nach, sichert die `pacman.conf`, repariert die alte Repository-Adresse und bietet `--dry-run`.
+- **Repository umgezogen** nach **github.com/VoxellabDE/Tuxdex**: Updater, PKGBUILD und README zeigen auf die neue Adresse, alte Einstellungen werden automatisch umgestellt. Wer das pacman-Repo nutzt: in `/etc/pacman.conf` die `Server`-Zeile anpassen (siehe README). Installationsanleitung korrigiert (`pacman -Syu` statt `-Sy`).
+- **Neues Modul „Wiederherstellung“**: Snapshots des Systems mit snapper (btrfs) oder Timeshift. Einrichten per Klick (auf btrfs mit snap-pac, dann entsteht vor und nach jeder Paketänderung ein Snapshot), Liste aller Snapshots, Snapshot jetzt erstellen, löschen und **auf einen Stand zurücksetzen**. Vor dem Zurücksetzen legt Tuxdex einen Sicherheits-Snapshot des jetzigen Stands an. Zurücksetzen mit snapper ist gesperrt, wenn /home nicht in einem eigenen Subvolume liegt – sonst würden eigene Dateien mit zurückgesetzt.
+- **Snapshot vor jedem Update**: Ist die Wiederherstellung eingerichtet, legt Tuxdex direkt vor „Update starten“ einen Snapshot an (abschaltbar; entfällt, wenn snap-pac oder timeshift-autosnap das schon tun).
+- **Neues Modul „Einrichten“**: Basics mit einem Klick – Schriften für Office-Dokumente, Audio- und Video-Codecs, Energieprofile mit Umschalter (Energiesparen, Ausgewogen, Leistung). Dazu **„Ersatz für Windows-Programme“**: „Photoshop“, „Office“, „Outlook“ & Co. eingeben und die passende Linux-Alternative direkt installieren (Arch-Paketquellen oder Flathub).
+- **Standard-Apps**: Browser, E-Mail, PDF, Bilder, Videos, Musik und Textdateien per Auswahl festlegen (gilt sofort, ohne root).
+- **Spiele-Setup**: Steam, GameMode, MangoHud, Lutris, Heroic, Bottles und Wine einzeln oder als Empfehlung installieren. Fehlt die 32-Bit-Unterstützung (multilib), schaltet Tuxdex sie auf Wunsch ein (mit Sicherung der pacman.conf und anschließendem vollem Update) – sonst kommt Steam von Flathub. Dazu ein Hinweis, dass Spiele mit Kernel-Anti-Cheat (Valorant, League of Legends, Fortnite) nicht laufen.
+- **Speicher: Tortendiagramm** – woraus der belegte Platz besteht: Betriebssystem, Anwendungen, Systemdaten, Fotos & Videos (inkl. GIFs), weitere eigene Dateien und Sonstiges, dazu der freie Platz. Ungefähre Werte, mit Anmeldung genauer.
+- **Quelle immer sichtbar**: Jeder Installieren-Knopf zeigt, woher das Programm kommt – „Installieren (pacman)“, „(Flatpak)“ oder „(AUR)“, auch im Software-Tab und bei den Sicherheits-Werkzeugen.
+- **CachyOS**: CachyOS-Kernel (linux-cachyos, -bore, -lts, -hardened …) werden als Kernel erkannt – für Update-Markierung, Neustart-Hinweis, Versionsstand und Checkliste.
+
+## 1.2.0
+Module als Baukasten, klarere Zielgruppe, Roadmap.
+
+- **Einstellungen → Module**: Tuxdex lässt sich jetzt selbst zusammenstellen. Jedes Modul außer Updates kann entfernt und wieder hinzugefügt werden; abgewählte Module verschwinden aus der Leiste und werden nicht geladen.
+- **Swap, Antivirus und Benutzer sind anfangs ausgeblendet** – sie sind eher für Fortgeschrittene, und ClamAV bringt auf Linux-Desktops wenig. Wer sie nutzt: unter Einstellungen → Module wieder hinzufügen. Links aus anderen Modulen (z. B. aus dem Sicherheits-Check) öffnen sie weiterhin.
+- **README**: neuer Abschnitt „Für wen ist Tuxdex?“ (Umsteiger von Windows, GUI-Fans) und eine **Roadmap** mit Zielen – Lernsoftware für Arch-Befehle, fertige ISOs mit einfachem Installer, eigenes Sicherheits-Werkzeug statt ClamAV, Modul-Markt.
+
 ## 1.1.3
 Reifegrad sichtbar.
 

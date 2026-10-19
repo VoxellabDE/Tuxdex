@@ -2,6 +2,27 @@
 
 English version of [CHANGELOG.md](CHANGELOG.md). Entries before 1.0.0 are only available in German.
 
+## 1.3.0
+System restore and setup for switchers.
+
+- **One-command installer**: `install.sh` adds the pacman repository and installs Tuxdex – one line to paste is enough (see README → Installation). It asks first, backs up `pacman.conf`, repairs the old repository address and offers `--dry-run`.
+- **Repository moved** to **github.com/VoxellabDE/Tuxdex**: updater, PKGBUILD and README point to the new address, old settings are switched over automatically. If you use the pacman repo: update the `Server` line in `/etc/pacman.conf` (see README). Install instructions fixed (`pacman -Syu` instead of `-Sy`).
+- **New module "Restore"**: system snapshots with snapper (btrfs) or Timeshift. One-click setup (on btrfs with snap-pac, so a snapshot is created before and after every package change), list of all snapshots, create a snapshot now, delete, and **roll back to a state**. Before rolling back, Tuxdex creates a safety snapshot of the current state. Rollback with snapper is blocked when /home isn't on its own subvolume – otherwise your own files would be rolled back too.
+- **Snapshot before every update**: once restore is set up, Tuxdex creates a snapshot right before "Start update" (can be turned off; skipped when snap-pac or timeshift-autosnap already do it).
+- **New module "Setup"**: one-click basics – fonts for Office documents, audio and video codecs, power profiles with a switch (power saver, balanced, performance). Plus **"Alternatives for Windows programs"**: type "Photoshop", "Office", "Outlook" and so on and install the matching Linux alternative right away (Arch repositories or Flathub).
+- **Default apps**: choose browser, email, PDF, images, videos, music and text files (applies right away, no root).
+- **Gaming setup**: install Steam, GameMode, MangoHud, Lutris, Heroic, Bottles and Wine one by one or as a recommended set. If 32-bit support (multilib) is missing, Tuxdex turns it on when asked (backing up pacman.conf, followed by a full update) – otherwise Steam comes from Flathub. Plus a note that games with kernel anti-cheat (Valorant, League of Legends, Fortnite) don't run.
+- **Storage: pie chart** – what the used space consists of: operating system, applications, system data, photos & videos (incl. GIFs), other personal files and other, plus free space. Approximate values, more accurate when logged in.
+- **Source always visible**: every install button shows where the program comes from – "Install (pacman)", "(Flatpak)" or "(AUR)", also in the Software tab and for the security tools.
+- **CachyOS**: CachyOS kernels (linux-cachyos, -bore, -lts, -hardened …) are recognized as kernels – for update marking, restart notice, version status and checklist.
+
+## 1.2.0
+Modules as a toolkit, clearer audience, roadmap.
+
+- **Settings → Modules**: you can now put Tuxdex together yourself. Every module except Updates can be removed and added back; removed modules disappear from the bar and aren't loaded.
+- **Swap, Antivirus and Users are hidden at first** – they're more for advanced users, and ClamAV is of little use on Linux desktops. If you use them: add them back under Settings → Modules. Links from other modules (e.g. from the security check) still open them.
+- **README**: new section "Who is Tuxdex for?" (people coming from Windows, GUI fans) and a **roadmap** with goals – learning software for Arch commands, ready-made ISOs with a simple installer, an own security tool instead of ClamAV, a module market.
+
 ## 1.1.3
 Maturity shown.
 

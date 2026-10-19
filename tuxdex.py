@@ -381,11 +381,13 @@ COLORS = {
 # Modul-Kennfarben
 MODULES = [
     ("update", "Updates", "#2fb3a3"),
+    ("setup", "Einrichten", "#f7a072"),
     ("software", "Software", "#5aa6f0"),
     ("flatpak", "Flatpak", "#8fa8ff"),
     ("disks", "Datenträger", "#d9b95c"),
     ("storage", "Speicher", "#56c2d6"),
     ("backup", "Backup", "#e9c46a"),
+    ("restore", "Wiederherstellung", "#7fd1b9"),
     ("swap", "Swap", "#6cc56f"),
     ("tasks", "Taskmanager", "#b5d86b"),
     ("antivirus", "Antivirus", "#a98bf0"),
@@ -393,10 +395,39 @@ MODULES = [
     ("users", "Benutzer", "#e87fa8"),
 ]
 
+# Module wie Bausteine: Updates ist immer dabei, der Rest lässt sich unter Einstellungen → Module
+# zu- und abwählen. Abgewählte Module werden gar nicht erst geladen (spart RAM und Startzeit).
+MODULE_INFO = {
+    "update": "System-, AUR- und Flatpak-Updates mit Hinweisen vor riskanten Updates.",
+    "setup": "Basics wie Schriften und Codecs mit einem Klick, dazu Ersatz für Windows-Programme.",
+    "software": "Programme suchen, installieren und entfernen (pacman und AUR).",
+    "flatpak": "Flatpak-Apps verwalten und ihre Rechte per Schalter einstellen.",
+    "disks": "USB-Sticks und Festplatten einhängen, formatieren und prüfen.",
+    "storage": "Sehen, was Platz belegt, und typische Platzfresser aufräumen.",
+    "backup": "Sicherungen auf externe Laufwerke – mit Zeitplan und Wiederherstellen.",
+    "restore": "System-Snapshots vor Updates und Zurücksetzen per Klick (snapper oder Timeshift).",
+    "swap": "Auslagerungsspeicher (Swapfile, zram) einrichten. Für Fortgeschrittene.",
+    "tasks": "Laufende Programme, Leistung, Autostart und Bootzeit.",
+    "antivirus": "ClamAV-Virenscanner. Auf Linux-Desktops wenig nützlich – vor allem für Server und "
+                 "Dateien, die an Windows-Rechner weitergehen.",
+    "security": "Sicherheits-Check, Checkliste, Firewall, offene Ports und VPN.",
+    "users": "Benutzerkonten und Gruppen verwalten. Für Fortgeschrittene.",
+}
+MODULES_CORE = {"update"}
+MODULES_OFF_BY_DEFAULT = {"swap", "antivirus", "users"}
+
+
+def module_enabled(key, settings=None):
+    if key in MODULES_CORE:
+        return True
+    mods = (settings if settings is not None else load_settings()).get("modules", {})
+    return bool(mods.get(key, key not in MODULES_OFF_BY_DEFAULT))
+
+
 FONTS = {"sans": "Sans Serif", "mono": "Monospace"}
 
 APP_ID = "tuxdex"
-APP_VERSION = "1.1.3"
+APP_VERSION = "1.3.0"
 APP_STAGE = "alpha"        # Reifegrad – wird nur angezeigt, die Versionsnummer selbst bleibt ohne Zusatz
 
 
@@ -1803,6 +1834,31 @@ RAPID_RELEASE = {"firefox", "firefox-developer-edition", "librewolf", "chromium"
 MINOR_IS_MAJOR = {"python", "perl", "ruby", "php", "llvm", "llvm-libs", "qt6-base", "qt5-base",
                   "boost", "boost-libs", "icu", "protobuf"}
 
+# Kernel-Pakete: Arch (linux, -lts, -zen, -hardened, -rt) und CachyOS (linux-cachyos, -bore, -lts, -hardened …),
+# auch passende Modul-Pakete wie linux-cachyos-nvidia-open – aber keine Header/Doku
+KERNEL_RE = re.compile(r"linux(-(lts|zen|hardened|rt|rt-lts|cachyos(-[a-z0-9]+)*))?")
+
+
+def is_kernel_pkg(name):
+    return bool(KERNEL_RE.fullmatch(name)) and not re.search(r"-(headers|docs|dbg|api-headers)$", name)
+
+
+def needs_reboot(name):
+    return name in REBOOT_PKGS or is_kernel_pkg(name)
+
+
+def running_kernel_pkg():
+    """Paketname des laufenden Kernels (aus /usr/lib/modules/<release>/pkgbase), z. B. linux-cachyos."""
+    return _first_line(f"/usr/lib/modules/{os.uname().release}/pkgbase") or ""
+
+
+def distro_id():
+    for line in _read("/etc/os-release").splitlines():
+        if line.startswith("ID="):
+            return line[3:].strip().strip('"')
+    return ""
+
+
 UPDATE_RE = re.compile(r"^(\S+)\s+(\S+)\s+->\s+(\S+)")
 
 
@@ -1820,7 +1876,7 @@ def classify_update(name, old, new):
         e2, m2 = _version_key(new, depth)
         if e1 != e2 or (m1 is not None and m2 is not None and m1 != m2):
             return "major"
-    if name in CRITICAL_PKGS:
+    if name in CRITICAL_PKGS or is_kernel_pkg(name):
         return "system"
     return ""
 
@@ -1962,7 +2018,7 @@ class UpdaterTab(Page):
             r = self.table.rowCount()
             self.table.insertRow(r)
             hint = {"major": "▲ Major-Version", "system": "▲ System/Kernel"}.get(u["kind"], "")
-            if u["name"] in REBOOT_PKGS:
+            if needs_reboot(u["name"]):
                 hint = (hint + " · Neustart") if hint else "Neustart nötig"
             for c, v in enumerate((u["name"], u["source"], u["old"], u["new"], hint)):
                 it = QTableWidgetItem(v)
@@ -1977,7 +2033,7 @@ class UpdaterTab(Page):
         if self.checked_at is not None and hasattr(self.app, "show_sys_updates"):
             self.app.show_sys_updates(n, len(important))
         majors = [u for u in ups if u["kind"] == "major"]
-        reboot = [u["name"] for u in ups if u["name"] in REBOOT_PKGS]
+        reboot = [u["name"] for u in ups if needs_reboot(u["name"])]
         if self.checked_at is None:
             self.badge.set("off", "Noch nicht geprüft")
         elif n == 0:
@@ -2123,6 +2179,9 @@ class UpdaterTab(Page):
             return
 
         steps = []
+        snap = snapshot_before_update_step() if (pacman or aur) else None
+        if snap:
+            steps.append(snap)
         if pacman and aur:
             steps.append({"cmd": ["paru", "-Syu"], "needs_sudo": False, "interactive": True,
                           "label": "paru -Syu  (Repos + AUR)"})
@@ -2384,7 +2443,10 @@ class SoftwareTab(Page):
         row.addLayout(Field("Woher", self.inst_src))
         btns = QVBoxLayout()
         btns.addStretch(1)
-        btns.addWidget(Button("Installieren", "primary", self.install))
+        self.b_install = Button(install_text("pacman"), "primary", self.install)
+        self.inst_src.currentIndexChanged.connect(
+            lambda i: self.b_install.setText(install_text(("pacman", "aur", "flathub")[i])))
+        btns.addWidget(self.b_install)
         row.addLayout(btns)
         act.body.addLayout(row)
         self.cb_user_flatpak = QCheckBox("Flatpak: nur für mich installieren (--user, ohne Passwort)")
@@ -2755,7 +2817,7 @@ class FlatpakTab(Page):
         self.setup_text.setTextFormat(Qt.RichText)
         self.setup.body.addWidget(self.setup_text)
         sb = QHBoxLayout()
-        self.b_install_fp = Button("Flatpak installieren", "primary", self.install_flatpak)
+        self.b_install_fp = Button("Flatpak installieren (pacman)", "primary", self.install_flatpak)
         self.b_flathub = Button("Flathub hinzufügen", "primary", self.add_flathub)
         self.b_unused = Button("Ungenutzte Laufzeiten entfernen", "ghost", self.remove_unused)
         for b in (self.b_install_fp, self.b_flathub, self.b_unused):
@@ -3561,6 +3623,916 @@ class SwapTab(Page):
 
 
 # --------------------------------------------------------------------------
+# Modul: Wiederherstellung (System-Snapshots mit snapper oder Timeshift)
+# --------------------------------------------------------------------------
+
+SNAP_DESC = "Tuxdex"
+
+
+def _findmnt(target, col):
+    return _cmd_out(["findmnt", "-n", "-o", col, "--target", target]).strip()
+
+
+def _pkg_installed(name):
+    try:
+        return subprocess.run(["pacman", "-Q", name], capture_output=True, timeout=5).returncode == 0
+    except Exception:
+        return False
+
+
+def snapshot_env():
+    """Was ist da? Dateisystem, Werkzeug, Einrichtung, automatische Snapshots bei pacman."""
+    fs = _findmnt("/", "FSTYPE")
+    home_sep = _findmnt("/home", "TARGET") == "/home"
+    e = {"fs": fs, "home_separate": home_sep, "tool": None, "configured": False,
+         "snap_pac": False, "autosnap": False, "grub_btrfs": False}
+    if which("snapper"):
+        e["tool"] = "snapper"
+        e["configured"] = os.path.exists("/etc/snapper/configs/root")
+        e["snap_pac"] = _pkg_installed("snap-pac")
+        e["grub_btrfs"] = _pkg_installed("grub-btrfs")
+    elif which("timeshift"):
+        e["tool"] = "timeshift"
+        e["configured"] = os.path.exists("/etc/timeshift/timeshift.json")
+        e["autosnap"] = _pkg_installed("timeshift-autosnap")
+    return e
+
+
+def parse_snapper_json(text):
+    try:
+        data = json.loads(text)
+    except Exception:
+        return []
+    out = []
+    for s in data.get("root", []):
+        if not s.get("number"):
+            continue                    # 0 = aktueller Zustand
+        out.append({"id": str(s["number"]), "date": (s.get("date") or "")[:16],
+                    "desc": s.get("description") or "", "kind": s.get("type") or "",
+                    "pre": s.get("pre-number")})
+    return out
+
+
+def parse_timeshift_list(text):
+    out = []
+    for line in text.splitlines():
+        m = re.match(r"^\s*\d+\s+>\s+(\S+)\s+([ODWMBH]*)\s*(.*)$", line)
+        if m:
+            name = m.group(1)
+            date = re.sub(r"^(\d{4}-\d\d-\d\d)_(\d\d)-(\d\d).*", r"\1 \2:\3", name)
+            out.append({"id": name, "date": date, "desc": m.group(3).strip(), "kind": m.group(2) or "",
+                        "pre": None})
+    return out
+
+
+def snapshot_create_cmd(tool, desc):
+    if tool == "snapper":
+        return ["snapper", "-c", "root", "create", "-d", desc, "--cleanup-algorithm", "number"]
+    return ["timeshift", "--create", "--comments", desc, "--scripted"]
+
+
+def snapshot_before_update_step():
+    """Schritt für das Update: Snapshot vorher – nur wenn eingerichtet und nicht schon snap-pac/autosnap das tun."""
+    if not load_settings().get("snap_before_update", True):
+        return None
+    e = snapshot_env()
+    if not e["tool"] or not e["configured"] or e["snap_pac"] or e["autosnap"]:
+        return None
+    return {"cmd": snapshot_create_cmd(e["tool"], f"{SNAP_DESC}: vor dem Update"), "needs_sudo": True,
+            "label": "Snapshot vor dem Update"}
+
+
+class RestoreTab(Page):
+    COLS = [("Nr.", 70), ("Datum", 180), ("Beschreibung", 420), ("Art", 90)]
+
+    def __init__(self, app):
+        super().__init__()
+        self.app = app
+        self.env = {}
+        self.snaps = []
+        self.badge = StatusBadge("off", "Lade …")
+        self.lay.addLayout(page_header("Systemwiederherstellung", self.badge,
+                                       Button("↻", "icon", self.refresh, "Aktualisieren")))
+
+        intro = Panel("So funktioniert es")
+        intro.body.addWidget(Label(
+            "Ein Snapshot hält den Stand deines Systems fest – in Sekunden und fast ohne Speicherplatz. "
+            "Geht nach einem Update etwas kaputt, setzt du das System mit einem Klick auf den Stand davor zurück. "
+            "Deine eigenen Dateien in /home bleiben dabei unberührt.", "Hint", wrap=True))
+        self.lay.addWidget(intro)
+
+        top = QHBoxLayout()
+        top.setSpacing(16)
+        st = Panel("Status")
+        self.rows = {}
+        for key, label in (("fs", "Dateisystem"), ("tool", "Werkzeug"), ("auto", "Automatisch vor Updates"),
+                           ("count", "Snapshots")):
+            r = QHBoxLayout()
+            r.addWidget(Label(label.upper(), "FieldLabel"))
+            r.addStretch(1)
+            v = Label("…", "Value")
+            r.addWidget(v)
+            self.rows[key] = v
+            st.body.addLayout(r)
+        self.setup_hint = Label("", "Hint", wrap=True)
+        st.body.addWidget(self.setup_hint)
+        b = QHBoxLayout()
+        self.b_setup = Button("Einrichten", "primary", self.setup)
+        self.b_create = Button("Snapshot jetzt erstellen", "primary", self.create)
+        b.addWidget(self.b_setup)
+        b.addWidget(self.b_create)
+        b.addStretch(1)
+        st.body.addLayout(b)
+        top.addWidget(st, 1)
+
+        opt = Panel("Vor Updates")
+        self.cb_auto = QCheckBox("Vor jedem Update in Tuxdex automatisch einen Snapshot anlegen")
+        self.cb_auto.setChecked(bool(load_settings().get("snap_before_update", True)))
+        self.cb_auto.toggled.connect(self._auto_changed)
+        opt.body.addWidget(self.cb_auto)
+        self.auto_hint = Label("", "Hint", wrap=True)
+        opt.body.addWidget(self.auto_hint)
+        opt.body.addStretch(1)
+        top.addWidget(opt, 1)
+        self.lay.addLayout(top)
+
+        lp = Panel("Snapshots")
+        self.table = QTableWidget(0, len(self.COLS))
+        self.table.setHorizontalHeaderLabels([c[0].upper() for c in self.COLS])
+        self.table.verticalHeader().setVisible(False)
+        self.table.setShowGrid(False)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table.verticalHeader().setDefaultSectionSize(32)
+        hh = self.table.horizontalHeader()
+        hh.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        for i, (_, w) in enumerate(self.COLS):
+            self.table.setColumnWidth(i, w)
+        hh.setStretchLastSection(True)
+        self.table.setMinimumHeight(260)
+        lp.body.addWidget(self.table)
+        self.list_hint = Label("", "Hint", wrap=True)
+        lp.body.addWidget(self.list_hint)
+        b = QHBoxLayout()
+        self.b_restore = Button("Auf diesen Stand zurücksetzen", "danger", self.restore)
+        self.b_delete = Button("Löschen", "ghost", self.delete)
+        self.b_login = Button("Anmelden und Snapshots anzeigen", "primary", self._login)
+        b.addWidget(self.b_restore)
+        b.addWidget(self.b_delete)
+        b.addWidget(self.b_login)
+        b.addStretch(1)
+        lp.body.addLayout(b)
+        self.lay.addWidget(lp)
+
+        out = Panel("Ausgabe")
+        self.log = LogView(140)
+        out.body.addWidget(self.log)
+        self.lay.addWidget(out)
+        self.refresh()
+
+    # --- Zustand ---------------------------------------------------------
+    def refresh(self):
+        def worker():
+            e = snapshot_env()
+            ui(lambda: self._show_env(e))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _show_env(self, e):
+        self.env = e
+        tool = e["tool"]
+        self.rows["fs"].setText(e["fs"] or "—")
+        if not tool:
+            self.rows["tool"].setText("Nicht installiert")
+        else:
+            self.rows["tool"].setText(("Snapper" if tool == "snapper" else "Timeshift")
+                                      + ("" if e["configured"] else " (nicht eingerichtet)"))
+        ready = bool(tool and e["configured"])
+        if e["snap_pac"]:
+            auto = "Ja – snap-pac (bei jeder Paketänderung)"
+        elif e["autosnap"]:
+            auto = "Ja – timeshift-autosnap"
+        elif ready and self.cb_auto.isChecked():
+            auto = "Ja – bei Updates über Tuxdex"
+        else:
+            auto = "Nein"
+        self.rows["auto"].setText(auto)
+        self.b_setup.setVisible(not ready)
+        self.b_setup.setText("Timeshift öffnen" if tool == "timeshift" and not e["configured"]
+                             else "Einrichten (pacman)")
+        self.b_create.setVisible(ready)
+        self.cb_auto.setEnabled(ready and not (e["snap_pac"] or e["autosnap"]))
+        if e["snap_pac"] or e["autosnap"]:
+            self.auto_hint.setText("Das übernimmt bereits " + ("snap-pac" if e["snap_pac"] else "timeshift-autosnap")
+                                   + " – auch bei Updates im Terminal. Tuxdex legt deshalb keinen zusätzlichen an.")
+        else:
+            self.auto_hint.setText("Tuxdex legt den Snapshot direkt vor „Update starten“ an. Updates im Terminal "
+                                   "sind damit nicht abgedeckt – dafür beim Einrichten snap-pac mitinstallieren.")
+        if ready:
+            self.setup_hint.setText("")
+            self.badge.set("ok", "Eingerichtet")
+        elif e["fs"] == "btrfs":
+            self.setup_hint.setText("Dein System liegt auf btrfs – ideal. „Einrichten“ installiert snapper und "
+                                    "snap-pac: dann entsteht vor und nach jeder Paketänderung automatisch ein Snapshot.")
+            self.badge.set("warn", "Nicht eingerichtet")
+        elif tool == "timeshift":
+            self.setup_hint.setText("Timeshift ist installiert, aber noch nicht eingerichtet. „Einrichten“ öffnet "
+                                    "Timeshift – dort einmal den Speicherort wählen.")
+            self.badge.set("warn", "Nicht eingerichtet")
+        else:
+            self.setup_hint.setText(f"Dein System liegt auf {e['fs'] or 'einem Dateisystem'} ohne eigene Snapshots. "
+                                    "„Einrichten“ installiert Timeshift; die Snapshots landen dann als Kopie auf "
+                                    "der Festplatte (braucht mehr Platz als bei btrfs).")
+            self.badge.set("warn", "Nicht eingerichtet")
+        self.load_snapshots()
+
+    def load_snapshots(self):
+        e = self.env
+        self.table.setRowCount(0)
+        self.snaps = []
+        ready = bool(e.get("tool") and e.get("configured"))
+        self.b_restore.setEnabled(False)
+        self.b_delete.setEnabled(False)
+        self.b_login.hide()
+        if not ready:
+            self.rows["count"].setText("—")
+            self.list_hint.setText("Noch keine Snapshots – erst einrichten.")
+            return
+        cmd = (["snapper", "--jsonout", "-c", "root", "list", "--disable-used-space"] if e["tool"] == "snapper"
+               else ["timeshift", "--list", "--scripted"])
+        self.list_hint.setText("Lade …")
+
+        def cb(rc, out, err):
+            if rc != 0:
+                self.rows["count"].setText("?")
+                self.list_hint.setText("Zum Anzeigen der Snapshots sind root-Rechte nötig.")
+                self.b_login.show()
+                return
+            self._fill(parse_snapper_json(out) if e["tool"] == "snapper" else parse_timeshift_list(out))
+        run_capture_async(cmd, cb, needs_sudo=True, timeout=60)
+
+    def _fill(self, snaps):
+        self.snaps = list(reversed(snaps))          # neueste oben
+        self.rows["count"].setText(str(len(snaps)))
+        kinds = {"pre": "vorher", "post": "nachher", "single": "einzeln"}
+        for s in self.snaps:
+            r = self.table.rowCount()
+            self.table.insertRow(r)
+            for c, v in enumerate((s["id"], s["date"], s["desc"], kinds.get(s["kind"], s["kind"]))):
+                self.table.setItem(r, c, QTableWidgetItem(v))
+        if self.snaps:
+            self.table.selectRow(0)
+        on = bool(self.snaps)
+        self.b_restore.setEnabled(on)
+        self.b_delete.setEnabled(on)
+        self.list_hint.setText("" if on else "Noch keine Snapshots vorhanden.")
+        if self.env.get("tool") == "snapper" and not self.env.get("home_separate"):
+            self.b_restore.setEnabled(False)
+            self.list_hint.setText("Zurücksetzen ist gesperrt: /home liegt nicht in einem eigenen Subvolume, "
+                                   "deine eigenen Dateien würden mit zurückgesetzt.")
+
+    def _selected(self):
+        r = self.table.currentRow()
+        return self.snaps[r] if 0 <= r < len(self.snaps) else None
+
+    def _login(self):
+        if self.app.priv.ensure(self):
+            self.load_snapshots()
+
+    def _auto_changed(self, on):
+        st = load_settings()
+        st["snap_before_update"] = bool(on)
+        save_settings(st)
+        if self.env:
+            self._show_env(self.env)
+
+    # --- Aktionen --------------------------------------------------------
+    def _run(self, steps, done=None):
+        def all_done():
+            self.refresh()
+            if done:
+                done()
+        run_sequence(steps, self.log, on_all_done=all_done)
+
+    def setup(self):
+        e = self.env
+        if e.get("tool") == "timeshift" and not e.get("configured"):
+            self._open_timeshift()
+            return
+        if e.get("fs") == "btrfs":
+            text = ("snapper und snap-pac installieren und für das System einrichten?\n\n"
+                    "Danach entsteht vor und nach jeder Paketänderung automatisch ein Snapshot. "
+                    "Alte Snapshots räumt snapper selbst auf.")
+            # @snapshots-Layout (archinstall u. a.): vorhandenes /.snapshots-Subvolume weiterverwenden
+            conf = ("if [ ! -e /etc/snapper/configs/root ]; then "
+                    "if mountpoint -q /.snapshots; then umount /.snapshots && rmdir /.snapshots && "
+                    "snapper -c root create-config / && btrfs subvolume delete /.snapshots && "
+                    "mkdir /.snapshots && mount -a && chmod 750 /.snapshots; "
+                    "else snapper -c root create-config /; fi; fi")
+            steps = [{"cmd": ["pacman", "-S", "--needed", "snapper", "snap-pac"], "needs_sudo": True,
+                      "interactive": True, "label": "sudo pacman -S snapper snap-pac"},
+                     {"cmd": ["bash", "-c", conf], "needs_sudo": True, "label": "snapper -c root create-config /"},
+                     {"cmd": snapshot_create_cmd("snapper", f"{SNAP_DESC}: erster Snapshot"), "needs_sudo": True,
+                      "label": "Erster Snapshot"}]
+        else:
+            text = ("Timeshift installieren?\n\nDanach öffnet sich Timeshift einmal, um den Speicherort "
+                    "für die Snapshots festzulegen.")
+            steps = [{"cmd": ["pacman", "-S", "--needed", "timeshift"], "needs_sudo": True, "interactive": True,
+                      "label": "sudo pacman -S timeshift"}]
+        if not ask_confirm(self, "Wiederherstellung einrichten", text, "Einrichten"):
+            return
+        if not self.app.priv.ensure(self):
+            return
+        self._run(steps, done=lambda: e.get("fs") != "btrfs" and which("timeshift") and self._open_timeshift())
+
+    def _open_timeshift(self):
+        from PySide6.QtCore import QProcess
+        exe = "timeshift-launcher" if which("timeshift-launcher") else "timeshift-gtk"
+        QProcess.startDetached(exe, [])
+        self.app.set_status("Timeshift ist geöffnet – nach dem Einrichten hier auf ↻ klicken.")
+
+    def create(self):
+        if not self.app.priv.ensure(self):
+            return
+        self._run([{"cmd": snapshot_create_cmd(self.env["tool"], f"{SNAP_DESC}: manuell"), "needs_sudo": True,
+                    "label": "Snapshot erstellen"}])
+
+    def delete(self):
+        s = self._selected()
+        if not s or not ask_confirm(self, "Snapshot löschen", f"Snapshot {s['id']} vom {s['date']} löschen?",
+                                    "Löschen", danger=True):
+            return
+        if not self.app.priv.ensure(self):
+            return
+        cmd = (["snapper", "-c", "root", "delete", s["id"]] if self.env["tool"] == "snapper"
+               else ["timeshift", "--delete", "--snapshot", s["id"], "--scripted"])
+        self._run([{"cmd": cmd, "needs_sudo": True, "label": f"Snapshot {s['id']} löschen"}])
+
+    def restore(self):
+        s = self._selected()
+        if not s:
+            return
+        tool = self.env["tool"]
+        text = (f"System auf den Stand vom {s['date']} zurücksetzen?\n\n„{s['desc']}“\n\n"
+                "Alle Systemänderungen seit diesem Snapshot werden rückgängig gemacht – auch installierte "
+                "Updates und Programme. Deine Dateien in /home bleiben unberührt.\n\n"
+                "Danach bitte neu starten.")
+        if tool == "timeshift":
+            text += "\n\nTimeshift startet den Rechner nach dem Zurücksetzen selbst neu."
+        if not ask_confirm(self, "Zurücksetzen", text, "Zurücksetzen", danger=True):
+            return
+        if not self.app.priv.ensure(self):
+            return
+        if tool == "snapper":
+            cmd = ["snapper", "-c", "root", "undochange", f"{s['id']}..0"]
+        else:
+            cmd = ["timeshift", "--restore", "--snapshot", s["id"], "--scripted", "--yes"]
+        self._run([{"cmd": snapshot_create_cmd(tool, f"{SNAP_DESC}: vor dem Zurücksetzen"), "needs_sudo": True,
+                    "label": "Sicherheits-Snapshot des jetzigen Stands"},
+                   {"cmd": cmd, "needs_sudo": True, "label": f"Zurücksetzen auf {s['id']}"}],
+                  done=lambda: self.app.set_status("Zurückgesetzt – bitte jetzt neu starten."))
+
+
+# --------------------------------------------------------------------------
+# Modul: Einrichten (Basics mit einem Klick, Ersatz für Windows-Programme)
+# --------------------------------------------------------------------------
+
+# (Kennung, Titel, Beschreibung, pacman-Pakete)
+BASICS = [
+    ("fonts", "Schriften für Office-Dokumente",
+     "Liberation (passt in der Breite zu Arial, Times New Roman und Courier New), Noto mit Emojis und DejaVu – "
+     "Word-Dokumente sehen damit aus wie unter Windows.",
+     ["ttf-liberation", "noto-fonts", "noto-fonts-emoji", "ttf-dejavu"]),
+    ("codecs", "Audio- und Video-Codecs",
+     "Damit spielen MP3, MP4, H.264/H.265 und Co. in allen Programmen ab.",
+     ["gst-plugins-good", "gst-plugins-bad", "gst-plugins-ugly", "gst-libav", "ffmpeg"]),
+    ("power", "Energieprofile",
+     "Zwischen Energiesparen, Ausgewogen und Leistung umschalten – wie unter Windows. "
+     "Nicht zusammen mit TLP nutzen.",
+     ["power-profiles-daemon"]),
+]
+
+# Windows-Programm → Alternativen: (Name, Beschreibung, Quelle, Paket/App-ID)
+# Quelle: "pacman", "flathub", "web" (nur Link) oder "tuxdex" (eingebaut, Modulkennung)
+ALTERNATIVES = [
+    (("Photoshop", "Bildbearbeitung"), [
+        ("GIMP", "Klassische Bildbearbeitung", "pacman", "gimp"),
+        ("Krita", "Malen und Bildbearbeitung", "pacman", "krita"),
+        ("Photopea", "Photoshop-ähnlich im Browser, öffnet PSD", "web", "https://www.photopea.com")]),
+    (("Lightroom", "RAW", "Fotos entwickeln"), [
+        ("darktable", "RAW-Fotos entwickeln und verwalten", "pacman", "darktable"),
+        ("RawTherapee", "RAW-Entwicklung", "pacman", "rawtherapee")]),
+    (("Illustrator", "CorelDRAW", "Vektorgrafik"), [
+        ("Inkscape", "Vektorgrafik, öffnet SVG und AI", "pacman", "inkscape")]),
+    (("Paint",), [
+        ("KolourPaint", "Einfach malen wie in Paint", "pacman", "kolourpaint"),
+        ("Pinta", "Wie Paint.NET", "flathub", "com.github.PintaProject.Pinta")]),
+    (("Microsoft Office", "Office", "Word", "Excel", "PowerPoint"), [
+        ("LibreOffice", "Texte, Tabellen, Präsentationen – öffnet DOCX, XLSX, PPTX", "pacman", "libreoffice-fresh"),
+        ("OnlyOffice", "Sieht aus wie Microsoft Office", "flathub", "org.onlyoffice.desktopeditors")]),
+    (("Outlook", "E-Mail"), [
+        ("Thunderbird", "E-Mail, Kalender, Kontakte", "pacman", "thunderbird")]),
+    (("OneNote", "Notizen", "Evernote"), [
+        ("Joplin", "Notizen mit Synchronisierung", "flathub", "net.cozic.joplin_desktop"),
+        ("Obsidian", "Notizen und Wissenssammlung", "pacman", "obsidian")]),
+    (("Adobe Reader", "Acrobat", "PDF"), [
+        ("Okular", "PDFs lesen und kommentieren", "pacman", "okular")]),
+    (("Premiere", "Vegas", "Videoschnitt"), [
+        ("Kdenlive", "Videoschnitt", "pacman", "kdenlive"),
+        ("Shotcut", "Einfacher Videoschnitt", "pacman", "shotcut")]),
+    (("Audition", "Audio bearbeiten"), [
+        ("Audacity", "Audio aufnehmen und schneiden", "pacman", "audacity")]),
+    (("OBS", "Bildschirm aufnehmen", "Streaming"), [
+        ("OBS Studio", "Aufnehmen und streamen", "pacman", "obs-studio")]),
+    (("Windows Media Player", "Video abspielen", "Musik"), [
+        ("VLC", "Spielt praktisch alles ab", "pacman", "vlc"),
+        ("Strawberry", "Musiksammlung wie iTunes", "pacman", "strawberry")]),
+    (("iTunes",), [
+        ("Strawberry", "Musiksammlung verwalten", "pacman", "strawberry")]),
+    (("Spotify",), [
+        ("Spotify", "Gibt es auch für Linux", "flathub", "com.spotify.Client")]),
+    (("Notepad++", "Editor", "Notepad"), [
+        ("Kate", "Starker Text-Editor", "pacman", "kate")]),
+    (("Visual Studio", "VS Code", "Programmieren"), [
+        ("Code – OSS", "Open-Source-Version von VS Code", "pacman", "code"),
+        ("VS Code", "Die Microsoft-Version", "flathub", "com.visualstudio.code")]),
+    (("WinRAR", "7-Zip", "ZIP", "Entpacken"), [
+        ("Ark", "Archive packen und entpacken", "pacman", "ark"),
+        ("7-Zip", "7-Zip für die Kommandozeile", "pacman", "7zip")]),
+    (("Explorer", "Dateien"), [
+        ("Dolphin", "Dateimanager von KDE", "pacman", "dolphin")]),
+    (("Snipping Tool", "Screenshot"), [
+        ("Spectacle", "Screenshots und Bildschirmaufnahmen", "pacman", "spectacle")]),
+    (("Chrome", "Edge", "Browser"), [
+        ("Firefox", "Schneller, privater Browser", "pacman", "firefox"),
+        ("Chromium", "Open-Source-Basis von Chrome", "pacman", "chromium")]),
+    (("Teams",), [
+        ("Teams for Linux", "Inoffizielle Teams-App", "flathub", "com.github.IsmaelMartinez.teams_for_linux")]),
+    (("Zoom",), [
+        ("Zoom", "Gibt es auch für Linux", "flathub", "us.zoom.Zoom")]),
+    (("Discord",), [
+        ("Discord", "Gibt es auch für Linux", "pacman", "discord")]),
+    (("Telegram",), [
+        ("Telegram", "Gibt es auch für Linux", "pacman", "telegram-desktop")]),
+    (("KeePass", "1Password", "Passwörter"), [
+        ("KeePassXC", "Passwort-Manager", "pacman", "keepassxc")]),
+    (("FileZilla", "WinSCP", "FTP"), [
+        ("FileZilla", "Gibt es auch für Linux", "pacman", "filezilla")]),
+    (("AutoCAD", "CAD"), [
+        ("FreeCAD", "3D-Konstruktion", "pacman", "freecad"),
+        ("LibreCAD", "2D-Zeichnungen", "pacman", "librecad")]),
+    (("Steam", "Spiele"), [
+        ("Steam", "Spiele-Plattform mit Proton für Windows-Spiele", "flathub", "com.valvesoftware.Steam")]),
+    (("Task-Manager", "Taskmanager"), [
+        ("Tuxdex-Taskmanager", "Ist in Tuxdex schon eingebaut", "tuxdex", "tasks")]),
+    (("Datenträgerverwaltung", "Laufwerke"), [
+        ("Tuxdex-Datenträger", "Ist in Tuxdex schon eingebaut", "tuxdex", "disks")]),
+    (("Systemwiederherstellung", "Wiederherstellungspunkt"), [
+        ("Tuxdex-Wiederherstellung", "Ist in Tuxdex schon eingebaut", "tuxdex", "restore")]),
+]
+
+# Standard-Apps: (Kennung, Titel, MIME-Typen) – der erste Typ entscheidet, was als „aktuell“ gilt
+DEFAULT_APP_TYPES = [
+    ("browser", "Browser", ["x-scheme-handler/http", "x-scheme-handler/https", "text/html"]),
+    ("mail", "E-Mail", ["x-scheme-handler/mailto"]),
+    ("pdf", "PDF", ["application/pdf"]),
+    ("image", "Bilder", ["image/jpeg", "image/png", "image/gif", "image/webp"]),
+    ("video", "Videos", ["video/mp4", "video/x-matroska", "video/webm", "video/quicktime"]),
+    ("audio", "Musik", ["audio/mpeg", "audio/flac", "audio/ogg", "audio/x-wav"]),
+    ("text", "Textdateien", ["text/plain"]),
+]
+
+
+def apps_for_mime(mime):
+    """[(Name, desktop-id)] aller Programme, die den MIME-Typ öffnen können."""
+    seen, res = set(), []
+    for d in APP_DIRS:
+        try:
+            files = sorted(os.listdir(d))
+        except OSError:
+            continue
+        for fn in files:
+            if not fn.endswith(".desktop") or fn in seen:
+                continue
+            e = read_desktop(os.path.join(d, fn))
+            if e.get("NoDisplay", "").lower() == "true" or mime not in e.get("MimeType", "").split(";"):
+                continue
+            seen.add(fn)
+            res.append((e.get("Name", fn[:-8]), fn))
+    return sorted(res, key=lambda x: x[0].lower())
+
+
+def default_app(mime):
+    return _cmd_out(["xdg-mime", "query", "default", mime]).strip() if which("xdg-mime") else ""
+
+
+def default_apps_state():
+    """{Kennung: (aktuelle desktop-id, [(Name, desktop-id)])}"""
+    return {key: (default_app(mimes[0]), apps_for_mime(mimes[0])) for key, _, mimes in DEFAULT_APP_TYPES}
+
+
+def multilib_enabled():
+    return any(line.strip() == "[multilib]" for line in _read("/etc/pacman.conf").splitlines())
+
+
+# Spiele: (Kennung, Name, Beschreibung, Quelle, Paket/App-ID, braucht multilib)
+GAMES = [
+    ("steam", "Steam", "Spiele-Plattform – mit Proton laufen viele Windows-Spiele", "pacman", "steam", True),
+    ("gamemode", "GameMode", "Holt beim Spielen mehr Leistung aus CPU und Grafikkarte", "pacman", "gamemode", False),
+    ("mangohud", "MangoHud", "FPS, Temperaturen und Auslastung im Spiel einblenden", "pacman", "mangohud", False),
+    ("lutris", "Lutris", "Spiele aus vielen Quellen (Battle.net, Ubisoft, GOG …) an einem Ort", "pacman", "lutris",
+     False),
+    ("heroic", "Heroic", "Epic Games, GOG und Amazon Prime Gaming", "flathub", "com.heroicgameslauncher.hgl", False),
+    ("bottles", "Bottles", "Windows-Programme und -Spiele in getrennten Umgebungen", "flathub",
+     "com.usebottles.bottles", False),
+    ("wine", "Wine", "Windows-Programme direkt starten (für Fortgeschrittene)", "pacman", "wine", True),
+]
+GAMES_RECOMMENDED = ("steam", "gamemode", "mangohud")
+# Steam ohne multilib: die Flathub-Version bringt ihre 32-Bit-Bibliotheken selbst mit
+STEAM_FLATHUB = "com.valvesoftware.Steam"
+
+
+POWER_PROFILES = [("power-saver", "Energiesparen"), ("balanced", "Ausgewogen"), ("performance", "Leistung")]
+
+
+SRC_LABEL = {"pacman": "pacman", "flathub": "Flatpak", "aur": "AUR"}
+
+
+def install_text(src):
+    """Knopftext mit Quelle, z. B. „Installieren (pacman)“ – man sieht immer, woher etwas kommt."""
+    return f"Installieren ({SRC_LABEL.get(src, src)})"
+
+
+def installed_pacman():
+    try:
+        return set(subprocess.run(["pacman", "-Qq"], capture_output=True, text=True, timeout=15).stdout.split())
+    except Exception:
+        return set()
+
+
+def installed_flatpaks():
+    if not which("flatpak"):
+        return set()
+    try:
+        return set(subprocess.run(["flatpak", "list", "--app", "--columns=application"],
+                                  capture_output=True, text=True, timeout=15).stdout.split())
+    except Exception:
+        return set()
+
+
+def power_profile():
+    return _cmd_out(["powerprofilesctl", "get"]).strip() if which("powerprofilesctl") else ""
+
+
+def find_alternatives(query):
+    q = query.strip().lower()
+    if not q:
+        return ALTERNATIVES
+    return [e for e in ALTERNATIVES if any(q in k.lower() or q in tr(k).lower() for k in e[0])
+            or any(q in a[0].lower() for a in e[1])]
+
+
+class SetupTab(Page):
+    def __init__(self, app):
+        super().__init__()
+        self.app = app
+        self.pac = set()
+        self.fp = set()
+        self.badge = StatusBadge("off", "Lade …")
+        self.lay.addLayout(page_header("Einrichten", self.badge))
+        self.lay.addWidget(Label("Was nach einem Umstieg von Windows fehlt – mit einem Klick erledigt.",
+                                 "Hint", wrap=True))
+
+        bp = Panel("Basics mit einem Klick")
+        self.basic_rows = {}
+        for key, title, desc, pkgs in BASICS:
+            row = QHBoxLayout()
+            row.setSpacing(12)
+            col = QVBoxLayout()
+            col.setSpacing(2)
+            t = Label(title)
+            t.setStyleSheet("font-weight:600;")
+            col.addWidget(t)
+            col.addWidget(Label(desc, "Hint", wrap=True))
+            row.addLayout(col, 1)
+            b = Button(install_text("pacman"), "primary", lambda _=False, k=key: self.install_basic(k))
+            b.setMinimumWidth(130)
+            row.addWidget(b, 0, Qt.AlignVCenter)
+            badge = StatusBadge("off", "…")
+            badge.setMinimumWidth(110)
+            row.addWidget(badge, 0, Qt.AlignVCenter)
+            bp.body.addLayout(row)
+            bp.body.addSpacing(6)
+            self.basic_rows[key] = (badge, b)
+        self.power_row = QHBoxLayout()
+        self.power_row.addWidget(Label("Aktuelles Profil".upper(), "FieldLabel"))
+        self.power_seg = Segmented([p[1] for p in POWER_PROFILES], self.set_power)
+        self.power_row.addWidget(self.power_seg)
+        self.power_row.addStretch(1)
+        self.power_box = QWidget()
+        self.power_box.setLayout(self.power_row)
+        self.power_box.hide()
+        bp.body.addWidget(self.power_box)
+        self.lay.addWidget(bp)
+
+        dp = self.defaults_panel = Panel("Standard-Apps")
+        dp.body.addWidget(Label("Womit sich Links, PDFs, Bilder und Co. öffnen. Änderungen gelten sofort.",
+                                "Hint", wrap=True))
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(16)
+        grid.setVerticalSpacing(8)
+        self.default_cbs = {}
+        for i, (key, title, _) in enumerate(DEFAULT_APP_TYPES):
+            cb = QComboBox()
+            cb.setMinimumHeight(34)
+            cb.currentIndexChanged.connect(lambda _=0, k=key: self.set_default_app(k))
+            grid.addWidget(Label(title.upper(), "FieldLabel"), i // 2, (i % 2) * 2)
+            grid.addWidget(cb, i // 2, (i % 2) * 2 + 1)
+            self.default_cbs[key] = cb
+        grid.setColumnStretch(1, 1)
+        grid.setColumnStretch(3, 1)
+        dp.body.addLayout(grid)
+        self.lay.addWidget(dp)
+
+        gp = Panel("Spiele")
+        gp.body.addWidget(Label("Steam mit Proton startet die meisten Windows-Spiele. Spiele mit Kernel-Anti-Cheat "
+                                "wie Valorant, League of Legends oder Fortnite laufen unter Linux aber nicht – vor "
+                                "dem Kauf auf areweanticheatyet.com oder protondb.com nachsehen.", "Hint", wrap=True))
+        self.multilib_row = QHBoxLayout()
+        self.multilib_label = Label("", "Hint", wrap=True)
+        self.multilib_row.addWidget(self.multilib_label, 1)
+        self.b_multilib = Button("32-Bit-Unterstützung einschalten", "primary", self.enable_multilib)
+        self.multilib_row.addWidget(self.b_multilib)
+        gp.body.addLayout(self.multilib_row)
+        self.game_rows = {}
+        for key, name, desc, _, _, _ in GAMES:
+            r = QHBoxLayout()
+            r.setSpacing(10)
+            n = Label(name)
+            n.setMinimumWidth(110)
+            r.addWidget(n)
+            r.addWidget(Label(desc, "Hint"), 1)
+            b = Button("Installieren", "primary", lambda _=False, k=key: self.install_games([k]))
+            b.setMinimumWidth(130)
+            r.addWidget(b)
+            gp.body.addLayout(r)
+            self.game_rows[key] = b
+        r = QHBoxLayout()
+        self.b_games = Button("", "primary",
+                              lambda: self.install_games(list(GAMES_RECOMMENDED)))
+        r.addWidget(self.b_games)
+        r.addWidget(Button("ProtonDB öffnen", "ghost", lambda: subprocess.Popen(
+            ["xdg-open", "https://www.protondb.com"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)))
+        r.addStretch(1)
+        gp.body.addLayout(r)
+        self.lay.addWidget(gp)
+
+        ap = Panel("Ersatz für Windows-Programme")
+        ap.body.addWidget(Label("Gib ein, was du unter Windows benutzt hast – z. B. „Photoshop“ oder „Office“.",
+                                "Hint", wrap=True))
+        self.search = LineEdit("", "Windows-Programm suchen …")
+        self.search.textChanged.connect(self.render_alternatives)
+        ap.body.addWidget(self.search)
+        self.alt_box = QVBoxLayout()
+        self.alt_box.setSpacing(10)
+        ap.body.addLayout(self.alt_box)
+        self.lay.addWidget(ap)
+
+        out = Panel("Ausgabe")
+        self.log = LogView(140)
+        out.body.addWidget(self.log)
+        self.lay.addWidget(out)
+        self.refresh()
+
+    def refresh(self):
+        def worker():
+            pac, fp, prof = installed_pacman(), installed_flatpaks(), power_profile()
+            defaults, ml = default_apps_state(), multilib_enabled()
+            ui(lambda: (self._apply_defaults(defaults), self._apply_games(pac, fp, ml), self._apply(pac, fp, prof)))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _apply(self, pac, fp, prof):
+        self.pac, self.fp = pac, fp
+        done = 0
+        for key, _, _, pkgs in BASICS:
+            badge, b = self.basic_rows[key]
+            missing = [p for p in pkgs if p not in pac]
+            if not missing:
+                badge.set("ok", "Installiert")
+                done += 1
+            elif len(missing) < len(pkgs):
+                badge.set("warn", f"{len(pkgs) - len(missing)} von {len(pkgs)}")
+            else:
+                badge.set("off", "Fehlt")
+            b.setVisible(bool(missing))
+        self.badge.set("ok" if done == len(BASICS) else "info", f"{done} von {len(BASICS)} Basics")
+        ids = [p[0] for p in POWER_PROFILES]
+        self.power_box.setVisible(prof in ids)
+        if prof in ids:
+            self.power_seg.set(ids.index(prof))
+        self.render_alternatives()
+
+    def _apply_defaults(self, state):
+        for key, cb in self.default_cbs.items():
+            cur, apps = state.get(key, ("", []))
+            cb.blockSignals(True)
+            cb.clear()
+            if not apps:
+                cb.addItem("Kein passendes Programm installiert", "")
+            elif cur not in [a[1] for a in apps]:
+                cb.addItem("Nicht festgelegt", "")
+            for name, ident in apps:
+                cb.addItem(name, ident)
+            idx = cb.findData(cur)
+            cb.setCurrentIndex(idx if idx >= 0 else 0)
+            cb.setEnabled(bool(apps))
+            cb.blockSignals(False)
+
+    def _apply_games(self, pac, fp, ml):
+        self.multilib = ml
+        self.multilib_label.setText("" if ml else "Steam und Wine aus den Arch-Paketquellen brauchen die "
+                                    "32-Bit-Unterstützung (multilib). Ohne sie installiert Tuxdex Steam von Flathub.")
+        self.b_multilib.setVisible(not ml)
+        self.multilib_label.setVisible(not ml)
+        missing = []
+        for key, name, _, src, ident, _ in GAMES:
+            have = ident in pac if src == "pacman" else ident in fp
+            if key == "steam":
+                have = "steam" in pac or STEAM_FLATHUB in fp
+            b = self.game_rows[key]
+            b.setEnabled(not have)
+            if key == "steam" and not ml:
+                src = "flathub"                      # ohne multilib kommt Steam von Flathub
+            b.setText("Installiert" if have else install_text(src))
+            b.setProperty("variant", "ghost" if have else "primary")
+            repolish(b)
+            if key in GAMES_RECOMMENDED and not have:
+                missing.append(f"{name} ({SRC_LABEL[src]})")
+        self.b_games.setVisible(bool(missing))
+        self.b_games.setText("Empfohlen installieren: " + ", ".join(missing))
+
+    def set_default_app(self, key):
+        cb = self.default_cbs[key]
+        ident = cb.currentData()
+        if not ident:
+            return
+        mimes = next(m for k, _, m in DEFAULT_APP_TYPES if k == key)
+        cmds = [["xdg-mime", "default", ident] + mimes]
+        if key == "browser" and which("xdg-settings"):
+            cmds.append(["xdg-settings", "set", "default-web-browser", ident])
+
+        def worker():
+            ok = True
+            for c in cmds:
+                try:
+                    ok = subprocess.run(c, capture_output=True, timeout=15).returncode == 0 and ok
+                except Exception:
+                    ok = False
+            ui(lambda: self.app.set_status(f"Standard für {cb.currentText()} gesetzt." if ok
+                                           else "Standard-App ließ sich nicht setzen."))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def enable_multilib(self):
+        if not ask_confirm(self, "32-Bit-Unterstützung", "Die Paketquelle „multilib“ in /etc/pacman.conf "
+                           "einschalten?\n\nSie enthält 32-Bit-Bibliotheken, die Steam und Wine brauchen. "
+                           "Vorher wird eine Sicherung als /etc/pacman.conf.tuxdex.bak angelegt.", "Einschalten"):
+            return
+        if not self.app.priv.ensure(self):
+            return
+        script = ("grep -q '^\\[multilib\\]' /etc/pacman.conf || "
+                  "(cp -a /etc/pacman.conf /etc/pacman.conf.tuxdex.bak && "
+                  "sed -i '/^#\\[multilib\\]$/,/^#Include/ s/^#//' /etc/pacman.conf)")
+        # danach ein volles -Syu: nur -Sy und dann installieren wäre ein Teil-Update
+        self._run([{"cmd": ["bash", "-c", script], "needs_sudo": True, "label": "multilib einschalten"},
+                   {"cmd": ["pacman", "-Syu"], "needs_sudo": True, "interactive": True, "label": "sudo pacman -Syu"}])
+
+    def install_games(self, keys):
+        pac_pkgs, fp_ids = [], []
+        for key, name, _, src, ident, needs_ml in GAMES:
+            if key not in keys or not self.game_rows[key].isEnabled():
+                continue
+            if key == "steam" and not getattr(self, "multilib", True):
+                fp_ids.append(STEAM_FLATHUB)
+            elif needs_ml and not getattr(self, "multilib", True):
+                continue
+            elif src == "pacman":
+                pac_pkgs.append(ident)
+            else:
+                fp_ids.append(ident)
+        if "gamemode" in pac_pkgs and getattr(self, "multilib", False):
+            pac_pkgs.append("lib32-gamemode")
+        if not pac_pkgs and not fp_ids:
+            if any(GAMES[[g[0] for g in GAMES].index(k)][5] for k in keys):
+                show_info(self, "32-Bit-Unterstützung", "Dafür zuerst die 32-Bit-Unterstützung einschalten.")
+            return
+        text = "\n".join(([f"pacman: {', '.join(pac_pkgs)}"] if pac_pkgs else [])
+                         + ([f"Flatpak (Flathub): {', '.join(fp_ids)}"] if fp_ids else []))
+        if not ask_confirm(self, "Spiele einrichten", f"Installieren?\n\n{text}", "Installieren"):
+            return
+        if not self.app.priv.ensure(self):
+            return
+        steps = []
+        if pac_pkgs:
+            steps.append({"cmd": ["pacman", "-S", "--needed", "--"] + pac_pkgs, "needs_sudo": True,
+                          "interactive": True, "label": "sudo pacman -S " + " ".join(pac_pkgs)})
+        if fp_ids:
+            if not which("flatpak"):
+                show_warning(self, "Flatpak fehlt", "Flatpak fehlt – im Tab „Flatpak“ einrichten.")
+                return
+            steps.append({"cmd": ["flatpak", "install", "-y", "flathub"] + fp_ids, "needs_sudo": True,
+                          "interactive": True, "label": "flatpak install flathub " + " ".join(fp_ids)})
+        self._run(steps)
+
+    def render_alternatives(self, *_):
+        clear_layout(self.alt_box)
+        hits = find_alternatives(self.search.text())
+        if not hits:
+            self.alt_box.addWidget(Label("Dazu kenne ich noch keinen Ersatz. Im Tab „Software“ kannst du "
+                                         "frei nach Programmen suchen.", "Muted", wrap=True))
+            return
+        for keys, alts in hits[:12]:
+            card = QFrame()
+            card.setObjectName("Panel")
+            cl = QVBoxLayout(card)
+            cl.setContentsMargins(14, 10, 14, 10)
+            cl.setSpacing(6)
+            head = Label(f"Statt {keys[0]}")
+            head.setStyleSheet("font-weight:600;")
+            cl.addWidget(head)
+            for name, desc, src, ident in alts:
+                r = QHBoxLayout()
+                r.setSpacing(10)
+                r.addWidget(Label(name), 0)
+                r.addWidget(Label(desc, "Hint"), 1)
+                r.addWidget(self._alt_button(name, src, ident), 0)
+                cl.addLayout(r)
+            self.alt_box.addWidget(card)
+        if len(hits) > 12:
+            self.alt_box.addWidget(Label(f"… und {len(hits) - 12} weitere – einfach suchen.", "Hint"))
+
+    def _alt_button(self, name, src, ident):
+        if src == "web":
+            return Button("Im Browser öffnen", "ghost", lambda: subprocess.Popen(
+                ["xdg-open", ident], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+        if src == "tuxdex":
+            return Button("Öffnen", "ghost", lambda: self.app.select([m[0] for m in MODULES].index(ident)))
+        have = ident in (self.pac if src == "pacman" else self.fp)
+        if have:
+            b = Button("Installiert", "ghost")
+            b.setEnabled(False)
+            return b
+        b = Button(install_text(src), "primary", lambda: self.install_alt(name, src, ident))
+        if src == "flathub" and not which("flatpak"):
+            b.setEnabled(False)
+            b.setToolTip("Flatpak fehlt – im Tab „Flatpak“ einrichten.")
+        return b
+
+    # --- Aktionen --------------------------------------------------------
+    def _run(self, steps):
+        def all_done():
+            self.refresh()
+            self.app.set_status("Fertig.")
+        run_sequence(steps, self.log, on_all_done=all_done)
+
+    def install_basic(self, key):
+        _, title, _, pkgs = next(b for b in BASICS if b[0] == key)
+        missing = [p for p in pkgs if p not in self.pac]
+        if not missing or not ask_confirm(self, title, f"Installieren?\n\npacman: {', '.join(missing)}",
+                                          "Installieren"):
+            return
+        if not self.app.priv.ensure(self):
+            return
+        steps = [{"cmd": ["pacman", "-S", "--needed", "--"] + missing, "needs_sudo": True, "interactive": True,
+                  "label": "sudo pacman -S " + " ".join(missing)}]
+        if key == "power":
+            steps.append({"cmd": ["systemctl", "enable", "--now", "power-profiles-daemon"], "needs_sudo": True,
+                          "label": "systemctl enable --now power-profiles-daemon"})
+        self._run(steps)
+
+    def install_alt(self, name, src, ident):
+        where = "aus den Arch-Paketquellen (pacman)" if src == "pacman" else "als Flatpak von Flathub"
+        if not ask_confirm(self, name, f"{name} {where} installieren?", "Installieren"):
+            return
+        if not self.app.priv.ensure(self):
+            return
+        if src == "pacman":
+            step = {"cmd": ["pacman", "-S", "--needed", "--", ident], "needs_sudo": True, "interactive": True,
+                    "label": f"sudo pacman -S {ident}"}
+        else:
+            step = {"cmd": ["flatpak", "install", "-y", "flathub", ident], "needs_sudo": True, "interactive": True,
+                    "label": f"flatpak install flathub {ident}"}
+        self._run([step])
+
+    def set_power(self, idx):
+        prof = POWER_PROFILES[idx][0]
+
+        def cb(rc, out, err):
+            self.app.set_status(f"Energieprofil: {POWER_PROFILES[idx][1]}." if rc == 0
+                                else f"Energieprofil ließ sich nicht setzen: {err.strip()}")
+        run_capture_async(["powerprofilesctl", "set", prof], cb)
+
+
+# --------------------------------------------------------------------------
 # Modul: Benutzer
 # --------------------------------------------------------------------------
 
@@ -4279,6 +5251,141 @@ def _du_size(path, use_sudo, timeout=120):
 _SIZE_UNITS = {"B": 1, "KiB": 1024, "MiB": 1024 ** 2, "GiB": 1024 ** 3, "TiB": 1024 ** 4}
 
 
+# Kategorien fürs Tortendiagramm: (Kennung, Titel, Farbe)
+STORAGE_CATS = [
+    ("os", "Betriebssystem", "#5aa6f0"),
+    ("apps", "Anwendungen", "#b5d86b"),
+    ("sys", "Systemdaten", "#e9c46a"),
+    ("media", "Fotos & Videos", "#e87fa8"),
+    ("home", "Weitere eigene Dateien", "#56c2d6"),
+    ("other", "Sonstiges", "#8a99a1"),
+    ("free", "Frei", "#2f3c43"),
+]
+MEDIA_EXT = ("jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "avif", "bmp", "tif", "tiff", "svg", "raw",
+             "cr2", "cr3", "nef", "arw", "dng", "orf", "rw2", "mp4", "mkv", "mov", "avi", "webm", "m4v", "wmv",
+             "mts", "m2ts", "3gp", "flv")
+
+
+def _fs_usage(path):
+    try:
+        st = os.statvfs(path)
+        return (st.f_blocks - st.f_bfree) * st.f_frsize, st.f_bavail * st.f_frsize, os.stat(path).st_dev
+    except OSError:
+        return 0, 0, None
+
+
+def _media_bytes(home):
+    """Summe aller Bilder, GIFs und Videos im Home (versteckte Ordner wie ~/.cache zählen nicht)."""
+    names = []
+    for ext in MEDIA_EXT:
+        names += ["-iname", f"*.{ext}", "-o"]
+    cmd = ["find", home, "-xdev", "(", "-path", "*/.*", "-prune", ")", "-o", "-type", "f",
+           "(", *names[:-1], ")", "-printf", "%s\n"]
+    total = 0
+    try:
+        with subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True) as p:
+            for line in p.stdout:
+                if line.strip().isdigit():
+                    total += int(line)
+    except Exception:
+        pass
+    return total
+
+
+def _gui_app_packages():
+    """pacman-Pakete, die ein Programm im Startmenü mitbringen (.desktop-Datei) – „Anwendungen“."""
+    files = [os.path.join("/usr/share/applications", f) for f in _listdir("/usr/share/applications")
+             if f.endswith(".desktop")]
+    if not files:
+        return []
+    out = _cmd_out(["env", "LC_ALL=C", "pacman", "-Qqo"] + files, timeout=60)
+    return sorted(set(out.split()))
+
+
+def _listdir(path):
+    try:
+        return os.listdir(path)
+    except OSError:
+        return []
+
+
+def storage_breakdown(use_sudo=False):
+    """{Kennung: Bytes} – ungefähre Aufteilung von System- und Home-Laufwerk."""
+    home = os.path.expanduser("~")
+    used = free = 0
+    devs = set()
+    for mp in ("/", home):
+        u, f, dev = _fs_usage(mp)
+        if dev is not None and dev not in devs:
+            devs.add(dev)
+            used, free = used + u, free + f
+    flat = sum(_du_size(p, use_sudo) or 0 for p in ("/var/lib/flatpak", os.path.join(home, ".local/share/flatpak"))
+               if os.path.isdir(p))
+    apps_pkgs = _gui_app_packages()
+    apps_pac = sum(i["size"] for i in pacman_infos(apps_pkgs).values()) if apps_pkgs else 0
+    opt = _du_size("/opt", use_sudo) or 0 if os.path.isdir("/opt") else 0
+    system_tree = sum(_du_size(p, use_sudo) or 0 for p in ("/usr", "/boot", "/etc"))
+    var = _du_size("/var", use_sudo) or 0
+    home_all = _du_size(home, False) or 0
+    media = min(_media_bytes(home), home_all)
+    res = {
+        "apps": apps_pac + flat + opt,
+        "os": max(system_tree - apps_pac, 0),
+        "sys": max(var - (flat if os.path.isdir("/var/lib/flatpak") else 0), 0),
+        "media": media,
+        "home": max(home_all - media - (_du_size(os.path.join(home, ".local/share/flatpak"), False) or 0), 0),
+    }
+    res["other"] = max(used - sum(res.values()), 0)
+    res["free"] = free
+    return res
+
+
+class DonutChart(QWidget):
+    """Ring-Diagramm: data = [(Titel, Bytes, Farbe)]; in der Mitte steht der belegte Platz."""
+
+    def __init__(self, size=220):
+        super().__init__()
+        self.data = []
+        self.center = ("", "")
+        self.setFixedSize(size, size)
+
+    def set_data(self, data, center=("", "")):
+        self.data, self.center = data, center
+        self.update()
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        w = self.width()
+        ring = w * 0.16
+        rect = QRectF(ring / 2 + 2, ring / 2 + 2, w - ring - 4, w - ring - 4)
+        total = sum(v for _, v, _ in self.data)
+        if total <= 0:
+            pen = QPen(QColor(COLORS["bg3"]), ring)
+            pen.setCapStyle(Qt.FlatCap)
+            p.setPen(pen)
+            p.drawArc(rect, 0, 360 * 16)
+        else:
+            start = 90 * 16
+            for _, v, color in self.data:
+                span = -round(v / total * 360 * 16)
+                if span:
+                    pen = QPen(QColor(color), ring)
+                    pen.setCapStyle(Qt.FlatCap)
+                    p.setPen(pen)
+                    p.drawArc(rect, start, span)
+                    start += span
+        big = QFont(FONTS["sans"], 15)
+        big.setWeight(QFont.DemiBold)
+        p.setFont(big)
+        p.setPen(QColor(COLORS["ink"]))
+        p.drawText(QRectF(0, w / 2 - 26, w, 28), Qt.AlignCenter, self.center[0])
+        p.setFont(QFont(FONTS["sans"], 9))
+        p.setPen(QColor(COLORS["muted"]))
+        p.drawText(QRectF(0, w / 2 + 2, w, 22), Qt.AlignCenter, self.center[1])
+        p.end()
+
+
 class StorageTab(Page):
     def __init__(self, app):
         super().__init__()
@@ -4296,6 +5403,26 @@ class StorageTab(Page):
         self.fs_box.setSpacing(12)
         fsp.body.addLayout(self.fs_box)
         self.lay.addWidget(fsp)
+
+        self.b_pie = Button("Neu berechnen", "ghost", self.refresh_pie)
+        pie = Panel("Woraus besteht der belegte Platz?", [self.b_pie])
+        prow = QHBoxLayout()
+        prow.setSpacing(28)
+        self.donut = DonutChart()
+        prow.addWidget(self.donut, 0, Qt.AlignTop)
+        self.pie_legend = QGridLayout()
+        self.pie_legend.setHorizontalSpacing(14)
+        self.pie_legend.setVerticalSpacing(8)
+        self.pie_legend.setColumnStretch(1, 1)
+        leg = QVBoxLayout()
+        leg.addLayout(self.pie_legend)
+        self.pie_hint = Label("", "Hint", wrap=True)
+        leg.addWidget(self.pie_hint)
+        leg.addStretch(1)
+        prow.addLayout(leg, 1)
+        pie.body.addLayout(prow)
+        self.lay.addWidget(pie)
+        self.pie_done = False
 
         ana = Panel("Was belegt den Platz?")
         top = QHBoxLayout()
@@ -4372,6 +5499,55 @@ class StorageTab(Page):
 
         self._build_cleanup_rows()
         self.refresh_fs()
+        self.refresh_pie()
+
+    # ---- Tortendiagramm -------------------------------------------------
+
+    def refresh_pie(self):
+        self.b_pie.setEnabled(False)
+        self.pie_hint.setText("Wird berechnet … das kann bei vielen Dateien eine Minute dauern.")
+        use_sudo = self.app.priv.is_authenticated_nonblocking() if hasattr(self.app, "priv") else False
+
+        def worker():
+            try:
+                data = storage_breakdown(use_sudo)
+            except Exception as ex:
+                data = {"_error": str(ex)}
+            ui(lambda: self._show_pie(data, use_sudo))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _show_pie(self, data, use_sudo):
+        self.b_pie.setEnabled(True)
+        clear_layout(self.pie_legend)
+        if "_error" in data:
+            self.pie_hint.setText(f"Konnte nicht berechnet werden: {data['_error']}")
+            return
+        used = sum(v for k, v in data.items() if k != "free")
+        total = used + data.get("free", 0)
+        # Ring zeigt nur den belegten Platz – sonst gehen die Kategorien neben „Frei“ unter
+        rows = [(title, data.get(key, 0), color) for key, title, color in STORAGE_CATS if key != "free"]
+        self.donut.set_data(list(rows), (fmt_bytes(used), f"von {fmt_bytes(total)} belegt"))
+        rows.append(("Frei", data.get("free", 0), STORAGE_CATS[-1][2]))
+        for i, (title, val, color) in enumerate(rows):
+            dot = QLabel()
+            dot.setFixedSize(12, 12)
+            dot.setStyleSheet(f"background:{color}; border-radius:3px;")
+            self.pie_legend.addWidget(dot, i, 0, Qt.AlignVCenter)
+            self.pie_legend.addWidget(Label(title), i, 1)
+            v = Label(fmt_bytes(val), "Value")
+            v.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            self.pie_legend.addWidget(v, i, 2)
+            base = total if title == "Frei" else used
+            pct = Label(f"{val / base * 100:.0f} %" if base else "—", "Muted")
+            pct.setMinimumWidth(48)
+            pct.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            self.pie_legend.addWidget(pct, i, 3)
+        self.pie_hint.setText(
+            "Prozente beziehen sich auf den belegten Platz, bei „Frei“ auf die Gesamtgröße. "
+            "Ungefähre Werte für System- und Home-Laufwerk. Anwendungen = Programme mit Eintrag im Startmenü, "
+            "Flatpaks und /opt · Systemdaten = /var (Caches, Protokolle, Datenbanken) · Fotos & Videos = Bilder, "
+            "GIFs und Videos in deinem Home-Ordner."
+            + ("" if use_sudo else " Ohne Anmeldung sind manche Systemordner nicht lesbar – mit Anmeldung genauer."))
 
     # ---- Dateisysteme ---------------------------------------------------
 
@@ -5883,7 +7059,7 @@ def version_status():
     # --- Kernel ---
     kpkg = {"lts": "linux-lts", "zen": "linux-zen", "hardened": "linux-hardened"}
     rel = os.uname().release
-    kp = next((v for k, v in kpkg.items() if k in rel), "linux")
+    kp = running_kernel_pkg() or next((v for k, v in kpkg.items() if k in rel), "linux")
     _, kver = _pkg_version(kp)
     new = _pending_update(kp)
     kbase = re.match(r"\d+(?:\.\d+)+", kver or "")
@@ -8766,9 +9942,9 @@ def checklist_state():
     c["paclog"] = _pacman_log_issues()
     c["reboot"] = kernel_modules_missing()
     c["kernel"] = os.uname().release
-    c["kernel_pkgs"] = [k for k in ("linux", "linux-lts", "linux-zen", "linux-hardened")
-                        if os.path.exists(f"/usr/lib/modules/{c['kernel']}/pkgbase")
-                        and _read(f"/usr/lib/modules/{c['kernel']}/pkgbase").strip() == k]
+    kp = running_kernel_pkg()
+    c["kernel_pkgs"] = [kp] if kp else []
+    c["distro"] = distro_id()
     # Zugriff
     r = subprocess.run(["sudo", "-n", "sh", "-c", "cat /etc/sudoers /etc/sudoers.d/* 2>/dev/null"],
                        capture_output=True, text=True, timeout=5) if which("sudo") else None
@@ -9094,7 +10270,7 @@ class SecurityTab(Page):
         self.b_fw_on = Button("Aktivieren", "primary", self.fw_enable)
         self.b_fw_status = Button("Regeln anzeigen", "ghost", self.fw_status)
         self.b_fw_off = Button("Deaktivieren", "danger", self.fw_disable)
-        self.b_fw_install = Button("ufw installieren", "primary", self.fw_install)
+        self.b_fw_install = Button("ufw installieren (pacman)", "primary", self.fw_install)
         for b in (self.b_fw_install, self.b_fw_on, self.b_fw_status, self.b_fw_off):
             fh.addWidget(b)
         fw.body.addLayout(fh)
@@ -9275,7 +10451,7 @@ class SecurityTab(Page):
         else:
             warn += 1
             self.rows["ucode"].set("warn", "Fehlt", f"{pkg} fehlt – bekannte CPU-Sicherheitslücken bleiben offen. "
-                                   "Wirkt nach dem nächsten Neustart.", "Installieren", self.install_ucode)
+                                   "Wirkt nach dem nächsten Neustart.", install_text("pacman"), self.install_ucode)
         # Swap
         plain = [p for p, enc in r["swap"] if not enc]
         if not r["swap"]:
@@ -9323,7 +10499,7 @@ class SecurityTab(Page):
         cve = r["cve"]
         if cve is None:
             self.rows["cve"].set("off", "Nicht installiert", "Optional: arch-audit gleicht die installierten Pakete "
-                                 "mit der Arch-Sicherheitsdatenbank ab (security.archlinux.org).", "Installieren",
+                                 "mit der Arch-Sicherheitsdatenbank ab (security.archlinux.org).", install_text("pacman"),
                                  lambda: self._root(["pacman", "-S", "--needed", "arch-audit"], interactive=True))
         elif cve == "error":
             self.rows["cve"].set("off", "Nicht prüfbar", "arch-audit konnte die Sicherheitsdatenbank nicht abrufen "
@@ -9650,7 +10826,7 @@ class SecurityTab(Page):
             R["mirror"].set("off", "Unbekannt", "Keine /etc/pacman.d/mirrorlist gefunden.")
         else:
             act = ("Jetzt aktualisieren", self.cl_mirrors) if c["reflector"] else \
-                ("reflector installieren", lambda: self._root(["pacman", "-S", "--needed", "reflector"],
+                ("reflector installieren (pacman)", lambda: self._root(["pacman", "-S", "--needed", "reflector"],
                                                              interactive=True))
             R["mirror"].set("ok" if age < 90 else "warn", f"{age:.0f} Tage alt",
                             "Die Liste der Download-Server. Ältere Listen führen zu langsamen oder veralteten "
@@ -9672,7 +10848,10 @@ class SecurityTab(Page):
                           "Neustart fehlen Module (z. B. für USB-Sticks) und der neue Kernel ist nicht aktiv.")
         else:
             R["kern"].set("ok", "Aktuell", f"Läuft: {kv}."
-                          + ("" if "hardened" in kv else " Für erhöhten Schutzbedarf gibt es linux-hardened "
+                          + ("" if "hardened" in kv else
+                             " Für erhöhten Schutzbedarf gibt es linux-cachyos-hardened (manche Programme laufen "
+                             "damit eingeschränkt)." if c.get("distro") == "cachyos" else
+                             " Für erhöhten Schutzbedarf gibt es linux-hardened "
                              "(manche Programme laufen damit eingeschränkt)."))
         # --- Zugriff
         if c["nopasswd"] is None:
@@ -10435,7 +11614,7 @@ def svg_icon(svg, size=18):
 # Selbst-Aktualisierung (GitHub oder lokale Datei/Ordner)
 # --------------------------------------------------------------------------
 
-DEFAULT_REPO = "PyloGER/Tuxdex"   # GitHub-Repository für Updates (in den Einstellungen änderbar)
+DEFAULT_REPO = "VoxellabDE/Tuxdex"   # GitHub-Repository für Updates (in den Einstellungen änderbar)
 DEFAULT_BRANCH = "main"
 # --------------------------------------------------------------------------
 # Backup: Snapshots (rsync + Hardlinks), Spiegel, komprimierte Archive –
@@ -11879,6 +13058,8 @@ def load_settings():
     s = {"repo": DEFAULT_REPO, "branch": DEFAULT_BRANCH, "auto_check": True, "ask_on_start": True, "local_dir": "",
          "sys_check_on_start": True}
     s.update(_load_json(SETTINGS_FILE, {}))
+    if s.get("repo", "").lower() == "pyloger/tuxdex":      # Repository ist zu VoxellabDE umgezogen
+        s["repo"] = DEFAULT_REPO
     return s
 
 
@@ -12549,6 +13730,51 @@ class SettingsPage(Page):
                                         "Neu starten"):
             self.app.restart()
 
+    def _modules_panel(self):
+        p = self.mod_panel = Panel("Module")
+        p.body.addWidget(Label("Stell dir Tuxdex so zusammen, wie du es brauchst: Nicht jeder braucht jedes Werkzeug. "
+                               "Abgewählte Module verschwinden aus der Leiste und werden nicht geladen – "
+                               "du kannst sie hier jederzeit wieder hinzufügen.", "Hint", wrap=True))
+        st = load_settings()
+        self.mod_buttons = {}
+        for key, label, color in MODULES:
+            row = QHBoxLayout()
+            row.setSpacing(12)
+            dot = QLabel()
+            dot.setFixedSize(10, 10)
+            dot.setStyleSheet(f"background:{color}; border-radius:2px;")
+            row.addWidget(dot, 0, Qt.AlignTop)
+            col = QVBoxLayout()
+            col.setSpacing(2)
+            name = Label(label)
+            name.setStyleSheet("font-weight:600;")
+            col.addWidget(name)
+            col.addWidget(Label(MODULE_INFO.get(key, ""), "Hint", wrap=True))
+            row.addLayout(col, 1)
+            if key in MODULES_CORE:
+                row.addWidget(Label("Immer dabei", "Hint"), 0, Qt.AlignVCenter)
+            else:
+                b = Button("", "ghost", lambda _=False, k=key: self._toggle_module(k))
+                b.setMinimumWidth(130)
+                self.mod_buttons[key] = b
+                self._paint_module_button(key, module_enabled(key, st))
+                row.addWidget(b, 0, Qt.AlignVCenter)
+            p.body.addLayout(row)
+        return p
+
+    def _paint_module_button(self, key, on):
+        b = self.mod_buttons[key]
+        b.setText("Entfernen" if on else "Hinzufügen")
+        b.setProperty("variant", "ghost" if on else "primary")
+        repolish(b)
+
+    def _toggle_module(self, key):
+        on = not module_enabled(key)
+        self.app.set_module(key, on)
+        self._paint_module_button(key, on)
+        name = dict((m[0], m[1]) for m in MODULES)[key]
+        self.app.set_status(f"Modul „{name}“ hinzugefügt." if on else f"Modul „{name}“ ausgeblendet.")
+
     def _sys_changed(self, on):
         st = load_settings()
         st["sys_check_on_start"] = on
@@ -12583,6 +13809,7 @@ class SettingsPage(Page):
         langp.body.addLayout(lrow)
         langp.body.addWidget(Label("Wirkt nach einem Neustart von Tuxdex.", "Hint", wrap=True))
         self.lay.addWidget(langp)
+        self.lay.addWidget(self._modules_panel())
         self.update_panel = UpdatePanel(app)
         self.lay.addWidget(self.update_panel)
 
@@ -12816,7 +14043,7 @@ class MainWindow(QWidget):
         # Tabs werden erst beim ersten Öffnen gebaut (spart RAM und Startzeit);
         # bis dahin steht ein leerer Platzhalter im Stack, damit die Indizes stimmen.
         self.page_classes = {
-            "update": UpdaterTab, "software": SoftwareTab, "flatpak": FlatpakTab, "swap": SwapTab,
+            "update": UpdaterTab, "software": SoftwareTab, "flatpak": FlatpakTab, "swap": SwapTab, "restore": RestoreTab, "setup": SetupTab,
             "disks": DisksTab, "storage": StorageTab, "backup": BackupTab, "tasks": TaskTab, "antivirus": AntivirusTab,
             "security": SecurityTab, "users": UsersTab,
         }
@@ -12827,6 +14054,7 @@ class MainWindow(QWidget):
         for i, (key, label, color) in enumerate(MODULES):
             self.stack.addWidget(QWidget())
             t = TabButton(label, color, lambda i=i: self.select(i))
+            t.setVisible(module_enabled(key))
             tb.addWidget(t)
             self.tabs.append(t)
         tb.addStretch(1)
@@ -13034,7 +14262,20 @@ class MainWindow(QWidget):
     def back_from_settings(self):
         self.select(self._last_tab)
 
+    def set_module(self, key, on):
+        """Modul zu- oder abwählen (Einstellungen → Module)."""
+        st = load_settings()
+        mods = dict(st.get("modules", {}))
+        mods[key] = bool(on)
+        st["modules"] = mods
+        save_settings(st)
+        i = [m[0] for m in MODULES].index(key)
+        self.tabs[i].setVisible(bool(on))
+        if not on and self._last_tab == i:
+            self._last_tab = 0
+
     def select(self, idx):
+        self.tabs[idx].setVisible(True)      # Sprung aus einem anderen Modul in ein abgewähltes: Tab kurz zeigen
         self._last_tab = idx
         self.gear.setChecked(False)
         new = MODULES[idx][0] not in self.pages
@@ -13076,6 +14317,211 @@ class MainWindow(QWidget):
 # --------------------------------------------------------------------------
 
 EN = {
+    'Woraus besteht der belegte Platz?': 'What is taking up the space?',
+    'Neu berechnen': 'Recalculate',
+    'Anwendungen': 'Applications',
+    'Systemdaten': 'System data',
+    'Fotos & Videos': 'Photos & videos',
+    'Weitere eigene Dateien': 'Other personal files',
+    'Sonstiges': 'Other',
+    'Frei': 'Free',
+    'von {} belegt': 'of {} used',
+    'Wird berechnet … das kann bei vielen Dateien eine Minute dauern.': 'Calculating … this can take a minute with many files.',
+    'Konnte nicht berechnet werden: {}': "Couldn't be calculated: {}",
+    'Prozente beziehen sich auf den belegten Platz, bei „Frei“ auf die Gesamtgröße. Ungefähre Werte für System- und Home-Laufwerk. Anwendungen = Programme mit Eintrag im Startmenü, Flatpaks und /opt · Systemdaten = /var (Caches, Protokolle, Datenbanken) · Fotos & Videos = Bilder, GIFs und Videos in deinem Home-Ordner.': 'Percentages refer to the used space, for “Free” to the total size. Approximate values for the system and home drive. Applications = programs with a start menu entry, Flatpaks and /opt · System data = /var (caches, logs, databases) · Photos & videos = images, GIFs and videos in your home folder.',
+    'Prozente beziehen sich auf den belegten Platz, bei „Frei“ auf die Gesamtgröße. Ungefähre Werte für System- und Home-Laufwerk. Anwendungen = Programme mit Eintrag im Startmenü, Flatpaks und /opt · Systemdaten = /var (Caches, Protokolle, Datenbanken) · Fotos & Videos = Bilder, GIFs und Videos in deinem Home-Ordner. Ohne Anmeldung sind manche Systemordner nicht lesbar – mit Anmeldung genauer.': "Percentages refer to the used space, for “Free” to the total size. Approximate values for the system and home drive. Applications = programs with a start menu entry, Flatpaks and /opt · System data = /var (caches, logs, databases) · Photos & videos = images, GIFs and videos in your home folder. Without logging in, some system folders can't be read – more accurate when logged in.",
+    'Installieren ({})': 'Install ({})',
+    'Installieren (pacman)': 'Install (pacman)',
+    'Installieren (Flatpak)': 'Install (Flatpak)',
+    'Installieren (AUR)': 'Install (AUR)',
+    'Installieren?\n\n{}': 'Install?\n\n{}',
+    'Installieren?\n\npacman: {}': 'Install?\n\npacman: {}',
+    'Flatpak installieren (pacman)': 'Install Flatpak (pacman)',
+    'ufw installieren (pacman)': 'Install ufw (pacman)',
+    'reflector installieren (pacman)': 'Install reflector (pacman)',
+    'Einrichten (pacman)': 'Set up (pacman)',
+    'Timeshift öffnen': 'Open Timeshift',
+    '{} aus den Arch-Paketquellen (pacman) installieren?': 'Install {} from the Arch repositories (pacman)?',
+    '{} als Flatpak von Flathub installieren?': 'Install {} as a Flatpak from Flathub?',
+    'Standard-Apps': 'Default apps',
+    'Womit sich Links, PDFs, Bilder und Co. öffnen. Änderungen gelten sofort.': 'What opens links, PDFs, images and so on. Changes apply right away.',
+    'Browser': 'Browser',
+    'E-Mail': 'Email',
+    'PDF': 'PDF',
+    'Videos': 'Videos',
+    'Textdateien': 'Text files',
+    'Kein passendes Programm installiert': 'No matching program installed',
+    'Nicht festgelegt': 'Not set',
+    'Standard für {} gesetzt.': 'Default set to {}.',
+    'Standard-App ließ sich nicht setzen.': "Couldn't set the default app.",
+    'Steam mit Proton startet die meisten Windows-Spiele. Spiele mit Kernel-Anti-Cheat wie Valorant, League of Legends oder Fortnite laufen unter Linux aber nicht – vor dem Kauf auf areweanticheatyet.com oder protondb.com nachsehen.': "Steam with Proton runs most Windows games. Games with kernel anti-cheat like Valorant, League of Legends or Fortnite don't run on Linux, though – check areweanticheatyet.com or protondb.com before buying.",
+    'Steam und Wine aus den Arch-Paketquellen brauchen die 32-Bit-Unterstützung (multilib). Ohne sie installiert Tuxdex Steam von Flathub.': 'Steam and Wine from the Arch repositories need 32-bit support (multilib). Without it, Tuxdex installs Steam from Flathub.',
+    '32-Bit-Unterstützung einschalten': 'Turn on 32-bit support',
+    '32-Bit-Unterstützung': '32-bit support',
+    'Die Paketquelle „multilib“ in /etc/pacman.conf einschalten?\n\nSie enthält 32-Bit-Bibliotheken, die Steam und Wine brauchen. Vorher wird eine Sicherung als /etc/pacman.conf.tuxdex.bak angelegt.': 'Turn on the “multilib” repository in /etc/pacman.conf?\n\nIt contains 32-bit libraries that Steam and Wine need. A backup is saved as /etc/pacman.conf.tuxdex.bak first.',
+    'multilib einschalten': 'Turn on multilib',
+    'Dafür zuerst die 32-Bit-Unterstützung einschalten.': 'Turn on 32-bit support first.',
+    'Spiele einrichten': 'Set up gaming',
+    'Empfohlen installieren: {}': 'Install recommended: {}',
+    'ProtonDB öffnen': 'Open ProtonDB',
+    'Spiele-Plattform – mit Proton laufen viele Windows-Spiele': 'Gaming platform – many Windows games run with Proton',
+    'Holt beim Spielen mehr Leistung aus CPU und Grafikkarte': 'Gets more performance out of CPU and GPU while gaming',
+    'FPS, Temperaturen und Auslastung im Spiel einblenden': 'Show FPS, temperatures and load in game',
+    'Spiele aus vielen Quellen (Battle.net, Ubisoft, GOG …) an einem Ort': 'Games from many sources (Battle.net, Ubisoft, GOG …) in one place',
+    'Epic Games, GOG und Amazon Prime Gaming': 'Epic Games, GOG and Amazon Prime Gaming',
+    'Windows-Programme und -Spiele in getrennten Umgebungen': 'Windows programs and games in separate environments',
+    'Windows-Programme direkt starten (für Fortgeschrittene)': 'Run Windows programs directly (for advanced users)',
+    'Wiederherstellung': 'Restore',
+    'System-Snapshots vor Updates und Zurücksetzen per Klick (snapper oder Timeshift).': 'System snapshots before updates and one-click rollback (snapper or Timeshift).',
+    'Basics wie Schriften und Codecs mit einem Klick, dazu Ersatz für Windows-Programme.': 'Basics like fonts and codecs with one click, plus alternatives for Windows programs.',
+    'Snapshot vor dem Update': 'Snapshot before the update',
+    'Tuxdex: vor dem Update': 'Tuxdex: before the update',
+    'Tuxdex: erster Snapshot': 'Tuxdex: first snapshot',
+    'Tuxdex: manuell': 'Tuxdex: manual',
+    'Tuxdex: vor dem Zurücksetzen': 'Tuxdex: before rollback',
+    'Datum': 'Date',
+    'Art': 'Type',
+    'Nr.': 'No.',
+    'Systemwiederherstellung': 'System restore',
+    'So funktioniert es': 'How it works',
+    'Ein Snapshot hält den Stand deines Systems fest – in Sekunden und fast ohne Speicherplatz. Geht nach einem Update etwas kaputt, setzt du das System mit einem Klick auf den Stand davor zurück. Deine eigenen Dateien in /home bleiben dabei unberührt.': 'A snapshot captures the state of your system – in seconds and using almost no space. If something breaks after an update, you roll the system back to the state before with one click. Your own files in /home stay untouched.',
+    'Werkzeug': 'Tool',
+    'Automatisch vor Updates': 'Automatically before updates',
+    'Snapshot jetzt erstellen': 'Create snapshot now',
+    'Vor Updates': 'Before updates',
+    'Vor jedem Update in Tuxdex automatisch einen Snapshot anlegen': 'Automatically create a snapshot before every update in Tuxdex',
+    'Auf diesen Stand zurücksetzen': 'Roll back to this state',
+    'Anmelden und Snapshots anzeigen': 'Log in and show snapshots',
+    'Snapper (nicht eingerichtet)': 'Snapper (not set up)',
+    'Timeshift (nicht eingerichtet)': 'Timeshift (not set up)',
+    'Ja – snap-pac (bei jeder Paketänderung)': 'Yes – snap-pac (on every package change)',
+    'Ja – timeshift-autosnap': 'Yes – timeshift-autosnap',
+    'Ja – bei Updates über Tuxdex': 'Yes – for updates via Tuxdex',
+    'Das übernimmt bereits snap-pac – auch bei Updates im Terminal. Tuxdex legt deshalb keinen zusätzlichen an.': "snap-pac already takes care of this – also for updates in the terminal. So Tuxdex doesn't create an extra one.",
+    'Das übernimmt bereits timeshift-autosnap – auch bei Updates im Terminal. Tuxdex legt deshalb keinen zusätzlichen an.': "timeshift-autosnap already takes care of this – also for updates in the terminal. So Tuxdex doesn't create an extra one.",
+    'Tuxdex legt den Snapshot direkt vor „Update starten“ an. Updates im Terminal sind damit nicht abgedeckt – dafür beim Einrichten snap-pac mitinstallieren.': "Tuxdex creates the snapshot right before “Start update”. Updates in the terminal aren't covered – for that, install snap-pac during setup.",
+    'Eingerichtet': 'Set up',
+    'Nicht eingerichtet': 'Not set up',
+    'Dein System liegt auf btrfs – ideal. „Einrichten“ installiert snapper und snap-pac: dann entsteht vor und nach jeder Paketänderung automatisch ein Snapshot.': 'Your system is on btrfs – ideal. “Set up” installs snapper and snap-pac: then a snapshot is created automatically before and after every package change.',
+    'Timeshift ist installiert, aber noch nicht eingerichtet. „Einrichten“ öffnet Timeshift – dort einmal den Speicherort wählen.': 'Timeshift is installed but not set up yet. “Set up” opens Timeshift – choose the storage location there once.',
+    'Dein System liegt auf {} ohne eigene Snapshots. „Einrichten“ installiert Timeshift; die Snapshots landen dann als Kopie auf der Festplatte (braucht mehr Platz als bei btrfs).': 'Your system is on {} without built-in snapshots. “Set up” installs Timeshift; snapshots are then stored as a copy on the drive (needs more space than btrfs).',
+    'Noch keine Snapshots – erst einrichten.': 'No snapshots yet – set up first.',
+    'Zum Anzeigen der Snapshots sind root-Rechte nötig.': 'Showing snapshots needs root rights.',
+    'Noch keine Snapshots vorhanden.': 'No snapshots yet.',
+    'Zurücksetzen ist gesperrt: /home liegt nicht in einem eigenen Subvolume, deine eigenen Dateien würden mit zurückgesetzt.': "Rollback is blocked: /home isn't on its own subvolume, so your own files would be rolled back too.",
+    'snapper und snap-pac installieren und für das System einrichten?\n\nDanach entsteht vor und nach jeder Paketänderung automatisch ein Snapshot. Alte Snapshots räumt snapper selbst auf.': 'Install snapper and snap-pac and set them up for the system?\n\nAfterwards a snapshot is created automatically before and after every package change. snapper cleans up old snapshots itself.',
+    'Erster Snapshot': 'First snapshot',
+    'Timeshift installieren?\n\nDanach öffnet sich Timeshift einmal, um den Speicherort für die Snapshots festzulegen.': 'Install Timeshift?\n\nTimeshift then opens once so you can choose where snapshots are stored.',
+    'Wiederherstellung einrichten': 'Set up system restore',
+    'Timeshift ist geöffnet – nach dem Einrichten hier auf ↻ klicken.': 'Timeshift is open – click ↻ here after setting it up.',
+    'Snapshot erstellen': 'Create snapshot',
+    'Snapshot löschen': 'Delete snapshot',
+    'Snapshot {} vom {} löschen?': 'Delete snapshot {} from {}?',
+    'Snapshot {} löschen': 'Delete snapshot {}',
+    'System auf den Stand vom {} zurücksetzen?\n\n„{}“\n\nAlle Systemänderungen seit diesem Snapshot werden rückgängig gemacht – auch installierte Updates und Programme. Deine Dateien in /home bleiben unberührt.\n\nDanach bitte neu starten.': 'Roll the system back to the state of {}?\n\n“{}”\n\nAll system changes since this snapshot are undone – including installed updates and programs. Your files in /home stay untouched.\n\nPlease restart afterwards.',
+    'Timeshift startet den Rechner nach dem Zurücksetzen selbst neu.': 'Timeshift restarts the computer by itself after the rollback.',
+    'Sicherheits-Snapshot des jetzigen Stands': 'Safety snapshot of the current state',
+    'Zurücksetzen auf {}': 'Roll back to {}',
+    'Zurückgesetzt – bitte jetzt neu starten.': 'Rolled back – please restart now.',
+    'vorher': 'before',
+    'nachher': 'after',
+    'einzeln': 'single',
+    'Schriften für Office-Dokumente': 'Fonts for Office documents',
+    'Liberation (passt in der Breite zu Arial, Times New Roman und Courier New), Noto mit Emojis und DejaVu – Word-Dokumente sehen damit aus wie unter Windows.': 'Liberation (same widths as Arial, Times New Roman and Courier New), Noto with emojis and DejaVu – Word documents look just like on Windows.',
+    'Audio- und Video-Codecs': 'Audio and video codecs',
+    'Damit spielen MP3, MP4, H.264/H.265 und Co. in allen Programmen ab.': 'So MP3, MP4, H.264/H.265 and friends play in every program.',
+    'Energieprofile': 'Power profiles',
+    'Zwischen Energiesparen, Ausgewogen und Leistung umschalten – wie unter Windows. Nicht zusammen mit TLP nutzen.': "Switch between power saver, balanced and performance – like on Windows. Don't use together with TLP.",
+    'Energiesparen': 'Power saver',
+    'Aktuelles Profil': 'Current profile',
+    'Bildbearbeitung': 'Image editing',
+    'Klassische Bildbearbeitung': 'Classic image editing',
+    'Malen und Bildbearbeitung': 'Painting and image editing',
+    'Photoshop-ähnlich im Browser, öffnet PSD': 'Photoshop-like in the browser, opens PSD',
+    'Fotos entwickeln': 'Photo development',
+    'RAW-Fotos entwickeln und verwalten': 'Develop and manage RAW photos',
+    'RAW-Entwicklung': 'RAW development',
+    'Vektorgrafik': 'Vector graphics',
+    'Vektorgrafik, öffnet SVG und AI': 'Vector graphics, opens SVG and AI',
+    'Einfach malen wie in Paint': 'Simple painting like in Paint',
+    'Wie Paint.NET': 'Like Paint.NET',
+    'Texte, Tabellen, Präsentationen – öffnet DOCX, XLSX, PPTX': 'Documents, spreadsheets, presentations – opens DOCX, XLSX, PPTX',
+    'Sieht aus wie Microsoft Office': 'Looks like Microsoft Office',
+    'E-Mail, Kalender, Kontakte': 'Email, calendar, contacts',
+    'Notizen': 'Notes',
+    'Notizen mit Synchronisierung': 'Notes with sync',
+    'Notizen und Wissenssammlung': 'Notes and knowledge base',
+    'PDFs lesen und kommentieren': 'Read and annotate PDFs',
+    'Videoschnitt': 'Video editing',
+    'Einfacher Videoschnitt': 'Simple video editing',
+    'Audio bearbeiten': 'Audio editing',
+    'Audio aufnehmen und schneiden': 'Record and edit audio',
+    'Bildschirm aufnehmen': 'Screen recording',
+    'Aufnehmen und streamen': 'Record and stream',
+    'Video abspielen': 'Play videos',
+    'Spielt praktisch alles ab': 'Plays practically everything',
+    'Musiksammlung wie iTunes': 'Music library like iTunes',
+    'Musiksammlung verwalten': 'Manage your music library',
+    'Gibt es auch für Linux': 'Also available for Linux',
+    'Starker Text-Editor': 'Powerful text editor',
+    'Programmieren': 'Programming',
+    'Open-Source-Version von VS Code': 'Open-source version of VS Code',
+    'Die Microsoft-Version': 'The Microsoft version',
+    'Entpacken': 'Unzip',
+    'Archive packen und entpacken': 'Create and extract archives',
+    '7-Zip für die Kommandozeile': '7-Zip for the command line',
+    'Dateimanager von KDE': "KDE's file manager",
+    'Screenshots und Bildschirmaufnahmen': 'Screenshots and screen recordings',
+    'Schneller, privater Browser': 'Fast, private browser',
+    'Open-Source-Basis von Chrome': 'Open-source base of Chrome',
+    'Inoffizielle Teams-App': 'Unofficial Teams app',
+    'Passwörter': 'Passwords',
+    'Passwort-Manager': 'Password manager',
+    'Spiele': 'Games',
+    'Spiele-Plattform mit Proton für Windows-Spiele': 'Gaming platform with Proton for Windows games',
+    'Ist in Tuxdex schon eingebaut': 'Already built into Tuxdex',
+    'Datenträgerverwaltung': 'Disk Management',
+    'Laufwerke': 'Drives',
+    'Wiederherstellungspunkt': 'Restore point',
+    '3D-Konstruktion': '3D design',
+    '2D-Zeichnungen': '2D drawings',
+    'Tuxdex-Taskmanager': 'Tuxdex task manager',
+    'Tuxdex-Datenträger': 'Tuxdex drives',
+    'Tuxdex-Wiederherstellung': 'Tuxdex restore',
+    'Was nach einem Umstieg von Windows fehlt – mit einem Klick erledigt.': "What's missing after switching from Windows – done with one click.",
+    'Basics mit einem Klick': 'One-click basics',
+    'Ersatz für Windows-Programme': 'Alternatives for Windows programs',
+    'Gib ein, was du unter Windows benutzt hast – z. B. „Photoshop“ oder „Office“.': 'Type what you used on Windows – e.g. “Photoshop” or “Office”.',
+    'Windows-Programm suchen …': 'Search for a Windows program …',
+    '{} von {} Basics': '{} of {} basics',
+    'Dazu kenne ich noch keinen Ersatz. Im Tab „Software“ kannst du frei nach Programmen suchen.': "I don't know an alternative for that yet. In the “Software” tab you can search freely for programs.",
+    'Statt {}': 'Instead of {}',
+    '… und {} weitere – einfach suchen.': '… and {} more – just search.',
+    'Im Browser öffnen': 'Open in browser',
+    'Installieren (Flathub)': 'Install (Flathub)',
+    'Flatpak fehlt – im Tab „Flatpak“ einrichten.': 'Flatpak is missing – set it up in the “Flatpak” tab.',
+    'Installieren: {}?': 'Install: {}?',
+    '{} aus den Arch-Paketquellen installieren?': 'Install {} from the Arch repositories?',
+    '{} von Flathub installieren?': 'Install {} from Flathub?',
+    'Energieprofil: {}.': 'Power profile: {}.',
+    'Energieprofil ließ sich nicht setzen: {}': "Couldn't set the power profile: {}",
+    'Fertig.': 'Done.',
+    'System-, AUR- und Flatpak-Updates mit Hinweisen vor riskanten Updates.': 'System, AUR and Flatpak updates with warnings before risky updates.',
+    'Programme suchen, installieren und entfernen (pacman und AUR).': 'Search, install and remove programs (pacman and AUR).',
+    'Flatpak-Apps verwalten und ihre Rechte per Schalter einstellen.': 'Manage Flatpak apps and set their permissions with switches.',
+    'USB-Sticks und Festplatten einhängen, formatieren und prüfen.': 'Mount, format and check USB sticks and drives.',
+    'Sehen, was Platz belegt, und typische Platzfresser aufräumen.': 'See what takes up space and clean up typical space hogs.',
+    'Sicherungen auf externe Laufwerke – mit Zeitplan und Wiederherstellen.': 'Backups to external drives – with schedule and restore.',
+    'Auslagerungsspeicher (Swapfile, zram) einrichten. Für Fortgeschrittene.': 'Set up swap (swapfile, zram). For advanced users.',
+    'Laufende Programme, Leistung, Autostart und Bootzeit.': 'Running programs, performance, autostart and boot time.',
+    'ClamAV-Virenscanner. Auf Linux-Desktops wenig nützlich – vor allem für Server und Dateien, die an Windows-Rechner weitergehen.': 'ClamAV virus scanner. Of little use on Linux desktops – mainly for servers and files passed on to Windows PCs.',
+    'Sicherheits-Check, Checkliste, Firewall, offene Ports und VPN.': 'Security check, checklist, firewall, open ports and VPN.',
+    'Benutzerkonten und Gruppen verwalten. Für Fortgeschrittene.': 'Manage user accounts and groups. For advanced users.',
+    'Module': 'Modules',
+    'Stell dir Tuxdex so zusammen, wie du es brauchst: Nicht jeder braucht jedes Werkzeug. Abgewählte Module verschwinden aus der Leiste und werden nicht geladen – du kannst sie hier jederzeit wieder hinzufügen.': "Put Tuxdex together the way you need it: not everyone needs every tool. Removed modules disappear from the bar and aren't loaded – you can add them back here at any time.",
+    'Immer dabei': 'Always included',
+    'Modul „{}“ hinzugefügt.': 'Module “{}” added.',
+    'Modul „{}“ ausgeblendet.': 'Module “{}” hidden.',
     '$ sudo systemctl restart clamav-freshclam\nDer Dienst clamav-freshclam läuft bereits und lädt die Signaturen selbst.\nNeustart löst sofort eine Prüfung aus – der erste Download (~200 MB) kann einige Minuten dauern.': '$ sudo systemctl restart clamav-freshclam\nThe clamav-freshclam service is already running and loads the signatures itself.\nA restart triggers a check immediately – the first download (~200 MB) can take a few minutes.',
     '$ {}{}\n(Nur Funde, Warnungen und die Zusammenfassung werden hier angezeigt.)': '$ {}{}\n(Only findings, warnings and the summary are shown here.)',
     "'{}' ist nicht installiert.\n\nsudo pacman -S {}": "'{}' is not installed.\n\nsudo pacman -S {}",
@@ -13564,6 +15010,7 @@ EN = {
     'fwupd hat nicht geantwortet.': "fwupd didn't respond.",
     'fwupd kennt keine neueren Firmware-Versionen (BIOS, SSD, Dock …).': 'fwupd knows no newer firmware versions (BIOS, SSD, dock …).',
     'Für diese Desktop-Umgebung kann Tuxdex die Sperre nicht auslesen – bitte in den Systemeinstellungen prüfen.': "Tuxdex can't read the lock setting for this desktop environment – please check in the system settings.",
+    'Für erhöhten Schutzbedarf gibt es linux-cachyos-hardened (manche Programme laufen damit eingeschränkt).': "If you need extra protection, there is linux-cachyos-hardened (some programs run with restrictions).",
     'Für erhöhten Schutzbedarf gibt es linux-hardened (manche Programme laufen damit eingeschränkt).': "If you need extra protection, there is linux-hardened (some programs run with restrictions).",
     'Für manche Spiele und Kommunikations-Apps nötig.': 'Needed by some games and communication apps.',
     'Für sie „Archiv“ oder „Spiegel“ verwenden – oder abhaken.': 'Use “Archive” or “Mirror” for them – or uncheck them.',

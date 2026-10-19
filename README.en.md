@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.1.3--alpha-2fb3a3">
+  <img alt="Version" src="https://img.shields.io/badge/version-1.3.0--alpha-2fb3a3">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-2fb3a3">
   <img alt="For Arch Linux" src="https://img.shields.io/badge/for-Arch%20Linux-1793d1">
   <img alt="Python" src="https://img.shields.io/badge/python-3.11%2B-3776ab">
@@ -30,31 +30,72 @@
 
 ## What is Tuxdex?
 
-Tuxdex bundles into one clear interface what otherwise takes a dozen terminal commands: updates, packages, USB sticks, disk space, backups, processes, virus scans, firewall and VPN.
+Tuxdex bundles into one clear interface what otherwise takes a dozen terminal commands: updates, programs, USB sticks, disk space, backups, **system snapshots with one-click rollback**, processes, firewall and VPN – plus a **"Setup"** area for switchers with fonts, codecs, default apps, gaming setup and Linux alternatives for Windows programs.
 
-Every command runs **visibly** in the output box, so you always see what's happening. Questions from `pacman` or `paru` appear as windows. The sudo password is asked **once per session** and never stored.
+Every command runs **visibly** in the output box, so you always see what's happening. Every install button says where the program comes from – **pacman, AUR or Flatpak**. Questions from `pacman` or `paru` appear as windows. The sudo password is asked **once per session** and never stored.
+
+**Runs on:** Arch Linux and Arch-based systems like **CachyOS** or EndeavourOS. Tuxdex detects the CachyOS kernels automatically.
+
+### Who is Tuxdex for?
+
+- **People coming from Windows** who want an easy start with Arch Linux – without having to learn dozens of commands first. Updates, programs, USB sticks, backups: all with a click, the way you're used to.
+- **Everyone who loves graphical interfaces** and would rather manage their system in a tidy window than in the terminal.
+- **The curious**: every command runs visibly – so you learn what happens under the hood along the way.
+
+Tuxdex isn't meant for pros who do everything in the terminal – but it's still handy as a quick overview.
 
 **Language:** English and German. Tuxdex follows your system language; you can switch under **Settings (gear at the bottom left) → Language**.
 
 <p align="center">
-  <img src="docs/readme/modules.png" alt="The 11 modules of Tuxdex" width="100%">
+  <img src="docs/readme/modules.png" alt="The modules of Tuxdex" width="100%">
 </p>
 
 ## Modules
 
+Tuxdex is a **toolkit**: under **Settings → Modules** you choose which tools appear in the bar – not everyone needs every tool. Removed modules aren't loaded at all. Updates is always included; **Swap, Antivirus and Users** are hidden at first because they're more for advanced users.
+
 | Module | What it does |
 |---|---|
 | **Updates** | Checks for updates automatically at startup (pacman, AUR via paru, Flatpak – can be turned off) and shows the count on the tab and at the bottom right · install with one click · **major updates** and kernel/system packages are marked · restart notice · the check result is kept after closing |
+| **Setup** | One-click basics: fonts for Office documents, audio/video codecs, power profiles · set **default apps** · **gaming setup** (Steam, GameMode, MangoHud, Lutris, Heroic, Bottles, Wine, 32-bit support) · **Alternatives for Windows programs**: type "Photoshop", "Office" and so on, install the Linux alternative right away |
 | **Software** | All packages with icon, version, size, source/location and install date · select with checkboxes and uninstall together · install from pacman, AUR (paru) or Flathub |
 | **Flatpak** | Permissions of every Flatpak app with switches – network, files & folders, devices, sound, display, environment variables, portal permissions · rules for all apps · risky permissions are marked, changes highlighted · set up Flathub, start, update and uninstall apps |
 | **Drives** | Drives and partitions as a tree · mount, unmount, rename, check, **format** (ext4, btrfs, xfs, exFAT, FAT32, NTFS), safely remove · detects new USB sticks automatically · system partitions are protected |
-| **Storage** | Usage per drive · “What is using the space?” with drill-down into folders · cleanup: package cache, orphaned packages, journal, trash, Flatpak |
+| **Storage** | Usage per drive · **pie chart**: operating system, applications, system data, photos & videos, personal files · “What is using the space?” with drill-down into folders · cleanup: package cache, orphaned packages, journal, trash, Flatpak |
 | **Backup** | Snapshots (versioned, space-saving), mirror or compressed archives (zstd/xz/gzip, optionally with password) · **several targets at once** · verification after writing · custom names with date ([how it works](#naming-backups)) · old versions cleaned up automatically · restore · daily/weekly schedule |
-| **Swap** | Create and remove a swap file, set swappiness |
+| **Restore** | System snapshots with snapper (btrfs) or Timeshift · **snapshot before every update** · list, create, delete · **roll back to a state** with one click |
+| **Swap** *(hidden at first)* | Create and remove a swap file, set swappiness |
 | **Task manager** | Processes with program icons, CPU, RAM, disk I/O, energy estimate · performance tiles with details on click: CPU (clock, caches, virtualization), RAM (speed, slots, type), drives, GPU (clock, power, VRAM, PCIe), network, battery, fans · system: CPU/GPU name, mainboard, IP addresses, DNS · **autostart & boot time** · **version status** of graphics driver, microcode, BIOS, kernel, firmware |
-| **Antivirus** | Front end for an already installed ClamAV (optional): update signatures, scan folders or the whole system – with **live progress** (files, data, speed, time left) and whether the scan is running or stuck · quarantine with restore |
+| **Antivirus** *(hidden at first)* | ClamAV is mainly meant for servers and of little use on Linux desktops – an own tool for desktop users is on the [roadmap](#roadmap). Front end for an already installed ClamAV (optional): update signatures, scan folders or the whole system – with **live progress** (files, data, speed, time left) and whether the scan is running or stuck · quarantine with restore |
 | **Security** | Security check (VPN, DNS, proxy, firewall, LUKS, Secure Boot, CPU microcode, swap encryption, kernel protection, updates, antivirus, open ports, SSH, known vulnerabilities) · **checklist for maintenance, privacy & performance** (package signatures, mirrors, sudo, log size, core dumps, shell history, TRIM, I/O scheduler, NTP, old kernel modules, package list …) · **DNS leak test & VPN/proxy detection** · **block/allow open ports with a button** · front end for an already installed **Mullvad VPN** (optional: account, location, kill switch, DNS filters) · ufw firewall with rules |
-| **Users** | User accounts and last login |
+| **Users** *(hidden at first)* | User accounts and last login |
+
+## Roadmap
+
+Goals and plans – what's already there and what comes next.
+
+**Planned**
+- [ ] **Driver assistant**: detect NVIDIA, Wi-Fi, printers and Bluetooth and set them up with one click.
+- [ ] **Windows data**: mount NTFS partitions, detect dual boot, bring over files from "C:\Users".
+- [ ] **Troubleshooting in plain language**: "Why is my Wi-Fi gone?" instead of logs, plus a device manager.
+- [ ] **Interactive learning software** for Arch Linux, connected to Tuxdex: learn commands step by step – see the matching command for every action in Tuxdex, understand it and try it yourself.
+- [ ] **Ready-made, tested ISOs**: Arch Linux with KDE Plasma and Tuxdex, already set up – with an installer that's much simpler than today's Arch installation.
+- [ ] **Own security tool for desktop users** to replace ClamAV.
+- [ ] **Module market**: more modules you add as needed.
+
+**Done**
+- [x] **Gaming setup**: Steam, GameMode, MangoHud, Lutris, Heroic, Bottles, Wine – with an anti-cheat note (1.3.0)
+- [x] **Set default apps** (browser, email, PDF, images, videos, music, text) (1.3.0)
+- [x] **CachyOS support**: CachyOS kernels are detected (1.3.0)
+- [x] **System restore**: snapshot before every update (snapper or Timeshift), one-click rollback (1.3.0)
+- [x] **"Find an alternative"** for Windows programs with an install button (1.3.0)
+- [x] **One-click basics**: fonts, codecs, power profiles (1.3.0)
+- [x] Modules as a toolkit – add and remove them (1.2.0)
+- [x] English interface and README (1.1.0)
+- [x] Own pacman repository, no AUR needed (1.1.0)
+- [x] Security review of all root actions (1.1.0)
+
+Ideas and wishes are welcome as an [issue](../../issues).
 
 ## Screenshots
 
@@ -71,28 +112,49 @@ Every command runs **visibly** in the output box, so you always see what's happe
 | ![Drives](docs/screenshots/en/disks.png) | ![Storage](docs/screenshots/en/storage.png) |
 | **Security** | **Task manager** |
 | ![Security](docs/screenshots/en/security.png) | ![Task manager](docs/screenshots/en/tasks.png) |
-| **Checklist** | |
-| ![Checklist](docs/screenshots/en/checklist.png) | |
+| **Checklist** | **Modules (settings)** |
+| ![Checklist](docs/screenshots/en/checklist.png) | ![Modules](docs/screenshots/en/modules.png) |
+| **Restore** | **Setup** |
+| ![Restore](docs/screenshots/en/restore.png) | ![Setup](docs/screenshots/en/setup.png) |
+| **Default apps & games** | |
+| ![Default apps and games](docs/screenshots/en/setup_games.png) | |
 
 <sub>The screenshots show sample data.</sub>
 
 ## Installation
 
-### Via pacman (recommended)
+### One command for everything (easiest)
+
+Open a terminal, paste this line, press Enter:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/VoxellabDE/Tuxdex/main/install.sh | bash
+```
+
+The installer explains what it does and asks once. It adds the repository, updates your system and installs Tuxdex. Afterwards you'll find **Tuxdex** in the application menu. You can read the script [here](install.sh) first; `--dry-run` only shows what would happen without changing anything.
+
+Prefer step by step? Then use the following sections.
+
+### Via pacman
 
 Tuxdex has its own pacman repository – no AUR, updates come with `pacman -Syu`. Add this once at the end of `/etc/pacman.conf`:
 
 ```ini
 [tuxdex]
 SigLevel = Optional TrustAll
-Server = https://github.com/PyloGER/Tuxdex/releases/latest/download
+Server = https://github.com/VoxellabDE/Tuxdex/releases/latest/download
 ```
 
-Then install:
+Then install (with `-Syu`, i.e. together with a system update – on Arch never just `-Sy`):
 
 ```bash
-sudo pacman -Sy tuxdex
+sudo pacman -Syu tuxdex
 ```
+
+After that, new Tuxdex versions arrive as usual with `sudo pacman -Syu`.
+
+> [!NOTE]
+> **Moved:** the repository now lives at **VoxellabDE/Tuxdex**. If your `/etc/pacman.conf` still says `github.com/PyloGER/Tuxdex`, change the `Server` line as shown above (the old address only redirects temporarily).
 
 `SigLevel = Optional TrustAll` means: the packages are not (yet) signed with a dedicated key, pacman trusts the HTTPS connection to GitHub. As soon as signatures are available, this section will explain how to import the key.
 
@@ -101,7 +163,7 @@ sudo pacman -Sy tuxdex
 Requirements: `base-devel` and `git`.
 
 ```bash
-git clone https://github.com/PyloGER/Tuxdex.git tuxdex
+git clone https://github.com/VoxellabDE/Tuxdex.git tuxdex
 cd tuxdex
 makepkg -si
 ```
@@ -110,14 +172,18 @@ makepkg -si
 
 ### Updating
 
+There are two channels: **Stable** (branch `main`) and **Beta** (branch `beta`, new features earlier). Switch under **gear at the bottom left → Updating → Version**.
+
 Tuxdex checks for a new version at startup and offers it in a window (can be turned off under **gear at the bottom left → Updating**). You can also check manually there at any time: Tuxdex checks the GitHub repository, shows what's new and installs the new version with one click (builds with makepkg, installs with pacman, restarts). Alternatively “From file …” (tuxdex-X.Y.Z.tar.gz) or “From folder …” (e.g. your Git clone – `git pull` runs automatically first).
 
-Or in the terminal:
+Or in the terminal – depending on how you installed it:
 
 ```bash
-cd tuxdex
-git pull
-makepkg -si
+sudo pacman -Syu          # via the pacman repository
+```
+
+```bash
+cd tuxdex && git pull && makepkg -si     # built yourself
 ```
 
 ### Removing
@@ -131,7 +197,9 @@ The saved update check and the quarantine are stored in `~/.cache/tuxdex` and `~
 ### Try without installing
 
 ```bash
-sudo pacman -S --needed python pyside6
+sudo pacman -S --needed git python pyside6
+git clone https://github.com/VoxellabDE/Tuxdex.git tuxdex
+cd tuxdex
 python3 tuxdex.py
 ```
 
@@ -184,6 +252,11 @@ Examples (backup on 27 Sep 2026 at 10:15):
 | `ufw` | Firewall |
 | `mullvad-vpn-daemon` | Mullvad VPN |
 | `sbctl` | Set up Secure Boot |
+| `snapper` + `snap-pac` (btrfs) or `timeshift` | System restore – Tuxdex sets it up for you in the "Restore" tab if you want |
+| `power-profiles-daemon` | Switch power profiles ("Setup" tab) |
+| `xdg-utils` | Set default apps |
+
+Programs from "Setup" (Steam, Lutris, fonts, codecs …) are only installed when you click the button – which always says whether they come from pacman, AUR or Flatpak.
 | `arch-audit` | Check packages for known vulnerabilities |
 
 ## Privacy & security
@@ -196,6 +269,7 @@ Examples (backup on 27 Sep 2026 at 10:15):
 - **Password:** the sudo password goes straight to `sudo -v` and is neither stored nor logged. Further commands use the existing sudo session (`sudo -n`).
 - **Mullvad account number:** goes straight to `mullvad account login`, is hidden by default (eye button to show it) and never logged.
 - **Protection against mistakes:** system partitions (`/`, `/boot`, `/home`, swap) can't be unmounted or formatted. Formatting requires typing the device name, and right before it Tuxdex checks again that nothing below the device is mounted, open or used as swap. Swap files are never created over existing files. Destructive actions always ask first.
+- **Rollback with a safety net:** before rolling back to a snapshot, Tuxdex creates a snapshot of the current state. With snapper, rollback is blocked when `/home` isn't its own subvolume – otherwise your own files would be rolled back too. Changes to `/etc/pacman.conf` (multilib) and `/etc/fstab` are backed up first.
 - **Reporting security issues:** please by email, see [SECURITY.md](SECURITY.md).
 
 ## Project structure
@@ -204,6 +278,7 @@ Examples (backup on 27 Sep 2026 at 10:15):
 tuxdex.py              The complete application (one file, incl. the English catalog)
 tuxdex                 Start script for /usr/bin
 tuxdex.desktop         Application menu entry
+install.sh             One-command installer (adds the repository and installs)
 tuxdex.svg, *.png      App icon in all sizes
 PKGBUILD               Build recipe for makepkg / pacman
 CHANGELOG.md           Changes per version (German)
@@ -223,6 +298,8 @@ After changing files listed in the `PKGBUILD`, update the checksums:
 ```bash
 updpkgsums   # from pacman-contrib
 ```
+
+**Branches:** development happens in `develop`. What should be tested goes to `beta` (beta channel in the updater), finished versions go to `main` – that automatically creates the GitHub release and the pacman package. Please open pull requests against `develop`.
 
 New or changed interface texts need an English translation in the `EN` catalog at the end of `tuxdex.py`. `python3 tools/i18n_extract.py` lists the missing ones.
 
