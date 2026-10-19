@@ -11614,7 +11614,7 @@ def svg_icon(svg, size=18):
 # Selbst-Aktualisierung (GitHub oder lokale Datei/Ordner)
 # --------------------------------------------------------------------------
 
-DEFAULT_REPO = "PyloGER/Tuxdex"   # GitHub-Repository für Updates (in den Einstellungen änderbar)
+DEFAULT_REPO = "VoxellabDE/Tuxdex"   # GitHub-Repository für Updates (in den Einstellungen änderbar)
 DEFAULT_BRANCH = "main"
 # --------------------------------------------------------------------------
 # Backup: Snapshots (rsync + Hardlinks), Spiegel, komprimierte Archive –
@@ -13058,6 +13058,8 @@ def load_settings():
     s = {"repo": DEFAULT_REPO, "branch": DEFAULT_BRANCH, "auto_check": True, "ask_on_start": True, "local_dir": "",
          "sys_check_on_start": True}
     s.update(_load_json(SETTINGS_FILE, {}))
+    if s.get("repo", "").lower() == "pyloger/tuxdex":      # Repository ist zu VoxellabDE umgezogen
+        s["repo"] = DEFAULT_REPO
     return s
 
 

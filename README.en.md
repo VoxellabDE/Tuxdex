@@ -130,14 +130,19 @@ Tuxdex has its own pacman repository – no AUR, updates come with `pacman -Syu`
 ```ini
 [tuxdex]
 SigLevel = Optional TrustAll
-Server = https://github.com/PyloGER/Tuxdex/releases/latest/download
+Server = https://github.com/VoxellabDE/Tuxdex/releases/latest/download
 ```
 
-Then install:
+Then install (with `-Syu`, i.e. together with a system update – on Arch never just `-Sy`):
 
 ```bash
-sudo pacman -Sy tuxdex
+sudo pacman -Syu tuxdex
 ```
+
+After that, new Tuxdex versions arrive as usual with `sudo pacman -Syu`.
+
+> [!NOTE]
+> **Moved:** the repository now lives at **VoxellabDE/Tuxdex**. If your `/etc/pacman.conf` still says `github.com/PyloGER/Tuxdex`, change the `Server` line as shown above (the old address only redirects temporarily).
 
 `SigLevel = Optional TrustAll` means: the packages are not (yet) signed with a dedicated key, pacman trusts the HTTPS connection to GitHub. As soon as signatures are available, this section will explain how to import the key.
 
@@ -146,7 +151,7 @@ sudo pacman -Sy tuxdex
 Requirements: `base-devel` and `git`.
 
 ```bash
-git clone https://github.com/PyloGER/Tuxdex.git tuxdex
+git clone https://github.com/VoxellabDE/Tuxdex.git tuxdex
 cd tuxdex
 makepkg -si
 ```
@@ -159,12 +164,14 @@ There are two channels: **Stable** (branch `main`) and **Beta** (branch `beta`, 
 
 Tuxdex checks for a new version at startup and offers it in a window (can be turned off under **gear at the bottom left → Updating**). You can also check manually there at any time: Tuxdex checks the GitHub repository, shows what's new and installs the new version with one click (builds with makepkg, installs with pacman, restarts). Alternatively “From file …” (tuxdex-X.Y.Z.tar.gz) or “From folder …” (e.g. your Git clone – `git pull` runs automatically first).
 
-Or in the terminal:
+Or in the terminal – depending on how you installed it:
 
 ```bash
-cd tuxdex
-git pull
-makepkg -si
+sudo pacman -Syu          # via the pacman repository
+```
+
+```bash
+cd tuxdex && git pull && makepkg -si     # built yourself
 ```
 
 ### Removing
@@ -178,7 +185,9 @@ The saved update check and the quarantine are stored in `~/.cache/tuxdex` and `~
 ### Try without installing
 
 ```bash
-sudo pacman -S --needed python pyside6
+sudo pacman -S --needed git python pyside6
+git clone https://github.com/VoxellabDE/Tuxdex.git tuxdex
+cd tuxdex
 python3 tuxdex.py
 ```
 
