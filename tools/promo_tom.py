@@ -2,7 +2,7 @@
 """Tom-Reel: Cartoon-Werbevideo mit Sprecher (Kokoro-TTS), Lippensynchronisation, Wort-Untertiteln
 und Soundeffekten. Persona: Tom – braune Haare, aus Deutschland, Nerd.
 
-  QT_QPA_PLATFORM=offscreen python3 tools/promo_tom.py --shots DIR --kokoro DIR [--voice am_michael] [--out DIR]
+  QT_QPA_PLATFORM=offscreen python3 tools/promo_tom.py --shots DIR --kokoro DIR [--voice am_liam] [--out DIR]
 
 --shots   Screenshots in doppelter Auflösung (QT_SCALE_FACTOR=2 tools/screenshots.py --lang en --out DIR)
 --kokoro  Ordner mit kokoro-v1.0.onnx und voices-v1.0.bin (Apache-2.0,
@@ -677,7 +677,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--shots", required=True)
     ap.add_argument("--kokoro", required=True)
-    ap.add_argument("--voice", default="am_michael")
+    ap.add_argument("--voice", default="am_liam")      # Toms Stimme
     ap.add_argument("--out", default=".")
     a = ap.parse_args()
     from kokoro_onnx import Kokoro
