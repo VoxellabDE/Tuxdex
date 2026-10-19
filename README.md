@@ -123,7 +123,19 @@ Ideen und Wünsche gern als [Issue](../../issues).
 
 ## Installation
 
-### Über pacman (empfohlen)
+### Ein Befehl für alles (am einfachsten)
+
+Terminal öffnen, diese Zeile einfügen, Enter drücken:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/VoxellabDE/Tuxdex/main/install.sh | bash
+```
+
+Der Installer erklärt, was er tut, und fragt einmal nach. Er trägt das Repository ein, aktualisiert dein System und installiert Tuxdex. Danach findest du **Tuxdex** im Anwendungsmenü. Vorher ansehen kannst du das Skript [hier](install.sh); `--dry-run` zeigt nur an, was passieren würde, ohne etwas zu ändern.
+
+Lieber Schritt für Schritt? Dann die folgenden Abschnitte.
+
+### Über pacman
 
 Tuxdex hat ein eigenes pacman-Repository – ohne AUR, Updates kommen mit `pacman -Syu`. Einmal in `/etc/pacman.conf` ganz unten eintragen:
 
@@ -264,6 +276,7 @@ Programme aus „Einrichten“ (Steam, Lutris, Schriften, Codecs …) installier
 tuxdex.py              Die komplette Anwendung (eine Datei)
 tuxdex                 Startskript für /usr/bin
 tuxdex.desktop         Eintrag im Anwendungsmenü
+install.sh             Ein-Befehl-Installer (Repository eintragen und installieren)
 tuxdex.svg, *.png      App-Icon in allen Größen
 PKGBUILD               Bauanleitung für makepkg / pacman
 CHANGELOG.md           Änderungen je Version
