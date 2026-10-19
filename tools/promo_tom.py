@@ -415,8 +415,9 @@ def caption(p, words, t_line):
         x += widths[i] + space
 
 
+NARRATOR = True        # True: Erzähler in der 3. Person, False: Tom spricht selbst (Lippensynchron)
 KEYWORDS = {"errors": pv.DANGER, "hard": pv.DANGER, "everywhere": pv.DANGER, "tuxdex": pv.ACCENT,
-            "arch": "#1793d1", "windows": "#5fb0ff", "click": pv.ACCENT, "free": "#b5d86b"}
+            "arch": "#1793d1", "windows": "#5fb0ff", "click": pv.ACCENT, "tom": "#ffd166", "free": "#b5d86b"}
 
 
 def word_times(line, start, end):
@@ -519,11 +520,11 @@ def build(shots, kokoro, voice):
     logo_path = os.path.join(pv.ROOT, "docs/logo/wordmark-dark.png")
     beats = [
         # (Bildschirm, Stimmung, Pose, Sprechtext, Mindestdauer, Extras)
-        ("windows", "happy", "desk", "I'm Tom. On Windows, everything just worked.", 3.0, {"typing"}),
-        ("terminal", "worried", "desk", "Then I switched to Arch Linux. How hard can it be?", 3.0, {"typing"}),
+        ("windows", "happy", "desk", "This is Tom. For years, Windows just worked for him.", 3.0, {"typing"}),
+        ("terminal", "worried", "desk", "Then he switched to Arch Linux. How hard can it be?", 3.0, {"typing"}),
         ("card", None, None, "", 1.4, {"scratch"}),
         ("panic", "despair", "head", "Turns out, pretty hard. Errors everywhere!", 3.0, {"panic"}),
-        ("logo", "amazed", "desk", "Then I found Tux dex.", 2.4, {"ding", "boom"}),
+        ("logo", "amazed", "desk", "Then Tom found Tux dex.", 2.4, {"ding", "boom"}),
         ("tuxdex", "joy", "thumbs", "Updates, apps, backups and snapshots. All with one click.", 3.6,
          {"confetti", "shades"}),
         ("end", None, None, "Tux dex. Free and open source. Download now, link in bio.", 4.2, {"jingle"}),
@@ -564,7 +565,8 @@ def build(shots, kokoro, voice):
     def frame(p, t, i):
         ln = next((x for x in lines if x["start"] <= t < x["start"] + x["dur"]), lines[-1])
         lt = t - ln["start"]
-        talk = float(env[min(i, len(env) - 1)])
+        # Erzähler spricht über Tom (3. Person) – Tom bewegt dabei nicht die Lippen
+        talk = 0.0 if NARRATOR else float(env[min(i, len(env) - 1)])
         if ln["scr"] == "end":
             pv.glow(p, t)
             end(p, lt, ln["dur"])
@@ -607,8 +609,8 @@ def build(shots, kokoro, voice):
         if ln["scr"] == "tuxdex":
             pc.confetti(p, lt)
         if ln is lines[0]:                               # Hook ganz oben
-            pv.text(p, "POV:", 150, 64, pv.MUTED, lt, 0.0)
-            pv.text(p, "You switch to Arch Linux", 230, 72, "#ffffff", lt, 0.15)
+            pv.text(p, "TOM", 150, 92, "#ffffff", lt, 0.0)
+            pv.text(p, "vs. ARCH LINUX", 260, 72, "#1793d1", lt, 0.2)
         caption(p, ln["words"], lt)
         if lt < 0.12 and ln is not lines[0]:             # kurzer Blitz beim Szenenwechsel
             p.fillRect(0, 0, W, H, QColor(255, 255, 255, int(110 * (1 - lt / 0.12))))
