@@ -356,7 +356,7 @@ def word_times(line, start, end):
 # --- Ton ------------------------------------------------------------------------------
 
 def tts(kokoro, text, voice, speed=1.05):
-    samples, sr = kokoro.create(text, voice=voice, speed=speed, lang="en-us")
+    samples, sr = kokoro.create(text, voice=voice, speed=speed, lang="en-gb" if voice.startswith("b") else "en-us")
     x = np.asarray(samples, dtype=np.float64)
     n = int(len(x) * SR / sr)
     return np.interp(np.linspace(0, len(x) - 1, n), np.arange(len(x)), x)
@@ -421,14 +421,15 @@ def build(shots, kokoro, voice):
         ("panic", "despair", "head", "Turns out, pretty hard. Errors everywhere!", 3.0, {"panic"}),
         ("logo", "amazed", "desk", "Then I found Tux dex.", 2.4, {"ding"}),
         ("tuxdex", "joy", "thumbs", "Updates, apps, backups and snapshots. All with one click.", 3.4, {"confetti"}),
-        ("end", None, None, "Tux dex. Free and open source. Link in bio.", 4.2, {"jingle"}),
+        ("end", None, None, "Tux dex. Free and open source. Download now, link in bio.", 4.2, {"jingle"}),
     ]
     lines, t0 = [], 0.0
     for scr, mood, pose, text, mind, extra in beats:
         audio = tts(kokoro, text, voice)
-        lead = 1.1 if scr == "end" else 0.25
+        # Endkarte: erst das Sound-Logo (1,6 s), dann Tom, danach 1,5 s Ruhe
+        lead = 1.9 if scr == "end" else 0.25
         a, b = speech_bounds(audio)
-        dur = max(mind, lead + len(audio) / SR + 0.35)
+        dur = max(mind, lead + len(audio) / SR + (1.5 if scr == "end" else 0.35))
         shown = text.replace("Tux dex", "Tuxdex")
         lines.append({"scr": scr, "mood": mood, "pose": pose, "start": t0, "dur": dur, "lead": lead,
                       "audio": audio, "extra": extra,
@@ -451,7 +452,9 @@ def build(shots, kokoro, voice):
                 "logo": lambda q, r, tt: pc.screen_logo(q, r, tt, logo_path),
                 "tuxdex": lambda q, r, tt: pc.screen_tuxdex(q, r, tt, S("update"))}[scr]
 
-    end = pv.end_card("Arch Linux without terminal stress")
+    end_line = lines[-1]
+    dl_at = next((a for w, a, _ in end_line["words"] if w.startswith("Download")), 2.5)
+    end = pv.end_card("Arch Linux ohne Terminal-Stress", cta=("Download now", dl_at))
 
     def frame(p, t, i):
         ln = next((x for x in lines if x["start"] <= t < x["start"] + x["dur"]), lines[-1])

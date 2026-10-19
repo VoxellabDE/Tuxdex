@@ -52,6 +52,7 @@ EN_TEXT = {
     "Dann kam Tuxdex.": "Then came Tuxdex.",
     "Alles per Klick.": "All with one click.", "Updates · Apps · Backups": "Updates · Apps · Backups",
     "Arch Linux ohne Terminal-Stress": "Arch Linux without terminal stress",
+    "Link in Bio": "Link in bio",
 }
 
 
@@ -275,13 +276,33 @@ def logo(p, y, t, delay=0.0, width=760):
     p.restore()
 
 
-def end_card(tagline):
+def end_card(tagline, cta=None):
+    """Endkarte; cta = großer Aufruf-Knopf (z. B. „Download now“), erscheint bei cta_at Sekunden."""
     def scene(p, t, d):
         logo(p, 560, t)
         text(p, tagline, 860, 58, INK, t, 0.3)
         pill(p, "Kostenlos · Open Source · Deutsch & Englisch", 1080, t, 0.6)
-        text(p, "Link in Bio", 1300, 64, ACCENT, t, 0.9)
-        text(p, "github.com/VoxellabDE/Tuxdex", 1400, 36, MUTED, t, 1.0, QFont.Normal, pop=False)
+        if cta:
+            label, at = cta
+            k = back((t - at) / 0.35)
+            if k > 0:
+                p.save()
+                pulse = 1 + 0.03 * math.sin((t - at) * 6)
+                p.translate(W / 2, 1290)
+                p.scale(k * pulse, k * pulse)
+                r = QRectF(-300, -56, 600, 112)
+                p.setPen(Qt.NoPen)
+                p.setBrush(QColor(ACCENT))
+                p.drawRoundedRect(r, 56, 56)
+                p.setFont(font(54, QFont.Black))
+                p.setPen(QColor("#07201d"))
+                p.drawText(r, Qt.AlignCenter, label)
+                p.restore()
+            text(p, "Link in Bio", 1390, 46, ACCENT, t, at + 0.3)
+            text(p, "github.com/VoxellabDE/Tuxdex", 1460, 34, MUTED, t, at + 0.4, QFont.Normal, pop=False)
+        else:
+            text(p, "Link in Bio", 1300, 64, ACCENT, t, 0.9)
+            text(p, "github.com/VoxellabDE/Tuxdex", 1400, 36, MUTED, t, 1.0, QFont.Normal, pop=False)
         text(p, "Alpha – Feedback willkommen!", 1720, 34, WARN, t, 1.2, QFont.DemiBold, pop=False)
     return scene
 
