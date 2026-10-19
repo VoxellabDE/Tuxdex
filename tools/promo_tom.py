@@ -650,6 +650,72 @@ def build(shots, kokoro, voice):
     return total, frame, mix
 
 
+def cover(out_png):
+    """Titelbild 1080×1920: Tom in Panik, große Schrift; Wichtiges im mittleren 4:5-Bereich (Profilraster)."""
+    img = QImage(W, H, QImage.Format_RGBA8888)
+    img.fill(QColor(pv.BG))
+    p = QPainter(img)
+    p.setRenderHint(QPainter.Antialiasing)
+    p.setRenderHint(QPainter.SmoothPixmapTransform)
+    t = 1.3
+    p.save()                                   # nah ran an Tom
+    p.translate(540, 1150)
+    p.scale(1.55, 1.55)
+    p.translate(-540, -930)
+    room(p, t, 0.6, 0)
+    tom(p, t, "despair")
+    pc.arms(p, t, "despair", "head")
+    pc.laptop_front(p, pc.screen_terminal_panic, 3.0, glow=pv.DANGER)
+    pc.hands(p, t, "despair", "head")
+    pc.question_marks(p, 0.9)
+    p.restore()
+    # Verlauf oben für lesbare Schrift
+    g = QLinearGradient(0, 250, 0, 900)
+    g.setColorAt(0, QColor(10, 12, 16, 235))
+    g.setColorAt(1, QColor(10, 12, 16, 0))
+    p.fillRect(0, 0, W, 900, g)
+
+    def big(text_, y, size, color, rot=0):
+        f = QFont("IBM Plex Sans", 1)
+        f.setPixelSize(size)
+        f.setWeight(QFont.Black)
+        path = QPainterPath()
+        path.addText(0, 0, f, text_)
+        br = path.boundingRect()
+        p.save()
+        p.translate(W / 2, y)
+        p.rotate(rot)
+        p.translate(-br.width() / 2, br.height() / 2)
+        p.setPen(_pen("#0b0f14", 20))
+        p.setBrush(Qt.NoBrush)
+        p.drawPath(path)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(color))
+        p.drawPath(path)
+        p.restore()
+
+    big("TOM", 380, 190, "#ffd166", -3)
+    big("vs. ARCH LINUX", 560, 104, "#ffffff", -3)
+    # Stempel unten: „…then he found Tuxdex“
+    p.save()
+    p.translate(W / 2, 1520)
+    p.rotate(-4)
+    r = QRectF(-400, -70, 800, 140)
+    p.setPen(_pen("#0b0f14", 8))
+    p.setBrush(QColor(pv.ACCENT))
+    p.drawRoundedRect(r, 30, 30)
+    f = QFont("IBM Plex Sans", 1)
+    f.setPixelSize(62)
+    f.setWeight(QFont.Black)
+    p.setFont(f)
+    p.setPen(QColor("#07201d"))
+    p.drawText(r, Qt.AlignCenter, "…then he found Tuxdex")
+    p.restore()
+    p.end()
+    img.save(out_png)
+    img.convertToFormat(QImage.Format_RGB888).save(out_png[:-4] + ".jpg", "JPG", 92)
+
+
 def render(out, total, frame, mix):
     n = int(total * FPS)
     cmd = ["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgba", "-s", f"{W}x{H}",
@@ -690,7 +756,8 @@ def main():
     out = os.path.join(a.out, f"tuxdex_tom_{a.voice}.mp4")
     total, frame, mix = build(a.shots, k, a.voice)
     render(out, total, frame, mix)
-    print(f"{out}  ({total:.1f} s)")
+    cover(out[:-4] + "_titelbild.png")
+    print(f"{out}  ({total:.1f} s)  + Titelbild")
 
 
 if __name__ == "__main__":
