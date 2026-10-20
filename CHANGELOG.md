@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.0
+Laufwerke dauerhaft einhängen.
+
+- **Datenträger → „Dauerhaft einhängen …“**: Eine Platte wird bei jedem Start automatisch eingehängt – ohne die `/etc/fstab` von Hand zu bearbeiten. Tuxdex trägt den Eintrag **per UUID** ein, wählt passende Optionen je Dateisystem (ext4, btrfs, xfs, f2fs, NTFS, exFAT, FAT32) und setzt `nofail`, damit der Start nicht hängt, wenn die Platte mal fehlt. Vorher gibt es eine Sicherung (`/etc/fstab.tuxdex.bak`); klappt das Einhängen nicht, wird die `fstab` automatisch zurückgesetzt. Bei Linux-Dateisystemen kann der Ordner dir zugewiesen werden, damit du darin schreiben darfst.
+- **„Dauerhaft entfernen“** löscht den Eintrag wieder. System-Einträge (/, /boot, /home, Swap) bleiben geschützt; Einhängepunkte in Systemordnern (/etc, /usr, /var …) werden abgelehnt.
+
 ## 1.3.0
 Systemwiederherstellung und Einrichten für Umsteiger.
 

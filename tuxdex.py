@@ -427,7 +427,7 @@ def module_enabled(key, settings=None):
 FONTS = {"sans": "Sans Serif", "mono": "Monospace"}
 
 APP_ID = "tuxdex"
-APP_VERSION = "1.3.0"
+APP_VERSION = "1.4.0"
 APP_STAGE = "alpha"        # Reifegrad – wird nur angezeigt, die Versionsnummer selbst bleibt ohne Zusatz
 
 
@@ -4777,6 +4777,148 @@ class FormatDialog(QDialog):
         self.label.setMaxLength(FORMATS[self.fs.currentData()][1])
 
 
+# --------------------------------------------------------------------------
+# Dauerhaft einhängen (/etc/fstab)
+# --------------------------------------------------------------------------
+
+FSTAB = "/etc/fstab"
+# Dateisysteme, die sich dauerhaft einhängen lassen: lsblk-Name → (fstab-Typ, Pass, Hinweis)
+FSTAB_FS = {
+    "ext4": ("ext4", 2, ""), "btrfs": ("btrfs", 0, ""), "xfs": ("xfs", 0, ""), "f2fs": ("f2fs", 0, ""),
+    "ntfs": ("ntfs3", 0, "Windows-Laufwerke: In Windows den „Schnellstart“ abschalten, sonst lässt sich die "
+                         "Platte unter Linux nicht schreibend einhängen."),
+    "exfat": ("exfat", 0, ""), "vfat": ("vfat", 0, ""),
+}
+FSTAB_DENY = ("/", "/boot", "/efi", "/usr", "/etc", "/var", "/proc", "/sys", "/dev", "/run", "/bin", "/sbin",
+              "/lib", "/lib64", "/root", "/tmp", "/home", "/opt", "/mnt", "/media", "/srv")
+OPTS_RE = re.compile(r"^[A-Za-z0-9_=,.:/+-]+$")
+
+
+def fstab_entries(text):
+    """[{spec, mount, fs, opts, line}] aller aktiven Zeilen einer fstab."""
+    out = []
+    for line in text.splitlines():
+        s = line.split("#", 1)[0].strip()
+        p = s.split()
+        if len(p) >= 3:
+            out.append({"spec": p[0], "mount": p[1], "fs": p[2], "opts": p[3] if len(p) > 3 else "",
+                        "line": line})
+    return out
+
+
+def fstab_default_options(fs, uid, gid):
+    """Passende Einhänge-Optionen je Dateisystem; nofail = der Start hängt nicht, wenn die Platte fehlt."""
+    if fs in ("ntfs", "exfat", "vfat"):
+        base = f"uid={uid},gid={gid},nofail"
+        return base + {"ntfs": ",windows_names", "exfat": ",umask=022", "vfat": ",umask=022"}[fs]
+    return "defaults,nofail"
+
+
+def fstab_mountpoint_problem(mp):
+    """Grund, warum mp als Einhängepunkt nicht geht (None = in Ordnung)."""
+    if not PATH_RE.match(mp or "") or mp != os.path.normpath(mp) or ".." in mp.split("/"):
+        return "Bitte einen einfachen absoluten Pfad angeben (Buchstaben, Ziffern, _ . - /), ohne Leerzeichen."
+    if mp == "/home" or (mp not in ("/mnt", "/media", "/srv") and mp in FSTAB_DENY):
+        return f"{mp} ist ein Systemordner. Besser z. B. /mnt/daten."
+    for d in FSTAB_DENY:
+        if d not in ("/", "/mnt", "/media", "/srv", "/home") and (mp == d or mp.startswith(d + "/")):
+            return f"{mp} liegt in einem Systemordner ({d})."
+    if mp in ("/mnt", "/media", "/srv"):
+        return f"Bitte einen Unterordner wählen, z. B. {mp}/daten."
+    if mp.startswith("/home/") and mp.count("/") < 3:
+        return "Bitte einen Ordner in deinem Home angeben, z. B. /home/name/daten."
+    return None
+
+
+def fstab_add_problem(node, mp, opts, text):
+    """Alle Prüfungen vor dem Eintragen. None = alles gut."""
+    fs, uid = node.get("fstype") or "", node.get("uuid") or ""
+    if fs not in FSTAB_FS:
+        return f"Das Dateisystem „{fs or 'unbekannt'}“ lässt sich hier nicht dauerhaft einhängen."
+    if not uid or not re.fullmatch(r"[A-Za-z0-9-]+", uid):
+        return "Das Gerät hat keine UUID – dauerhaftes Einhängen braucht eine."
+    if any(m in SYSTEM_MOUNTS for m in _all_mounts(node)):
+        return "Das ist ein System-Datenträger."
+    p = fstab_mountpoint_problem(mp)
+    if p:
+        return p
+    if not OPTS_RE.match(opts or ""):
+        return "Die Optionen dürfen nur Buchstaben, Ziffern und , = _ . : / + - enthalten (keine Leerzeichen)."
+    for e in fstab_entries(text):
+        if e["spec"] in (f"UUID={uid}", node.get("path")):
+            return f"Dieses Laufwerk ist schon dauerhaft eingetragen (unter {e['mount']})."
+        if e["mount"].rstrip("/") == mp:
+            return f"Der Einhängepunkt {mp} wird in der fstab schon verwendet."
+    return None
+
+
+def fstab_add_script(node, mp, opts, owner=None):
+    """Shell-Skript (als root): Sicherung, Eintrag, Einhängen – bei Fehlschlag wird alles zurückgenommen."""
+    fstype, pas, _ = FSTAB_FS[node["fstype"]]
+    line = f"UUID={node['uuid']} {mp} {fstype} {opts} 0 {pas}"
+    q = shlex.quote
+    chown = f"chown {int(owner[0])}:{int(owner[1])} {q(mp)} && " if owner else ""
+    return (f"set -e; cp -a {FSTAB} {FSTAB}.tuxdex.bak; mkdir -p {q(mp)}; "
+            f"printf '%s\\n' {q(line)} >> {FSTAB}; systemctl daemon-reload 2>/dev/null || true; "
+            f"if mount {q(mp)}; then {chown}echo 'Eingehängt: {mp}'; "
+            f"else cp -a {FSTAB}.tuxdex.bak {FSTAB}; systemctl daemon-reload 2>/dev/null || true; "
+            f"echo 'FEHLER: Einhängen ist fehlgeschlagen – die fstab wurde zurückgesetzt.'; exit 1; fi; "
+            f"findmnt --verify --tab-file {FSTAB} 2>&1 | tail -n 5 || true")
+
+
+def fstab_remove_script(spec):
+    """Shell-Skript (als root): entfernt alle Zeilen, deren erstes Feld genau spec ist (mit Sicherung)."""
+    q = shlex.quote
+    return (f"set -e; cp -a {FSTAB} {FSTAB}.tuxdex.bak; awk -v s={q(spec)} '$1!=s' {FSTAB} > {FSTAB}.tuxdex.tmp; "
+            f"cat {FSTAB}.tuxdex.tmp > {FSTAB}; rm -f {FSTAB}.tuxdex.tmp; "
+            f"systemctl daemon-reload 2>/dev/null || true; echo 'Eintrag entfernt (Sicherung: {FSTAB}.tuxdex.bak)'")
+
+
+def fstab_entry_for(node, text):
+    """Der fstab-Eintrag, der zu diesem Gerät gehört (nach UUID, Pfad oder Bezeichnung) – sonst None."""
+    specs = {f"UUID={node.get('uuid')}", node.get("path"), f"LABEL={node.get('label')}",
+             f"PARTUUID={node.get('partuuid')}"} - {"UUID=None", "LABEL=None", "PARTUUID=None", None}
+    return next((e for e in fstab_entries(text) if e["spec"] in specs), None)
+
+
+class PermMountDialog(QDialog):
+    def __init__(self, parent, dev, fs, mp, opts, note=""):
+        super().__init__(parent)
+        self.setWindowTitle("Dauerhaft einhängen")
+        self.setMinimumWidth(500)
+        lay = QVBoxLayout(self)
+        lay.setSizeConstraint(QLayout.SetMinimumSize)
+        spacer = QWidget()
+        spacer.setFixedSize(420, 0)
+        lay.addWidget(spacer)
+        lay.setContentsMargins(32, 28, 32, 24)
+        lay.setSpacing(12)
+        lay.addWidget(Label("Dauerhaft einhängen", "DialogTitle"))
+        lay.addWidget(Label(f"{dev} ({fs}) wird bei jedem Start automatisch eingehängt. Dafür trägt Tuxdex "
+                            "eine Zeile in /etc/fstab ein (mit UUID, vorher wird eine Sicherung angelegt).",
+                            "Small", wrap=True))
+        self.mp = LineEdit(mp, mono=True)
+        lay.addLayout(Field("Einhängepunkt (Ordner)", self.mp))
+        self.opts = LineEdit(opts, mono=True)
+        lay.addLayout(Field("Optionen", self.opts))
+        lay.addWidget(Label("nofail sorgt dafür, dass der Start nicht hängen bleibt, wenn die Platte mal fehlt.",
+                            "Hint", wrap=True))
+        self.own = QCheckBox("Ordner mir zuweisen (damit ich darin schreiben darf)")
+        self.own.setChecked(fs in ("ext4", "btrfs", "xfs", "f2fs"))
+        self.own.setVisible(fs in ("ext4", "btrfs", "xfs", "f2fs"))
+        lay.addWidget(self.own)
+        if note:
+            lay.addWidget(Label(note, "Hint", wrap=True))
+        btns = QHBoxLayout()
+        btns.addStretch(1)
+        btns.addWidget(Button("Abbrechen", "ghost", self.reject))
+        ok = Button("Eintragen && einhängen", "primary", self.accept)
+        ok.setDefault(True)
+        btns.addWidget(ok)
+        lay.addLayout(btns)
+        self.mp.setFocus()
+
+
 class DisksTab(Page):
     COLS = [("Gerät", 200), ("Bezeichnung", 150), ("Dateisystem", 110), ("Größe", 90),
             ("Belegt", 90), ("Eingehängt unter", 200)]
@@ -4832,7 +4974,12 @@ class DisksTab(Page):
         self.b_check = Button("Prüfen (nur lesen)", "ghost", self.check_fs)
         self.b_eject = Button("Sicher entfernen", "ghost", self.eject)
         self.b_format = Button("Formatieren …", "danger", self.format)
-        for b in (self.b_mount, self.b_umount, self.b_rename, self.b_check, self.b_eject):
+        self.b_perm = Button("Dauerhaft einhängen …", "ghost", self.perm_mount,
+                             "Bei jedem Start automatisch einhängen (Eintrag in /etc/fstab)")
+        self.b_unperm = Button("Dauerhaft entfernen", "ghost", self.perm_remove,
+                               "Eintrag aus /etc/fstab löschen – das Laufwerk wird dann nicht mehr automatisch eingehängt")
+        for b in (self.b_mount, self.b_umount, self.b_perm, self.b_unperm, self.b_rename, self.b_check,
+                  self.b_eject):
             acts.addWidget(b)
         acts.addStretch(1)
         acts.addWidget(self.b_format)
@@ -4851,7 +4998,7 @@ class DisksTab(Page):
 
     def refresh(self):
         keep = self.current.get("path") if self.current else None
-        cols = "NAME,PATH,TYPE,SIZE,FSTYPE,LABEL,MOUNTPOINTS,MODEL,RM,HOTPLUG,FSUSED,FSSIZE,TRAN,RO,UUID"
+        cols = "NAME,PATH,TYPE,SIZE,FSTYPE,LABEL,MOUNTPOINTS,MODEL,RM,HOTPLUG,FSUSED,FSSIZE,TRAN,RO,UUID,PARTUUID"
 
         def done(rc, out, err):
             if rc != 0 and "MOUNTPOINTS" in cols:
@@ -4967,7 +5114,8 @@ class DisksTab(Page):
                 w.deleteLater()
         node = self.nodes.get(item.data(0, Qt.UserRole)) if item else None
         self.current = node
-        for b in (self.b_mount, self.b_umount, self.b_rename, self.b_check, self.b_eject, self.b_format):
+        for b in (self.b_mount, self.b_umount, self.b_rename, self.b_check, self.b_eject, self.b_format,
+                  self.b_perm, self.b_unperm):
             b.setEnabled(False)
         if not node:
             self.det_title.setText("Kein Gerät ausgewählt")
@@ -5000,6 +5148,17 @@ class DisksTab(Page):
         self.b_eject.setEnabled(self._removable(node) and not system)
         self.b_format.setEnabled(not system and not _all_mounts(node) and not (typ == "disk" and has_children)
                                  and typ in ("part", "disk"))
+        entry = fstab_entry_for(node, _read(FSTAB))
+        if entry:
+            keep = entry["mount"] in SYSTEM_MOUNTS or entry["fs"] == "swap"
+            self.b_unperm.setEnabled(not keep and not system)
+            notes.append(f"Wird bei jedem Start automatisch eingehängt: {entry['mount']} (/etc/fstab).")
+        else:
+            self.b_perm.setEnabled(mountable and not system and typ in ("part", "lvm", "crypt")
+                                   and fs in FSTAB_FS and bool(node.get("uuid")))
+            if fs in FSTAB_FS and typ in ("part", "lvm", "crypt") and not system and node.get("uuid"):
+                notes.append("Nicht automatisch eingehängt – mit „Dauerhaft einhängen“ geht es nach jedem Start "
+                             "von allein.")
         if system:
             notes.append("System-Datenträger – Aushängen, Umbenennen und Formatieren sind gesperrt.")
         elif typ == "disk" and has_children:
@@ -5065,6 +5224,45 @@ class DisksTab(Page):
             opts = ["-o", f"uid={os.getuid()},gid={os.getgid()}"]
         script = f"mkdir -p {shlex.quote(target)} && mount {' '.join(opts)} {shlex.quote(dev)} {shlex.quote(target)}"
         self._root(["bash", "-c", script], f"mount {dev} {target}")
+
+    def perm_mount(self):
+        n = self.current
+        fs = n.get("fstype") or ""
+        name = re.sub(r"[^A-Za-z0-9_.-]", "_", n.get("label") or "daten").strip("._-") or "daten"
+        dlg = PermMountDialog(self, n["path"], fs, f"/mnt/{name.lower()}",
+                              fstab_default_options(fs, os.getuid(), os.getgid()), FSTAB_FS[fs][2])
+        if not dlg.exec():
+            return
+        mp, opts = dlg.mp.text().strip(), dlg.opts.text().strip()
+        problem = fstab_add_problem(n, mp, opts, _read(FSTAB))
+        if problem:
+            show_warning(self, "Dauerhaft einhängen", problem)
+            return
+        extra = ""
+        if "nofail" not in opts.split(","):
+            extra += "\n\nOhne „nofail“ kann der Start hängen bleiben, wenn die Platte mal fehlt."
+        try:
+            if os.path.isdir(mp) and os.listdir(mp):
+                extra += f"\n\n{mp} enthält schon Dateien – sie sind unsichtbar, solange das Laufwerk darauf liegt."
+        except OSError:
+            pass
+        if not ask_confirm(self, "Dauerhaft einhängen", f"Diese Zeile wird in /etc/fstab eingetragen:\n\n"
+                           f"UUID={n['uuid']}  {mp}  {FSTAB_FS[fs][0]}  {opts}{extra}", "Eintragen"):
+            return
+        owner = (os.getuid(), os.getgid()) if dlg.own.isChecked() and dlg.own.isVisible() else None
+        self._root(["bash", "-c", fstab_add_script(n, mp, opts, owner)], f"fstab-Eintrag für {n['path']} → {mp}")
+
+    def perm_remove(self):
+        n = self.current
+        e = fstab_entry_for(n, _read(FSTAB))
+        if not e or e["mount"] in SYSTEM_MOUNTS or e["fs"] == "swap":
+            return
+        if not ask_confirm(self, "Dauerhaften Eintrag entfernen",
+                           f"Der Eintrag für {e['mount']} wird aus /etc/fstab gelöscht (Sicherung als "
+                           f"/etc/fstab.tuxdex.bak). Das Laufwerk bleibt eingehängt, wird aber nach dem "
+                           f"nächsten Start nicht mehr automatisch eingehängt.", "Entfernen", danger=True):
+            return
+        self._root(["bash", "-c", fstab_remove_script(e["spec"])], f"fstab-Eintrag {e['spec']} entfernen")
 
     def umount(self):
         n = self.current
@@ -14317,6 +14515,39 @@ class MainWindow(QWidget):
 # --------------------------------------------------------------------------
 
 EN = {
+    'Dauerhaft einhängen': 'Mount permanently',
+    'Dauerhaft einhängen …': 'Mount permanently …',
+    'Dauerhaft entfernen': 'Remove permanent mount',
+    'Bei jedem Start automatisch einhängen (Eintrag in /etc/fstab)': 'Mount automatically at every start (entry in /etc/fstab)',
+    'Eintrag aus /etc/fstab löschen – das Laufwerk wird dann nicht mehr automatisch eingehängt': 'Delete the entry from /etc/fstab – the drive is then no longer mounted automatically',
+    '{} ({}) wird bei jedem Start automatisch eingehängt. Dafür trägt Tuxdex eine Zeile in /etc/fstab ein (mit UUID, vorher wird eine Sicherung angelegt).': '{} ({}) will be mounted automatically at every start. For that, Tuxdex adds a line to /etc/fstab (using the UUID; a backup is made first).',
+    'Einhängepunkt (Ordner)': 'Mount point (folder)',
+    'Optionen': 'Options',
+    'nofail sorgt dafür, dass der Start nicht hängen bleibt, wenn die Platte mal fehlt.': "nofail makes sure the boot doesn't hang if the drive is ever missing.",
+    'Ordner mir zuweisen (damit ich darin schreiben darf)': 'Give me ownership of the folder (so I can write to it)',
+    'Eintragen & einhängen': 'Add & mount',
+    'Windows-Laufwerke: In Windows den „Schnellstart“ abschalten, sonst lässt sich die Platte unter Linux nicht schreibend einhängen.': "Windows drives: turn off “Fast Startup” in Windows, otherwise the drive can't be mounted writable on Linux.",
+    'Wird bei jedem Start automatisch eingehängt: {} (/etc/fstab).': 'Is mounted automatically at every start: {} (/etc/fstab).',
+    'Nicht automatisch eingehängt – mit „Dauerhaft einhängen“ geht es nach jedem Start von allein.': 'Not mounted automatically – with “Mount permanently” it happens by itself after every start.',
+    'Bitte einen einfachen absoluten Pfad angeben (Buchstaben, Ziffern, _ . - /), ohne Leerzeichen.': 'Please enter a simple absolute path (letters, digits, _ . - /), without spaces.',
+    '{} ist ein Systemordner. Besser z. B. /mnt/daten.': '{} is a system folder. Better e.g. /mnt/data.',
+    '{} liegt in einem Systemordner ({}).': '{} is inside a system folder ({}).',
+    'Bitte einen Unterordner wählen, z. B. {}/daten.': 'Please choose a subfolder, e.g. {}/data.',
+    'Bitte einen Ordner in deinem Home angeben, z. B. /home/name/daten.': 'Please enter a folder in your home, e.g. /home/name/data.',
+    'Das Dateisystem „{}“ lässt sich hier nicht dauerhaft einhängen.': "The file system “{}” can't be mounted permanently here.",
+    'Das Gerät hat keine UUID – dauerhaftes Einhängen braucht eine.': 'The device has no UUID – permanent mounting needs one.',
+    'Das ist ein System-Datenträger.': 'This is a system drive.',
+    'Die Optionen dürfen nur Buchstaben, Ziffern und , = _ . : / + - enthalten (keine Leerzeichen).': 'The options may only contain letters, digits and , = _ . : / + - (no spaces).',
+    'Dieses Laufwerk ist schon dauerhaft eingetragen (unter {}).': 'This drive is already set up permanently (at {}).',
+    'Der Einhängepunkt {} wird in der fstab schon verwendet.': 'The mount point {} is already used in the fstab.',
+    'Ohne „nofail“ kann der Start hängen bleiben, wenn die Platte mal fehlt.': 'Without “nofail” the boot can hang if the drive is ever missing.',
+    '{} enthält schon Dateien – sie sind unsichtbar, solange das Laufwerk darauf liegt.': '{} already contains files – they are hidden as long as the drive is mounted there.',
+    'Diese Zeile wird in /etc/fstab eingetragen:\n\nUUID={}  {}  {}  {}{}': 'This line will be added to /etc/fstab:\n\nUUID={}  {}  {}  {}{}',
+    'Eintragen': 'Add',
+    'fstab-Eintrag für {} → {}': 'fstab entry for {} → {}',
+    'Dauerhaften Eintrag entfernen': 'Remove permanent entry',
+    'Der Eintrag für {} wird aus /etc/fstab gelöscht (Sicherung als /etc/fstab.tuxdex.bak). Das Laufwerk bleibt eingehängt, wird aber nach dem nächsten Start nicht mehr automatisch eingehängt.': "The entry for {} will be deleted from /etc/fstab (backup as /etc/fstab.tuxdex.bak). The drive stays mounted but won't be mounted automatically after the next start.",
+    'fstab-Eintrag {} entfernen': 'Remove fstab entry {}',
     'Woraus besteht der belegte Platz?': 'What is taking up the space?',
     'Neu berechnen': 'Recalculate',
     'Anwendungen': 'Applications',

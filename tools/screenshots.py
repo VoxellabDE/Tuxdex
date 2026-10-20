@@ -96,6 +96,13 @@ LSBLK = {"blockdevices": [
                "label": "arch", "mountpoints": ["/", "/home"], "model": None, "rm": False, "hotplug": False,
                "fsused": "152471339008", "fssize": "511018598400", "tran": None, "ro": False,
                "uuid": "5e6f7a8b-9c0d-1e2f-3a4b-5c6d7e8f9a0b"}]}]},
+    {"name": "sdb", "path": "/dev/sdb", "type": "disk", "size": 2000398934016, "fstype": None, "label": None,
+     "mountpoints": [None], "model": "WDC WD20EZAZ", "rm": False, "hotplug": False, "fsused": None,
+     "fssize": None, "tran": "sata", "ro": False, "uuid": None, "children": [
+         {"name": "sdb1", "path": "/dev/sdb1", "type": "part", "size": 2000397852672, "fstype": "ext4",
+          "label": "Daten", "mountpoints": [None], "model": None, "rm": False, "hotplug": False,
+          "fsused": None, "fssize": None, "tran": None, "ro": False,
+          "uuid": "c0ffee00-1234-4abc-9def-0123456789ab"}]},
     {"name": "sda", "path": "/dev/sda", "type": "disk", "size": 32015679488, "fstype": None, "label": None,
      "mountpoints": [None], "model": "SanDisk Ultra", "rm": True, "hotplug": True, "fsused": None, "fssize": None,
      "tran": "usb", "ro": False, "uuid": None, "children": [
@@ -378,6 +385,9 @@ _real_read = t._read
 
 
 def fake_read(path, default=""):
+    if path == "/etc/fstab":
+        return ("UUID=0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0 / btrfs subvol=@,compress=zstd 0 0\n"
+                "UUID=A1B2-C3D4 /boot vfat umask=0077 0 2\n")
     return {"/proc/uptime": "302412.51 4012345.10", "/proc/loadavg": "1.12 0.94 0.87 2/1450 23456",
             "/proc/sys/vm/swappiness": "180", "/proc/sys/kernel/randomize_va_space": "2"}.get(path) or \
         _real_read(path, default)
@@ -457,6 +467,16 @@ def prep_disks():
     p = page("disks")
     QTimer.singleShot(600, lambda: p.tree.setCurrentItem(p.tree.topLevelItem(1).child(0))
                       if p.tree.topLevelItemCount() > 1 else None)
+
+
+def prep_fstab_dialog():
+    page("disks")
+    d = t.PermMountDialog(win, "/dev/sdb1", "ext4", "/mnt/daten", t.fstab_default_options("ext4", 1000, 1000))
+    d.show()
+    app.processEvents()
+    d.grab().save(os.path.join(OUT, "disks_permanent.png"))
+    print("gespeichert: disks_permanent")
+    d.close()
 
 
 def prep_storage():
@@ -544,7 +564,7 @@ PLAN = [("update", prep_update, 2500), ("software", prep_software, 3000), ("flat
         ("tasks", prep_tasks, 9000), ("security", prep_security, 4500), ("checklist", prep_checklist, 1500),
         ("restore", prep_restore, 2500), ("setup", prep_setup, 2500), ("setup_search", prep_setup_search, 1000),
         ("setup_games", prep_setup_games, 1200),
-        ("modules", prep_modules, 1500)]
+        ("modules", prep_modules, 1500), ("fstab_dialog", prep_fstab_dialog, 300)]
 
 
 def run(i=0):
@@ -553,7 +573,7 @@ def run(i=0):
         return
     name, prep, wait = PLAN[i]
     prep()
-    QTimer.singleShot(wait, lambda: (_status(), shot(name), run(i + 1)))
+    QTimer.singleShot(wait, lambda: (_status(), shot(name) if name != "fstab_dialog" else None, run(i + 1)))
 
 
 QTimer.singleShot(1500, run)

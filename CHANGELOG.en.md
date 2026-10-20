@@ -2,6 +2,12 @@
 
 English version of [CHANGELOG.md](CHANGELOG.md). Entries before 1.0.0 are only available in German.
 
+## 1.4.0
+Mount drives permanently.
+
+- **Drives → "Mount permanently …"**: a drive is mounted automatically at every start – without editing `/etc/fstab` by hand. Tuxdex adds the entry **by UUID**, picks suitable options per file system (ext4, btrfs, xfs, f2fs, NTFS, exFAT, FAT32) and sets `nofail` so the boot doesn't hang if the drive is ever missing. A backup is made first (`/etc/fstab.tuxdex.bak`); if mounting fails, the `fstab` is reset automatically. For Linux file systems the folder can be assigned to you so you can write to it.
+- **"Remove permanent mount"** deletes the entry again. System entries (/, /boot, /home, swap) stay protected; mount points inside system folders (/etc, /usr, /var …) are rejected.
+
 ## 1.3.0
 System restore and setup for switchers.
 
