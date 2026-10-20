@@ -14515,6 +14515,7 @@ class MainWindow(QWidget):
 # --------------------------------------------------------------------------
 
 EN = {
+    'ja': 'yes',
     'Dauerhaft einhängen': 'Mount permanently',
     'Dauerhaft einhängen …': 'Mount permanently …',
     'Dauerhaft entfernen': 'Remove permanent mount',
