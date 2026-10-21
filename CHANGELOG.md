@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.5
+Updates während der Nutzung (Beta).
+
+- **Update-Fenster bei geöffnetem Tuxdex**: Tuxdex prüft alle 30 Sekunden im Hintergrund, ob es eine neue Version gibt, und zeigt das Update-Fenster, sobald eine erscheint – ohne Neustart. Die Abfrage ist leicht (nur die Commit-ID über das Git-Protokoll, kein Abfragelimit); jede Version wird nur einmal angeboten.
+- **Einstellungen → Aktualisierung**: die regelmäßige Prüfung lässt sich ausschalten und das Intervall einstellen (15 bis 86400 Sekunden).
+
 ## 1.5.4
 Benutzer-Gruppen (Beta).
 

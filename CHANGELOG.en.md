@@ -2,6 +2,12 @@
 
 English version of [CHANGELOG.md](CHANGELOG.md). Entries before 1.0.0 are only available in German.
 
+## 1.5.5
+Updates while in use (beta).
+
+- **Update window while Tuxdex is open**: Tuxdex checks in the background every 30 seconds for a new version and shows the update window as soon as one appears – no restart needed. The query is light (only the commit ID via the Git protocol, no rate limit); each version is offered only once.
+- **Settings → Updating**: the regular check can be turned off and the interval adjusted (15 to 86400 seconds).
+
 ## 1.5.4
 User groups (beta).
 

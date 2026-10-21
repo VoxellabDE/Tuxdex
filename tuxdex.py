@@ -429,7 +429,7 @@ def module_enabled(key, settings=None):
 FONTS = {"sans": "Sans Serif", "mono": "Monospace"}
 
 APP_ID = "tuxdex"
-APP_VERSION = "1.5.4"
+APP_VERSION = "1.5.5"
 APP_STAGE = "alpha"        # Reifegrad – wird nur angezeigt, die Versionsnummer selbst bleibt ohne Zusatz
 
 
@@ -14191,7 +14191,7 @@ BUILD_DIR = os.path.join(os.path.expanduser("~/.cache"), "tuxdex", "build")
 
 def load_settings():
     s = {"repo": DEFAULT_REPO, "branch": DEFAULT_BRANCH, "auto_check": True, "ask_on_start": True, "local_dir": "",
-         "sys_check_on_start": True}
+         "sys_check_on_start": True, "poll_check": True, "poll_secs": 30}
     s.update(_load_json(SETTINGS_FILE, {}))
     if s.get("repo", "").lower() == "pyloger/tuxdex":      # Repository ist zu VoxellabDE umgezogen
         s["repo"] = DEFAULT_REPO
@@ -14417,6 +14417,25 @@ class UpdatePanel(QWidget):
         self.cb_ask.setEnabled(self.cb_auto.isChecked())
         self.cb_ask.toggled.connect(self._ask_changed)
         p.body.addWidget(self.cb_ask)
+        prow = QHBoxLayout()
+        prow.setSpacing(8)
+        self.cb_poll = QCheckBox("Bei geöffnetem Fenster regelmäßig nach Tuxdex-Updates suchen, alle")
+        self.cb_poll.setChecked(bool(self.settings.get("poll_check", True)))
+        self.cb_poll.toggled.connect(self._poll_changed)
+        prow.addWidget(self.cb_poll)
+        self.poll_edit = LineEdit(str(self.settings.get("poll_secs", 30)), mono=True)
+        self.poll_edit.setMaximumWidth(80)
+        self.poll_edit.setEnabled(self.cb_poll.isChecked())
+        self.poll_edit.editingFinished.connect(self._poll_secs_changed)
+        prow.addWidget(self.poll_edit)
+        prow.addWidget(Label("Sekunden (15 bis 86400)"))
+        prow.addStretch(1)
+        p.body.addLayout(prow)
+        self._offered = set()          # Versionen, die schon angeboten wurden – kein zweites Fenster dafür
+        self._checking = False
+        self._poll_timer = QTimer(self)
+        self._poll_timer.timeout.connect(self._poll)
+        self._restart_poll()
 
         # Lokal
         p.body.addWidget(Label("LOKAL AKTUALISIEREN", "FieldLabel"))
@@ -14501,6 +14520,46 @@ class UpdatePanel(QWidget):
         self.settings["ask_on_start"] = on
         save_settings(self.settings)
 
+    # ---- regelmäßige Prüfung bei geöffnetem Fenster --------------------------------
+    def _restart_poll(self):
+        self._poll_timer.stop()
+        if self.settings.get("poll_check", True):
+            try:
+                secs = max(15, min(86400, int(self.settings.get("poll_secs", 30))))
+            except (TypeError, ValueError):
+                secs = 30
+            self._poll_timer.start(secs * 1000)
+
+    def _poll_changed(self, on):
+        self.settings["poll_check"] = on
+        self.poll_edit.setEnabled(on)
+        save_settings(self.settings)
+        self._restart_poll()
+
+    def _poll_secs_changed(self):
+        try:
+            secs = max(15, min(86400, int(self.poll_edit.text().strip())))
+        except ValueError:
+            secs = int(self.settings.get("poll_secs", 30))
+        self.poll_edit.setText(str(secs))
+        self.settings["poll_secs"] = secs
+        save_settings(self.settings)
+        self._restart_poll()
+
+    def _poll(self):
+        """Leichte Abfrage (nur die Commit-ID über das Git-Protokoll, kein Abfragelimit); erst bei einem neuen
+        Commit wird richtig geprüft und ggf. das Update-Fenster gezeigt."""
+        repo = self.settings.get("repo")
+        if not repo or self._checking or QApplication.activeModalWidget() is not None:
+            return
+        branch = self.settings.get("branch", "main")
+
+        def worker():
+            sha = latest_commit(repo, branch)
+            if sha and sha != self.remote_sha:
+                ui(lambda: self.check(silent=True) if not self._checking else None)
+        threading.Thread(target=worker, daemon=True).start()
+
     # ---- GitHub ---------------------------------------------------------------
 
     def check(self, silent=False):
@@ -14511,6 +14570,7 @@ class UpdatePanel(QWidget):
             return
         self.badge.set("info", "Prüfe …")
         self.b_check.setEnabled(False)
+        self._checking = True
         branch = self.settings.get("branch", "main")
 
         def worker():
@@ -14533,6 +14593,7 @@ class UpdatePanel(QWidget):
         threading.Thread(target=worker, daemon=True).start()
 
     def _checked(self, ver, cl, err, silent=False):
+        self._checking = False
         self.b_check.setEnabled(True)
         if err:
             self.badge.set("danger", "Prüfen fehlgeschlagen")
@@ -14563,7 +14624,8 @@ class UpdatePanel(QWidget):
             txt = changes_since(cl, APP_VERSION)
             set_text_raw(self.changes, txt) if txt else self.changes.setText(f"Neue Version {vlabel(ver)}.")
             self.changes.show()
-            if silent and self.settings.get("ask_on_start", True):
+            if silent and self.settings.get("ask_on_start", True) and ver not in self._offered:
+                self._offered.add(ver)
                 self._offer_update(ver, txt)
         else:
             self.badge.set("ok", "Aktuell")
@@ -16492,6 +16554,8 @@ EN = {
     'makepkg (Paket pacman, Gruppe base-devel) wird benötigt.': 'makepkg (package pacman, group base-devel) is required.',
     'makepkg fehlt': 'makepkg missing',
     'Bauwerkzeuge fehlen': 'Build tools missing',
+    'Bei geöffnetem Fenster regelmäßig nach Tuxdex-Updates suchen, alle': 'While the window is open, check for Tuxdex updates regularly, every',
+    'Sekunden (15 bis 86400)': 'seconds (15 to 86400)',
     'Gruppen': 'Groups',
     '{} Gruppen': '{} groups',
     'Gruppen zuweisen …': 'Assign groups …',
