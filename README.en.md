@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.5.2--alpha-2fb3a3">
+  <img alt="Version" src="https://img.shields.io/badge/version-1.5.17.1-2fb3a3">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-2fb3a3">
   <img alt="For Arch Linux" src="https://img.shields.io/badge/for-Arch%20Linux-1793d1">
   <img alt="Python" src="https://img.shields.io/badge/python-3.11%2B-3776ab">
@@ -24,7 +24,7 @@
 </p>
 
 > [!WARNING]
-> **Alpha version.** Actions with administrator rights (root) change your system directly. Tuxdex asks for your consent once before the first such action. Use at your own risk – make a backup first.
+> **Beta version.** Actions with administrator rights (root) change your system directly. Tuxdex asks for your consent once before the first such action. Use at your own risk – make a backup first.
 
 ---
 
@@ -58,9 +58,10 @@ Tuxdex is a **toolkit**: under **Settings → Modules** you choose which tools a
 |---|---|
 | **Updates** | Checks for updates automatically at startup (pacman, AUR via paru, Flatpak – can be turned off) and shows the count on the tab and at the bottom right · install with one click · **major updates** and kernel/system packages are marked · restart notice · the check result is kept after closing |
 | **Setup** | One-click basics: fonts for Office documents, audio/video codecs, power profiles · set **default apps** · **gaming setup** (Steam, GameMode, MangoHud, Lutris, Heroic, Bottles, Wine, 32-bit support) · **Alternatives for Windows programs**: type "Photoshop", "Office" and so on, install the Linux alternative right away |
-| **Software** | All packages with icon, version, size, source/location and install date · select with checkboxes and uninstall together · install from pacman, AUR (paru) or Flathub |
+| **Software** | **Popular programs** by category to install directly (Discord, Signal, Thunderbird, OBS, Obsidian, KeePassXC, VS Code …) with progress and "Start" · All packages with icon, version, size, source/location and install date · select with checkboxes and uninstall together · install from pacman, AUR (paru) or Flathub |
 | **Flatpak** | Permissions of every Flatpak app with switches – network, files & folders, devices, sound, display, environment variables, portal permissions · rules for all apps · risky permissions are marked, changes highlighted · set up Flathub, start, update and uninstall apps |
 | **Drives** | Drives and partitions as a tree · mount, unmount, **mount permanently** (fstab by UUID, with backup), rename, check, **format** (ext4, btrfs, xfs, exFAT, FAT32, NTFS), safely remove · detects new USB sticks automatically · system partitions are protected |
+| **Flash stick** | "Flash" bootable sticks: **Arch Linux** and **Home Assistant OS** (PC, Raspberry Pi, Green) with download and checksum – or an **own image file** (.iso, .img, .img.xz). Only removable drives are offered, never the system disk; the stick is verified afterwards |
 | **Storage** | Usage per drive · **pie chart**: operating system, applications, system data, photos & videos, personal files · “What is using the space?” with drill-down into folders · cleanup: package cache, orphaned packages, journal, trash, Flatpak |
 | **Backup** | Snapshots (versioned, space-saving), mirror or compressed archives (zstd/xz/gzip, optionally with password) · **several targets at once** · verification after writing · custom names with date ([how it works](#naming-backups)) · old versions cleaned up automatically · restore · daily/weekly schedule |
 | **Restore** | System snapshots with snapper (btrfs) or Timeshift · **snapshot before every update** · list, create, delete · **roll back to a state** with one click |
@@ -68,7 +69,7 @@ Tuxdex is a **toolkit**: under **Settings → Modules** you choose which tools a
 | **Task manager** | Processes with program icons, CPU, RAM, disk I/O, energy estimate · performance tiles with details on click: CPU (clock, caches, virtualization), RAM (speed, slots, type), drives, GPU (clock, power, VRAM, PCIe), network, battery, fans · system: CPU/GPU name, mainboard, IP addresses, DNS · **autostart & boot time** · **version status** of graphics driver, microcode, BIOS, kernel, firmware |
 | **Antivirus** *(hidden at first)* | ClamAV is mainly meant for servers and of little use on Linux desktops – an own tool for desktop users is on the [roadmap](#roadmap). Front end for an already installed ClamAV (optional): update signatures, scan folders or the whole system – with **live progress** (files, data, speed, time left) and whether the scan is running or stuck · quarantine with restore |
 | **Security** | Security check (VPN, DNS, proxy, firewall, LUKS, Secure Boot, CPU microcode, swap encryption, kernel protection, updates, antivirus, open ports, SSH, known vulnerabilities) · **checklist for maintenance, privacy & performance** (package signatures, mirrors, sudo, log size, core dumps, shell history, TRIM, I/O scheduler, NTP, old kernel modules, package list …) · **DNS leak test & VPN/proxy detection** · **block/allow open ports with a button** · front end for an already installed **Mullvad VPN** (optional: account, location, kill switch, DNS filters) · ufw firewall with rules |
-| **Users** *(hidden at first)* | **Add users**, **change passwords** (incl. date of the last change), **storage** and **memory** per user, **active time** (sum of logins), last login and a **description** of what the user is for |
+| **Users** *(hidden at first)* | **Add users**, **change passwords** (incl. date of the last change), **storage** and **memory** per user, **active time** (sum of logins), last login and a **description** of what the user is for, **assign groups** |
 
 ## Roadmap
 

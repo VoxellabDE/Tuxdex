@@ -104,13 +104,13 @@ def _show_fatal_error(title, message):
 
 
 try:
-    from PySide6.QtCore import QObject, Qt, Signal, Slot, QTimer, QSize, QRectF, QEvent
+    from PySide6.QtCore import QObject, Qt, Signal, Slot, QTimer, QSize, QRectF, QEvent, QPropertyAnimation
     from PySide6.QtGui import (QColor, QFont, QFontDatabase, QPainter, QPainterPath, QPen, QTextCharFormat,
                                QTextCursor, QIcon, QPixmap, QPalette)
     from PySide6.QtWidgets import (
         QApplication, QWidget, QFrame, QLabel, QPushButton, QHBoxLayout, QVBoxLayout,
         QGridLayout, QStackedWidget, QPlainTextEdit, QLineEdit, QCheckBox, QComboBox,
-        QListWidget, QAbstractItemView, QTableWidget, QTableWidgetItem, QHeaderView,
+        QListWidget, QListWidgetItem, QAbstractItemView, QTableWidget, QTableWidgetItem, QHeaderView,
         QTreeWidget, QTreeWidgetItem, QLayout,
         QSlider, QDialog, QMessageBox, QScrollArea, QSizePolicy, QFileDialog,
     )
@@ -279,6 +279,8 @@ def set_text_raw(widget, text, method="setText"):
 
 
 def _install_i18n():
+    if _TR_ORIG:                                  # schon eingebaut
+        return
     import PySide6.QtWidgets as W
 
     def wrap(cls, name):
@@ -348,8 +350,15 @@ def init_language():
         env = os.environ.get("LC_ALL") or os.environ.get("LC_MESSAGES") or os.environ.get("LANG") or ""
         lang = "de" if env.lower().startswith("de") else "en"
     LANG = lang
-    if LANG != "de":
-        _install_i18n()
+    _install_i18n()          # immer einbauen: bei Deutsch tut tr() nichts, so geht der Wechsel auch ohne Neustart
+
+
+def set_language(code):
+    """Sprache zur Laufzeit wechseln (danach Fenster neu aufbauen)."""
+    global LANG
+    LANG = code if code in ("de", "en") else "de"
+    _TR_CACHE.clear()
+    _install_i18n()
 
 
 # --------------------------------------------------------------------------
@@ -387,6 +396,7 @@ MODULES = [
     ("software", "Software", "#5aa6f0"),
     ("flatpak", "Flatpak", "#8fa8ff"),
     ("disks", "Datenträger", "#d9b95c"),
+    ("flash", "Flash-Stick", "#ffb86b"),
     ("storage", "Speicher", "#56c2d6"),
     ("backup", "Backup", "#e9c46a"),
     ("restore", "Wiederherstellung", "#7fd1b9"),
@@ -405,6 +415,7 @@ MODULE_INFO = {
     "software": "Programme suchen, installieren und entfernen (pacman und AUR).",
     "flatpak": "Flatpak-Apps verwalten und ihre Rechte per Schalter einstellen.",
     "disks": "USB-Sticks und Festplatten einhängen, formatieren und prüfen.",
+    "flash": "Bootfähige USB-Sticks erstellen (Arch Linux, Home Assistant OS oder eigene Abbild-Datei).",
     "storage": "Sehen, was Platz belegt, und typische Platzfresser aufräumen.",
     "backup": "Sicherungen auf externe Laufwerke – mit Zeitplan und Wiederherstellen.",
     "restore": "System-Snapshots vor Updates und Zurücksetzen per Klick (snapper oder Timeshift).",
@@ -429,14 +440,30 @@ def module_enabled(key, settings=None):
 FONTS = {"sans": "Sans Serif", "mono": "Monospace"}
 
 APP_ID = "tuxdex"
-APP_VERSION = "1.5.2"
-APP_STAGE = "alpha"        # Reifegrad – wird nur angezeigt, die Versionsnummer selbst bleibt ohne Zusatz
+APP_VERSION = "1.5.17.1"
+APP_STAGE = ""             # früher „alpha“ – das Namensschild kommt jetzt vom Kanal (Stabil ohne Zusatz, Beta mit „-beta“)
 
 
-def vlabel(v=None):
-    """Version zum Anzeigen: „1.1.3-alpha“; Beta-Stände („1.2.0-beta.1“) bleiben, wie sie sind."""
+def installed_channel():
+    """„stable“ oder „beta“ – Kanal der installierten Version. Verglichen wird mit den zuletzt bekannten Versionen
+    auf GitHub (Einstellungen „channels“): neuer als die stabile Version heißt Beta. Ohne Vergleichswerte gilt der
+    gewählte Update-Kanal."""
+    st = load_settings()
+    stable = (st.get("channels") or {}).get("main")
+    if stable:
+        return "beta" if version_tuple(APP_VERSION) > version_tuple(stable) else "stable"
+    return "beta" if st.get("branch") == "beta" else "stable"
+
+
+def vlabel(v=None, channel=None):
+    """Version zum Anzeigen: Stabil ohne Zusatz („1.5.2“), Beta mit „-beta“ („1.5.11-beta“). channel: „stable“
+    oder „beta“; ohne Angabe gilt für die installierte Version ihr Kanal."""
     v = APP_VERSION if v is None else v
-    return v if "-" in v or not APP_STAGE or not re.match(r"\d", v) else f"{v}-{APP_STAGE}"
+    if "-" in v or not re.match(r"\d", v):
+        return v
+    if channel is None and v == APP_VERSION:
+        channel = installed_channel()
+    return f"{v}-beta" if channel == "beta" else v
 SYSTEM_INSTALL = os.path.abspath(__file__).startswith("/usr/")
 
 # App-Logo (Kachel mit drei Reglern) – Taskleiste, Kopfzeile, Starter
@@ -575,6 +602,9 @@ QToolTip { background: $bg2; color: $ink; border: 1px solid $line; padding: 4px 
 #Topbar { background: $bg1; }
 #AppTitle { font-size: 15pt; font-weight: 600; }
 #TabBar { background: $bg1; border-bottom: 1px solid $line; }
+#TabScroll, #TabInner { background: transparent; }
+#TabScroll > QWidget > QWidget { background: transparent; }
+#TabScroll > QWidget { background: transparent; }
 #Tab { background: transparent; border-top-left-radius: 6px; border-top-right-radius: 6px; }
 #Tab[selected="true"] { background: $bg0; }
 #Tab:hover { background: $bg2; }
@@ -618,6 +648,11 @@ QPushButton:disabled, QPushButton[variant="primary"]:disabled, QPushButton[varia
     background: transparent; color: $line_strong; border: 1px solid $line; padding: 6px 15px;
 }
 QPushButton[variant="icon"] { padding: 6px 10px; min-width: 16px; }
+
+/* Installier-Zeilen: laufende Installation ist umrahmt und hat eine eigene Leiste */
+#InstRow { border: 1px solid transparent; border-radius: 8px; background: transparent; }
+#InstRow[busy="true"] { border: 1px solid $accent; background: $bg3; }
+#InstRow QLabel { background: transparent; }
 
 /* Status-Badges */
 #Badge { border: 1px solid; border-radius: 3px; padding: 2px 8px; font-size: 9pt; font-weight: 600; background: $bg2; }
@@ -709,7 +744,7 @@ QListWidget#AppList::item { padding: 6px 6px; border-radius: 6px; }
 QTableWidget::indicator, QListWidget::indicator {
     width: 16px; height: 16px; border: 1.5px solid $line_strong; border-radius: 3px; background: $bg0;
 }
-QTableWidget::indicator:checked { background: $accent; border-color: $accent; image: url("$check"); }
+QTableWidget::indicator:checked, QListWidget::indicator:checked { background: $accent; border-color: $accent; image: url("$check"); }
 QPushButton#SysHint { background: transparent; color: $warn; border: 1px solid $warn; padding: 2px 10px;
     font-size: 9pt; }
 QPushButton#SysHint[tone="danger"] { color: $danger; border-color: $danger; }
@@ -962,7 +997,7 @@ def run_capture_async(args, callback, needs_sudo=False, timeout=60):
     Sitzung existiert."""
     full_args = (["sudo", "-n"] + args) if needs_sudo else args
     if needs_sudo and not alpha_accepted():
-        QTimer.singleShot(0, lambda: callback(1, "", "Alpha-Hinweis nicht bestätigt – keine root-Aktion."))
+        QTimer.singleShot(0, lambda: callback(1, "", "Beta-Hinweis nicht bestätigt – keine root-Aktion."))
         return
 
     def worker():
@@ -1068,9 +1103,10 @@ class ProcessRun:
     wird an den Prozess geschickt."""
 
     def __init__(self, cmd, log, needs_sudo=False, on_done=None, interactive=False, on_line=None, cwd=None,
-                 on_percent=None):
+                 on_percent=None, on_text=None):
         self.log = log
         self.cwd = cwd
+        self.on_text = on_text         # optional: Ausgabe-Stücke (bereinigt, GUI-Thread) für eine Fortschrittsberechnung
         self.on_percent = on_percent   # optional: zuletzt gemeldete Prozentzahl (GUI-Thread)
         self.on_done = on_done
         self.on_line = on_line   # optional: pro vollständiger Zeile (GUI-Thread)
@@ -1083,7 +1119,7 @@ class ProcessRun:
             inner = cmd
         self.full_cmd = (["sudo", "-n"] + inner) if needs_sudo else inner
         if needs_sudo and not alpha_accepted():
-            log.append_text("Abgebrochen: Der Alpha-Hinweis wurde nicht bestätigt – keine Aktion mit root-Rechten.\n")
+            log.append_text("Abgebrochen: Der Beta-Hinweis wurde nicht bestätigt – keine Aktion mit root-Rechten.\n")
             if on_done:
                 QTimer.singleShot(0, lambda: on_done(1))
             return
@@ -1148,6 +1184,8 @@ class ProcessRun:
                 if self.log is not None:
                     ui(lambda t=text: self.log.write_raw(t))
                 clean = ANSI_RE.sub("", text).replace("\r\n", "\n")
+                if self.on_text:
+                    ui(lambda t=clean: self.on_text(t))
                 if self.on_percent:
                     pct = PCT_RE.findall(clean)
                     if pct:
@@ -1187,14 +1225,15 @@ class ProcessRun:
 
 
 def run_streaming(cmd, log, needs_sudo=False, on_done=None, clear_first=True, interactive=False, on_line=None,
-                  cwd=None, on_percent=None):
+                  cwd=None, on_percent=None, on_text=None):
     """Führt cmd aus und streamt die Ausgabe live in das LogView - alles
     innerhalb des Programmfensters, kein externes Terminal. Gibt ein
     ProcessRun-Objekt zurück (u. a. zum Abbrechen)."""
     if clear_first:
         log.set_text("")
     return ProcessRun(cmd, log, needs_sudo=needs_sudo, on_done=on_done, interactive=interactive,
-                      on_line=on_line, cwd=cwd, on_percent=on_percent)
+                      on_line=on_line, cwd=cwd, on_percent=on_percent,
+                      on_text=on_text)
 
 
 class SequenceRun:
@@ -1223,7 +1262,8 @@ class SequenceRun:
 
         self.current = run_streaming(step["cmd"], self.log, needs_sudo=step["needs_sudo"], on_done=done,
                                      clear_first=False, interactive=step.get("interactive", False),
-                                     cwd=step.get("cwd"), on_percent=step.get("on_percent"))
+                                     cwd=step.get("cwd"), on_percent=step.get("on_percent"),
+                                     on_text=step.get("on_text"))
 
     def cancel(self):
         self.cancelled = True
@@ -1609,7 +1649,7 @@ def show_error(parent, title, text):
 
 
 ALPHA_FILE = os.path.join(os.path.expanduser("~/.config"), "tuxdex", "settings.json")
-ALPHA_TEXT = ("Tuxdex ist in der <b>Alpha-Phase</b>. Aktionen mit Administrator-Rechten (root) ändern dein System "
+ALPHA_TEXT = ("Tuxdex ist in der <b>Beta-Phase</b>. Aktionen mit Administrator-Rechten (root) ändern dein System "
               "direkt – z. B. Pakete, Datenträger, Swap, Firewall, Systemdateien. Trotz Rückfragen und Prüfungen "
               "können Fehler passieren, bis hin zu Datenverlust oder einem System, das nicht mehr startet.<br><br>"
               "<b>Nutzung auf eigenes Risiko.</b> Es gibt keine Gewährleistung (MIT-Lizenz). Lege vorher ein Backup "
@@ -1625,7 +1665,7 @@ class AlphaDialog(QDialog):
 
     def __init__(self, parent):
         super().__init__(parent)
-        self.setWindowTitle("Alpha-Version – Hinweis")
+        self.setWindowTitle("Beta-Version – Hinweis")
         self.setModal(True)
         lay = QVBoxLayout(self)
         lay.setSizeConstraint(QLayout.SetMinimumSize)
@@ -1636,7 +1676,7 @@ class AlphaDialog(QDialog):
         lay.addWidget(spacer)
         head = QHBoxLayout()
         head.setSpacing(12)
-        head.addWidget(StatusBadge("warn", "ALPHA"))
+        head.addWidget(StatusBadge("warn", "BETA"))
         head.addWidget(Label("Aktionen mit root-Rechten", "DialogTitle"), 1)
         lay.addLayout(head)
         txt = Label(ALPHA_TEXT, wrap=True)
@@ -1655,7 +1695,7 @@ class AlphaDialog(QDialog):
 
 
 def ask_alpha_consent(parent):
-    """True, wenn der Alpha-Hinweis schon bestätigt ist oder jetzt bestätigt wird. Wird gespeichert."""
+    """True, wenn der Beta-Hinweis schon bestätigt ist oder jetzt bestätigt wird. Wird gespeichert."""
     if alpha_accepted():
         return True
     if AlphaDialog(parent).exec() != QDialog.Accepted:
@@ -1688,7 +1728,7 @@ class PasswordDialog(QDialog):
         lay.addWidget(Label(heading, "DialogTitle"))
         lay.addWidget(Label(note, "Small", wrap=True))
         if heading == "sudo-Passwort eingeben":
-            lay.addWidget(Label("▲  Alpha-Version: Aktionen mit root-Rechten auf eigenes Risiko.", "Warn", wrap=True))
+            lay.addWidget(Label("▲  Beta-Version: Aktionen mit root-Rechten auf eigenes Risiko.", "Warn", wrap=True))
         self.entry = LineEdit()
         self.entry.setEchoMode(QLineEdit.Password)
         self.entry.setMinimumHeight(42)
@@ -2450,6 +2490,274 @@ class DateItem(QTableWidgetItem):
         return (self.data(Qt.UserRole) or 0) < (other.data(Qt.UserRole) or 0)
 
 
+# Beliebte Programme zum direkten Installieren, nach Kategorie. (Name, Beschreibung, Quelle, Kennung)
+# Quelle: pacman = Arch-Paketquellen, flathub = Flatpak von Flathub
+SOFT_CATALOG = [
+    ("Kommunikation", [
+        ("Discord", "Chat, Sprache und Video für Communities und Freunde", "pacman", "discord"),
+        ("Signal", "Verschlüsselter Messenger", "pacman", "signal-desktop"),
+        ("Thunderbird", "E-Mail, Kalender und Kontakte", "pacman", "thunderbird"),
+    ]),
+    ("Notizen & Organisation", [
+        ("Obsidian", "Notizen mit Verknüpfungen, alles als Textdateien", "pacman", "obsidian"),
+        ("Super Productivity", "Aufgabenliste mit Zeiterfassung", "flathub", "com.super_productivity.SuperProductivity"),
+    ]),
+    ("Sicherheit & Passwörter", [
+        ("KeePassXC", "Passwort-Manager, Daten bleiben auf deinem Rechner", "pacman", "keepassxc"),
+        ("Bitwarden", "Passwort-Manager mit Cloud-Abgleich", "pacman", "bitwarden"),
+        ("VeraCrypt", "Verschlüsselte Container und Laufwerke", "pacman", "veracrypt"),
+        ("Cryptomator", "Cloud-Ordner (Dropbox, Drive …) verschlüsseln", "flathub", "org.cryptomator.Cryptomator"),
+    ]),
+    ("Internet & Übertragen", [
+        ("Brave", "Browser mit eingebautem Werbeblocker", "flathub", "com.brave.Browser"),
+        ("qBittorrent", "Torrent-Client", "pacman", "qbittorrent"),
+        ("FileZilla", "FTP- und SFTP-Client", "pacman", "filezilla"),
+        ("LocalSend", "Dateien im WLAN an andere Geräte schicken (wie AirDrop)", "flathub", "org.localsend.localsend_app"),
+    ]),
+    ("Audio & Video", [
+        ("OBS Studio", "Bildschirm aufnehmen und streamen", "pacman", "obs-studio"),
+        ("Spotify", "Musik-Streaming", "flathub", "com.spotify.Client"),
+        ("fre:ac", "Audio-Konverter und CD-Ripper", "flathub", "org.freac.freac"),
+    ]),
+    ("Entwicklung & Netzwerk", [
+        ("Visual Studio Code", "Code-Editor von Microsoft", "flathub", "com.visualstudio.code"),
+        ("Wireshark", "Netzwerkverkehr mitschneiden und analysieren", "pacman", "wireshark-qt"),
+    ]),
+    ("Konstruktion & Wissenschaft", [
+        ("FreeCAD", "3D-Konstruktion (CAD)", "pacman", "freecad"),
+        ("KiCad", "Platinen und Schaltpläne entwerfen", "pacman", "kicad"),
+        ("GNU Octave", "Mathematik und Numerik (ähnlich MATLAB)", "pacman", "octave"),
+    ]),
+    ("Spiele", [
+        ("Prism Launcher", "Minecraft mit mehreren Instanzen und Mods", "pacman", "prismlauncher"),
+    ]),
+    ("Werkzeuge", [
+        ("PeaZip", "Archive packen und entpacken (ZIP, 7z, RAR …)", "flathub", "io.github.peazip.PeaZip"),
+    ]),
+]
+
+
+class InstallRow(QFrame):
+    """Zeile „Name · Beschreibung · Knopf“. Läuft eine Installation, wird die Zeile umrahmt und zeigt unter der
+    Beschreibung eine eigene Fortschrittsleiste – so ist sofort klar, welches Programm gerade installiert."""
+
+    def __init__(self, name, desc, button):
+        super().__init__()
+        self.setObjectName("InstRow")
+        self.setProperty("busy", False)
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(8, 6, 8, 6)
+        lay.setSpacing(10)
+        col = QVBoxLayout()
+        col.setSpacing(2)
+        nm = Label(name)
+        nm.setStyleSheet("font-weight:600;")
+        col.addWidget(nm)
+        col.addWidget(Label(desc, "Hint", wrap=True))
+        self.bar = ProgressBar()
+        self.bar.hide()
+        col.addWidget(self.bar)
+        lay.addLayout(col, 1)
+        lay.addWidget(button, 0, Qt.AlignVCenter)
+
+    def set_busy(self, pct):
+        if pct is None:
+            self.setProperty("busy", False)
+            self.bar.hide()
+        else:
+            self.setProperty("busy", True)
+            self.bar.show()
+            self.bar.set(pct, f"{pct} %")
+        repolish(self)
+
+
+# Gleiche Programme aus der jeweils anderen Quelle – wer z. B. OBS per Flatpak installiert hat, soll es hier
+# trotzdem als installiert sehen.
+CATALOG_ALTS = {
+    "Discord": [("flathub", "com.discordapp.Discord")], "Signal": [("flathub", "org.signal.Signal")],
+    "Thunderbird": [("flathub", "org.mozilla.Thunderbird")], "Obsidian": [("flathub", "md.obsidian.Obsidian")],
+    "KeePassXC": [("flathub", "org.keepassxc.KeePassXC")], "Bitwarden": [("flathub", "com.bitwarden.desktop")],
+    "qBittorrent": [("flathub", "org.qbittorrent.qBittorrent")],
+    "FileZilla": [("flathub", "org.filezillaproject.Filezilla")], "OBS Studio": [("flathub", "com.obsproject.Studio")],
+    "Wireshark": [("flathub", "org.wireshark.Wireshark")], "FreeCAD": [("flathub", "org.freecad.FreeCAD")],
+    "KiCad": [("flathub", "org.kicad.kicad")], "GNU Octave": [("flathub", "org.octave.Octave")],
+    "Prism Launcher": [("flathub", "org.prismlauncher.PrismLauncher")],
+    "Visual Studio Code": [("pacman", "code"), ("pacman", "visual-studio-code-bin")],
+    "Brave": [("pacman", "brave-bin")], "Spotify": [("pacman", "spotify")],
+    "LocalSend": [("pacman", "localsend-bin")], "Cryptomator": [("pacman", "cryptomator")],
+    "Super Productivity": [("pacman", "superproductivity-bin")], "PeaZip": [("pacman", "peazip-qt-bin")],
+}
+
+
+def _norm_name(t):
+    return re.sub(r"[^a-z0-9]", "", t.lower())
+
+
+def installed_flatpak_names():
+    """{normalisierter Anzeigename: Anwendungs-ID} aller installierten Flatpak-Apps (System und Benutzer)."""
+    if not which("flatpak"):
+        return {}
+    try:
+        out = subprocess.run(["flatpak", "list", "--app", "--columns=application,name"],
+                             capture_output=True, text=True, timeout=15).stdout
+    except Exception:
+        return {}
+    res = {}
+    for line in out.splitlines():
+        c = line.split("\t")
+        if len(c) >= 2 and c[0].strip():
+            res[_norm_name(c[1])] = c[0].strip()
+    return res
+
+
+def catalog_found(name, src, ident, pac, fp, fpnames):
+    """(Quelle, Kennung), unter der das Programm installiert ist – oder None. Prüft die eigene Quelle, die gleiche App
+    aus der anderen Quelle und zuletzt den Anzeigenamen der Flatpak-Apps."""
+    for s_, i_ in [(src, ident)] + CATALOG_ALTS.get(name, []):
+        if i_ in (pac if s_ == "pacman" else fp):
+            return s_, i_
+    n = _norm_name(name)
+    for fname, fid in fpnames.items():
+        if fname == n or (len(n) >= 5 and len(fname) >= 5 and (n in fname or fname in n)):
+            return "flathub", fid
+    return None
+
+
+class CatalogPanel(Panel):
+    """„Beliebte Programme“: nach Kategorie sortiert, mit Quelle am Knopf, Fortschritt in % und danach „Starten“."""
+
+    def __init__(self, tab):
+        super().__init__("Beliebte Programme")
+        self.tab = tab
+        self.pac, self.fp = set(), set()
+        self.fpnames = {}
+        self.installing = {}        # (Quelle, Kennung) -> Prozent
+        self.btns = {}
+        self.rows = {}
+        self.body.addWidget(Label("Direkt installieren – gleich unter dem Namen steht, woher das Programm kommt "
+                                  "(pacman = Arch-Paketquellen, Flatpak = Flathub).", "Hint", wrap=True))
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        self.cat_cb = QComboBox()
+        self.cat_cb.addItem("Alle Kategorien", "")
+        for cat, _ in SOFT_CATALOG:
+            self.cat_cb.addItem(cat, cat)
+        self.cat_cb.setMinimumWidth(240)
+        self.cat_cb.setMinimumHeight(38)
+        self.cat_cb.currentIndexChanged.connect(lambda _=0: self.render())
+        row.addLayout(Field("Kategorie", self.cat_cb))
+        self.search = LineEdit("", "Programm suchen …")
+        self.search.textChanged.connect(lambda _=None: self.render())
+        row.addLayout(Field("Suche", self.search), 1)
+        self.body.addLayout(row)
+        self.box = QVBoxLayout()
+        self.box.setSpacing(6)
+        self.body.addLayout(self.box)
+        self.refresh()
+
+    def refresh(self):
+        def worker():
+            pac, fp, names = installed_pacman(), installed_flatpaks(), installed_flatpak_names()
+            _LAUNCH_CACHE.clear()
+            ui(lambda: self._apply(pac, fp, names))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _apply(self, pac, fp, names):
+        self.pac, self.fp, self.fpnames = pac, fp, names
+        self.render()
+
+    def render(self):
+        clear_layout(self.box)
+        self.btns = {}
+        self.rows = {}
+        cat = self.cat_cb.currentData()
+        q = self.search.text().strip().lower()
+        shown = 0
+        for c, apps in SOFT_CATALOG:
+            if cat and c != cat:
+                continue
+            hits = [a for a in apps if not q or q in a[0].lower() or q in tr(a[1]).lower()]
+            if not hits:
+                continue
+            if not cat:
+                head = Label(c.upper(), "FieldLabel")
+                self.box.addSpacing(6)
+                self.box.addWidget(head)
+            for name, desc, src, ident in hits:
+                b = self._button(name, src, ident)
+                b.setMinimumWidth(170)
+                row = InstallRow(name, tr(desc), b)
+                key = (src, ident)
+                self.rows.setdefault(key, []).append(row)
+                if key in self.installing:
+                    row.set_busy(self.installing[key])
+                self.box.addWidget(row)
+                shown += 1
+        if not shown:
+            self.box.addWidget(Label("Nichts gefunden.", "Muted"))
+
+    def _button(self, name, src, ident):
+        key = (src, ident)
+        found = catalog_found(name, src, ident, self.pac, self.fp, self.fpnames)
+        if key in self.installing:
+            b = Button(busy_text(self.installing[key]), "ghost")
+            self.btns.setdefault(key, []).append(b)
+            return b
+        if found:
+            cmd = launch_cmd(*found)
+            if cmd:
+                return Button("Starten", "launch", lambda: (start_app(cmd), self.tab.app.set_status("Wird gestartet …")))
+            b = Button("Installiert", "ghost")
+            b.setEnabled(False)
+            return b
+        b = Button(install_text(src), "primary", lambda: self.install(name, src, ident))
+        self.btns.setdefault(key, []).append(b)
+        if src == "flathub" and not which("flatpak"):
+            b.setEnabled(False)
+            b.setToolTip("Flatpak fehlt – im Tab „Flatpak“ einrichten.")
+        return b
+
+    def _set_busy(self, key, pct):
+        self.installing[key] = pct
+        for b in self.btns.get(key, []):
+            try:
+                b.setText(busy_text(pct))
+                b.setProperty("variant", "ghost")
+                repolish(b)
+            except RuntimeError:
+                pass
+        for row in self.rows.get(key, []):
+            try:
+                row.set_busy(pct)
+            except RuntimeError:
+                pass
+
+    def install(self, name, src, ident):
+        key = (src, ident)
+        if key in self.installing:
+            return
+        where = "aus den Arch-Paketquellen (pacman)" if src == "pacman" else "als Flatpak von Flathub"
+        if not ask_confirm(self, name, f"{name} {where} installieren?", "Installieren"):
+            return
+        if not self.tab.app.priv.ensure(self):
+            return
+        if src == "pacman":
+            step = {"cmd": ["pacman", "-S", "--needed", "--", ident], "needs_sudo": True, "interactive": True,
+                    "label": f"sudo pacman -S {ident}"}
+        else:
+            step = {"cmd": ["flatpak", "install", "-y", "flathub", ident], "needs_sudo": True, "interactive": True,
+                    "label": f"flatpak install flathub {ident}"}
+        self._set_busy(key, 0)
+        step["on_text"] = monotone(lambda v: self._set_busy(key, v))
+
+        def all_done():
+            self.installing.pop(key, None)
+            self.refresh()
+            if hasattr(self.tab, "refresh_list"):
+                self.tab.refresh_list()
+        run_sequence([step], self.tab.log, on_all_done=all_done)
+
+
 class SoftwareTab(Page):
     CATEGORIES = ["Programme (selbst installiert)", "AUR / Fremd-Pakete", "Flatpak",
                   "Alle Pakete (inkl. Abhängigkeiten)"]
@@ -2523,6 +2831,9 @@ class SoftwareTab(Page):
         self.details.setTextInteractionFlags(Qt.TextBrowserInteraction)
         pk.body.addWidget(self.details)
         self.lay.addWidget(pk, 2)
+
+        self.catalog = CatalogPanel(self)
+        self.lay.addWidget(self.catalog)
 
         act = Panel("Installieren")
         row = QHBoxLayout()
@@ -4219,6 +4530,49 @@ def default_app(mime):
     return _cmd_out(["xdg-mime", "query", "default", mime]).strip() if which("xdg-mime") else ""
 
 
+def mimeapps_files():
+    """Dateien, in denen Standard-Apps stehen: ~/.config/mimeapps.list und – falls vorhanden – die Datei der
+    laufenden Oberfläche (z. B. kde-mimeapps.list). Die Oberflächen-Datei hat Vorrang; wer nur mimeapps.list
+    schreibt (xdg-mime default), sieht unter KDE oft keine Wirkung."""
+    cfg = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
+    files = [os.path.join(cfg, "mimeapps.list")]
+    for d in os.environ.get("XDG_CURRENT_DESKTOP", "").split(":"):
+        f = os.path.join(cfg, d.lower() + "-mimeapps.list")
+        if d and os.path.exists(f) and f not in files:
+            files.append(f)
+    return files
+
+
+def set_mime_default(ident, mimes):
+    """Schreibt ident als Standard für alle mimes in alle relevanten mimeapps-Dateien und nimmt es aus den
+    „Removed Associations“. Gibt eine Fehlermeldung oder None zurück."""
+    import configparser
+    err = None
+    for f in mimeapps_files():
+        cp = configparser.ConfigParser(interpolation=None, delimiters=("=",), strict=False)
+        cp.optionxform = str                      # Groß-/Kleinschreibung der MIME-Typen erhalten
+        try:
+            cp.read(f, encoding="utf-8")
+            if not cp.has_section("Default Applications"):
+                cp.add_section("Default Applications")
+            for m in mimes:
+                cp["Default Applications"][m] = ident + ";"
+                if cp.has_section("Removed Associations") and m in cp["Removed Associations"]:
+                    left = [x for x in cp["Removed Associations"][m].split(";") if x and x != ident]
+                    if left:
+                        cp["Removed Associations"][m] = ";".join(left) + ";"
+                    else:
+                        cp.remove_option("Removed Associations", m)
+            os.makedirs(os.path.dirname(f), exist_ok=True)
+            tmp = f + ".tuxdex-tmp"
+            with open(tmp, "w", encoding="utf-8") as fh:
+                cp.write(fh, space_around_delimiters=False)
+            os.replace(tmp, f)
+        except Exception as e:
+            err = f"{os.path.basename(f)}: {e}"
+    return err
+
+
 def default_apps_state():
     """{Kennung: (aktuelle desktop-id, [(Name, desktop-id)])}"""
     return {key: (default_app(mimes[0]), apps_for_mime(mimes[0])) for key, _, mimes in DEFAULT_APP_TYPES}
@@ -4261,15 +4615,83 @@ def busy_text(pct):
     return f"{tr('Wird installiert …')} {pct}%"
 
 
-def monotone(cb):
-    """pacman und Flatpak melden pro Paket 0–100 %. Daraus wird eine Anzeige, die nie zurückspringt und erst
-    mit dem Abschluss 100 % erreicht."""
-    top = [0]
+class InstallTracker:
+    """Rechnet aus der Ausgabe von pacman und Flatpak einen Gesamtfortschritt (0–99 %) aus – statt der Balken
+    der einzelnen Pakete, die jeweils selbst von 0 auf 100 laufen.
 
-    def f(v):
-        top[0] = max(top[0], min(v, 99))
-        cb(top[0])
-    return f
+    pacman: Download 0–40 % (fertige Pakete ÷ „Pakete (N)“), Prüfungen ab 45 %, Installation 50–97 %
+    (Zähler „(i/N) installiere …“). Flatpak: Zähler „i/n“ plus der Balken des aktuellen Pakets.
+    Die Anzeige springt nie zurück; 100 % gibt es erst mit dem Ende des Vorgangs."""
+
+    INSTALL_RE = re.compile(r"^\(\s*(\d+)/(\d+)\)\s+(installing|upgrading|reinstalling|downgrading|installiere|"
+                            r"aktualisiere|neu installiere|herabgestuft|downgrade)", re.I)
+    COUNT_RE = re.compile(r"^\(\s*(\d+)/(\d+)\)")
+    PKGS_RE = re.compile(r"^(?:Packages|Pakete)\s*\((\d+)\)", re.I)
+    PHASE_RE = re.compile(r"Processing package changes|Paket.nderungen", re.I)
+    FLAT_RE = re.compile(r"(\d+)/(\d+)\D")
+
+    def __init__(self, cb):
+        self.cb, self.top, self.buf = cb, 0, ""
+        self.n = self.dl = 0
+        self.in_install = False
+
+    def _set(self, v):
+        v = max(self.top, min(int(v), 99))
+        if v != self.top or v == 0:
+            self.top = v
+            self.cb(v)
+
+    def feed(self, text):
+        self.buf += text
+        *done, self.buf = re.split(r"[\r\n]", self.buf)
+        for ln in done:
+            self._line(ln.strip(), final=True)
+        self._line(self.buf.strip(), final=False)
+
+    def _line(self, ln, final):
+        if not ln:
+            return
+        m = self.PKGS_RE.match(ln)
+        if m:
+            self.n = int(m.group(1))
+            self._set(2)
+            return
+        pct = PCT_RE.findall(ln)
+        p = min(100, int(pct[-1])) if pct else None
+        if self.PHASE_RE.search(ln):
+            self.in_install = True
+            self._set(50)
+            return
+        m = self.INSTALL_RE.match(ln)
+        if m or (self.in_install and self.COUNT_RE.match(ln)):
+            mm = m or self.COUNT_RE.match(ln)
+            i, n = int(mm.group(1)), int(mm.group(2))
+            self._set(50 + ((i - 1) + (p or 0) / 100) / max(n, 1) * 47)
+            if i >= n and p == 100:
+                self.in_install = False
+                self._set(97)
+            return
+        if self.COUNT_RE.match(ln):                  # Prüfphasen vor der Installation, später Hooks
+            self._set(45 if not self.in_install else 97)
+            return
+        if re.search(r"/s\b", ln) and p is not None and not re.match(r"(Total|Gesamt)", ln, re.I):
+            if final and p == 100:
+                self.dl += 1
+            if self.n:
+                self._set((min(self.dl, self.n) + (p / 100 if not final else 0)) / self.n * 40)
+            return
+        m = self.FLAT_RE.search(ln)                  # Flatpak: „Installing 2/3… 45 %“
+        if p is not None and re.match(r"(Install|Updat|Download|Installiere|Aktualisiere|Lade)", ln, re.I):
+            if m:
+                i, n = int(m.group(1)), int(m.group(2))
+                self._set(((i - 1) + p / 100) / max(n, 1) * 100)
+            else:
+                self._set(p)
+
+
+def monotone(cb):
+    """Alter Name: liefert eine Funktion, die Ausgabetext entgegennimmt (siehe InstallTracker)."""
+    return InstallTracker(cb).feed
 
 
 _LAUNCH_CACHE = {}
@@ -4350,6 +4772,7 @@ class SetupTab(Page):
         self.fp = set()
         self.installing = {}     # (Quelle, Kennung) bzw. ("game", key) -> Prozent, solange installiert wird
         self.alt_btns = {}
+        self.alt_rows = {}
         self.game_state = {}     # key -> "install" | "launch" | "done"
         self.game_launch = {}
         self.badge = StatusBadge("off", "Lade …")
@@ -4406,6 +4829,8 @@ class SetupTab(Page):
         grid.setColumnStretch(1, 1)
         grid.setColumnStretch(3, 1)
         dp.body.addLayout(grid)
+        self.default_note = Label("", "Muted", wrap=True)
+        dp.body.addWidget(self.default_note)
         self.lay.addWidget(dp)
 
         gp = Panel("Spiele")
@@ -4552,19 +4977,44 @@ class SetupTab(Page):
         if not ident:
             return
         mimes = next(m for k, _, m in DEFAULT_APP_TYPES if k == key)
-        cmds = [["xdg-mime", "default", ident] + mimes]
-        if key == "browser" and which("xdg-settings"):
-            cmds.append(["xdg-settings", "set", "default-web-browser", ident])
+        name = cb.currentText()
 
         def worker():
-            ok = True
+            problems = []
+            # 1. direkt in die mimeapps-Dateien schreiben (auch kde-mimeapps.list & Co., die Vorrang haben)
+            err = set_mime_default(ident, mimes)
+            if err:
+                problems.append(err)
+            # 2. zusätzlich die Standardwerkzeuge – sie kennen oberflächenspezifische Einstellungen (z. B. KDE)
+            cmds = []
+            if which("xdg-mime"):
+                cmds.append(["xdg-mime", "default", ident] + mimes)
+            if key == "browser" and which("xdg-settings"):
+                cmds.append(["xdg-settings", "set", "default-web-browser", ident])
             for c in cmds:
                 try:
-                    ok = subprocess.run(c, capture_output=True, timeout=15).returncode == 0 and ok
-                except Exception:
-                    ok = False
-            ui(lambda: self.app.set_status(f"Standard für {cb.currentText()} gesetzt." if ok
-                                           else "Standard-App ließ sich nicht setzen."))
+                    r = subprocess.run(c, capture_output=True, text=True, timeout=20)
+                    if r.returncode != 0 and r.stderr.strip():
+                        problems.append(r.stderr.strip().splitlines()[-1])
+                except Exception as e:
+                    problems.append(str(e))
+            # 3. nachprüfen, was jetzt wirklich gilt
+            bad = [m for m in mimes if which("xdg-mime") and default_app(m) not in ("", ident)]
+            ok = not bad and not err
+
+            def done():
+                if bad:
+                    msg = (f"{name} wurde eingetragen, aber für {bad[0]} gilt weiter {default_app(bad[0])} – "
+                           "die Oberfläche überschreibt es. In den Systemeinstellungen prüfen.")
+                elif err:
+                    msg = f"Standard-App ließ sich nicht speichern: {err}"
+                else:
+                    msg = f"Standard für {name} gesetzt."
+                self.app.set_status(msg)
+                self.default_note.setText(msg)
+                self.default_note.setObjectName("Muted" if ok else "Warn")
+                repolish(self.default_note)
+            ui(done)
         threading.Thread(target=worker, daemon=True).start()
 
     def enable_multilib(self):
@@ -4639,12 +5089,13 @@ class SetupTab(Page):
         self._set_game_busy(run_keys, 0)
         pct = monotone(lambda v: self._set_game_busy(run_keys, v))
         for st in steps:
-            st["on_percent"] = pct
+            st["on_text"] = pct
         self._run(steps, [("game", k) for k in run_keys])
 
     def render_alternatives(self, *_):
         clear_layout(self.alt_box)
         self.alt_btns = {}
+        self.alt_rows = {}
         hits = find_alternatives(self.search.text())
         if not hits:
             self.alt_box.addWidget(Label("Dazu kenne ich noch keinen Ersatz. Im Tab „Software“ kannst du "
@@ -4660,12 +5111,11 @@ class SetupTab(Page):
             head.setStyleSheet("font-weight:600;")
             cl.addWidget(head)
             for name, desc, src, ident in alts:
-                r = QHBoxLayout()
-                r.setSpacing(10)
-                r.addWidget(Label(name), 0)
-                r.addWidget(Label(desc, "Hint"), 1)
-                r.addWidget(self._alt_button(name, src, ident), 0)
-                cl.addLayout(r)
+                row = InstallRow(name, tr(desc), self._alt_button(name, src, ident))
+                self.alt_rows.setdefault((src, ident), []).append(row)
+                if (src, ident) in self.installing:
+                    row.set_busy(self.installing[(src, ident)])
+                cl.addWidget(row)
             self.alt_box.addWidget(card)
         if len(hits) > 12:
             self.alt_box.addWidget(Label(f"… und {len(hits) - 12} weitere – einfach suchen.", "Hint"))
@@ -4721,7 +5171,7 @@ class SetupTab(Page):
         def busy(v):
             btn.setText(busy_text(v))
         busy(0)
-        steps[0]["on_percent"] = monotone(busy)
+        steps[0]["on_text"] = monotone(busy)
         if key == "power":
             steps.append({"cmd": ["systemctl", "enable", "--now", "power-profiles-daemon"], "needs_sudo": True,
                           "label": "systemctl enable --now power-profiles-daemon"})
@@ -4735,6 +5185,11 @@ class SetupTab(Page):
                 b.setProperty("variant", "ghost")
                 repolish(b)
             except RuntimeError:       # Knopf wurde beim Neuzeichnen schon entsorgt
+                pass
+        for row in self.alt_rows.get(key, []):
+            try:
+                row.set_busy(pct)
+            except RuntimeError:
                 pass
 
     def install_alt(self, name, src, ident):
@@ -4753,7 +5208,7 @@ class SetupTab(Page):
                     "label": f"flatpak install flathub {ident}"}
         key = (src, ident)
         self._set_alt_busy(key, 0)
-        step["on_percent"] = monotone(lambda v: self._set_alt_busy(key, v))
+        step["on_text"] = monotone(lambda v: self._set_alt_busy(key, v))
         self._run([step], [key])
 
     def set_power(self, idx):
@@ -4763,6 +5218,401 @@ class SetupTab(Page):
             self.app.set_status(f"Energieprofil: {POWER_PROFILES[idx][1]}." if rc == 0
                                 else f"Energieprofil ließ sich nicht setzen: {err.strip().splitlines()[-1] if err.strip() else rc}")
         run_capture_async(["powerprofilesctl", "set", prof], cb)
+
+
+# --------------------------------------------------------------------------
+# Modul: USB-Stick (Abbilder auf einen Stick schreiben)
+# --------------------------------------------------------------------------
+
+FLASH_DIR = os.path.join(os.path.expanduser("~/.cache"), "tuxdex", "images")
+ARCH_ISO_BASE = "https://geo.mirror.pkgbuild.com/iso/latest/"
+HAOS_API = "https://api.github.com/repos/home-assistant/operating-system/releases/latest"
+FLASH_PRESETS = [
+    ("arch", "Arch Linux – aktuelle ISO (ca. 1,3 GB)"),
+    ("haos:generic-x86-64", "Home Assistant OS – PC / Mini-PC (x86-64)"),
+    ("haos:rpi5-64", "Home Assistant OS – Raspberry Pi 5"),
+    ("haos:rpi4-64", "Home Assistant OS – Raspberry Pi 4"),
+    ("haos:rpi3-64", "Home Assistant OS – Raspberry Pi 3 (64 Bit)"),
+    ("haos:green", "Home Assistant OS – Home Assistant Green"),
+]
+FLASH_CUSTOM = "__file__"
+FLASH_EXTS = (".iso", ".img", ".raw", ".img.xz", ".img.gz", ".iso.xz", ".iso.gz")
+DEV_RE = re.compile(r"^/dev/[A-Za-z0-9_/-]+$")
+
+
+def resolve_image(key):
+    """Offizielle Quelle eines Abbilds: dict(url, name, sha256 oder None)."""
+    if key == "arch":
+        name = "archlinux-x86_64.iso"
+        sums = _http_get(ARCH_ISO_BASE + "sha256sums.txt", timeout=20).decode(errors="replace")
+        m = re.search(r"^([0-9a-f]{64})\s+\*?" + re.escape(name) + r"\s*$", sums, re.M)
+        return {"url": ARCH_ISO_BASE + name, "name": name, "sha256": m.group(1) if m else None}
+    board = key.split(":", 1)[1]
+    data = json.loads(_http_get(HAOS_API, timeout=20).decode(errors="replace"))
+    for a in data.get("assets", []):
+        if re.fullmatch(r"haos_" + re.escape(board) + r"-[\w.]+\.img\.xz", a.get("name", "")):
+            dig = a.get("digest") or ""
+            return {"url": a["browser_download_url"], "name": a["name"],
+                    "sha256": dig.split(":", 1)[1] if dig.startswith("sha256:") else None}
+    raise ValueError("Für diese Plattform wurde kein Abbild gefunden.")
+
+
+def _sha256_file(path):
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for ch in iter(lambda: f.read(1 << 20), b""):
+            h.update(ch)
+    return h.hexdigest()
+
+
+def download_image(info, on_progress, cancel, directory=FLASH_DIR):
+    """Lädt das Abbild in den Zwischenspeicher und prüft die Prüfsumme (falls bekannt). Gibt den Pfad zurück.
+    on_progress(fertig, gesamt) · cancel: threading.Event"""
+    import urllib.request
+    import hashlib
+    os.makedirs(directory, exist_ok=True)
+    path = os.path.join(directory, os.path.basename(info["name"]))
+    if os.path.exists(path) and info.get("sha256") and _sha256_file(path) == info["sha256"]:
+        return path                                     # schon vorhanden und unverändert
+    req = urllib.request.Request(info["url"], headers={"User-Agent": f"tuxdex/{APP_VERSION}"})
+    h = hashlib.sha256()
+    done = 0
+    with urllib.request.urlopen(req, timeout=30) as r, open(path + ".part", "wb") as out:
+        total = int(r.headers.get("Content-Length") or 0)
+        while True:
+            if cancel.is_set():
+                out.close()
+                os.remove(path + ".part")
+                raise InterruptedError("Abgebrochen")
+            ch = r.read(1 << 20)
+            if not ch:
+                break
+            out.write(ch)
+            h.update(ch)
+            done += len(ch)
+            on_progress(done, total)
+    if info.get("sha256") and h.hexdigest() != info["sha256"]:
+        os.remove(path + ".part")
+        raise ValueError("Die Prüfsumme des Downloads stimmt nicht – bitte erneut versuchen.")
+    os.replace(path + ".part", path)
+    return path
+
+
+def _open_image(path):
+    """(Rohdatei, lesbarer Strom) – .xz und .gz werden beim Schreiben entpackt."""
+    import lzma
+    import gzip
+    raw = open(path, "rb")
+    low = path.lower()
+    if low.endswith(".xz"):
+        return raw, lzma.LZMAFile(raw)
+    if low.endswith(".gz"):
+        return raw, gzip.GzipFile(fileobj=raw)
+    return raw, raw
+
+
+def flash_image(path, dev, on_progress, cancel, verify=True, sudo=("sudo", "-n")):
+    """Schreibt das Abbild auf dev (dd über sudo, Daten kommen über die Eingabe) und prüft es auf Wunsch zurück.
+    on_progress(phase, Anteil 0..1) · Rückgabe (ok, geschriebene_Bytes, Meldung)"""
+    import hashlib
+    size = max(1, os.path.getsize(path))
+    raw, src = _open_image(path)
+    h = hashlib.sha256()
+    written = 0
+    dd = subprocess.Popen(list(sudo) + ["dd", f"of={dev}", "bs=4M", "iflag=fullblock", "conv=fsync"],
+                          stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    try:
+        while True:
+            if cancel.is_set():
+                dd.kill()
+                return False, written, "Abgebrochen"
+            ch = src.read(4 << 20)
+            if not ch:
+                break
+            try:
+                dd.stdin.write(ch)
+            except (BrokenPipeError, OSError):
+                break
+            h.update(ch)
+            written += len(ch)
+            on_progress("write", min(1.0, raw.tell() / size))
+        try:
+            dd.stdin.close()
+        except OSError:
+            pass
+        on_progress("sync", 1.0)
+        err = dd.stderr.read().decode(errors="replace").strip()
+        rc = dd.wait()
+    finally:
+        try:
+            src.close()
+            raw.close()
+        except Exception:
+            pass
+    if rc != 0:
+        return False, written, err.splitlines()[-1] if err else f"dd-Fehler (Code {rc})"
+    if verify and written:
+        rd = subprocess.Popen(list(sudo) + ["head", "-c", str(written), dev], stdout=subprocess.PIPE,
+                              stderr=subprocess.DEVNULL)
+        hv, got = hashlib.sha256(), 0
+        while True:
+            if cancel.is_set():
+                rd.kill()
+                return False, written, "Abgebrochen"
+            ch = rd.stdout.read(4 << 20)
+            if not ch:
+                break
+            hv.update(ch)
+            got += len(ch)
+            on_progress("verify", min(1.0, got / written))
+        rd.wait()
+        if hv.hexdigest() != h.hexdigest():
+            return False, written, "Prüfung fehlgeschlagen: Der Stick enthält nicht dieselben Daten (Stick defekt?)."
+    return True, written, "Fertig"
+
+
+def usb_targets():
+    """Wechseldatenträger, auf die geschrieben werden darf: [{path, size, model, mounts}] – nie ein Laufwerk,
+    auf dem das System liegt."""
+    try:
+        data = json.loads(subprocess.run(
+            ["lsblk", "-J", "-b", "-o", "PATH,SIZE,TYPE,RM,HOTPLUG,TRAN,MODEL,VENDOR,RO,MOUNTPOINTS"],
+            capture_output=True, text=True, timeout=10).stdout or "{}")
+    except Exception:
+        return []
+    yes = (True, "1", 1)
+    res = []
+    for d in data.get("blockdevices", []):
+        if d.get("type") != "disk" or d.get("ro") in yes or not DEV_RE.match(d.get("path") or ""):
+            continue
+        if not (d.get("rm") in yes or d.get("hotplug") in yes or d.get("tran") == "usb"):
+            continue
+        mounts = _all_mounts(d)
+        if any(m == "/" or m in SYSTEM_MOUNTS or m.startswith(("/boot", "/efi", "/usr", "/var", "/etc", "/home"))
+               for m in mounts):
+            continue
+        try:
+            size = int(d.get("size") or 0)
+        except (TypeError, ValueError):
+            size = 0
+        if size <= 0:
+            continue
+        model = f"{d.get('vendor') or ''} {d.get('model') or ''}".strip() or "USB-Datenträger"
+        res.append({"path": d["path"], "size": size, "model": model, "mounts": mounts})
+    return res
+
+
+class FlashTab(Page):
+    def __init__(self, app):
+        super().__init__()
+        self.app = app
+        self.custom = ""
+        self.cancel_ev = None
+        self.running = False
+        self.targets = []
+
+        self.badge = StatusBadge("off", "Bereit")
+        self.lay.addLayout(page_header("Stick flashen", self.badge))
+        self.lay.addWidget(Label("Bootfähige Sticks erstellen – z. B. zum Installieren von Arch Linux oder für einen "
+                                 "Home-Assistant-Rechner. Windows-ISOs lassen sich so nicht einfach schreiben, dafür "
+                                 "braucht es spezielle Werkzeuge.", "Hint", wrap=True))
+
+        src = Panel("1 · Abbild wählen")
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        self.src_cb = QComboBox()
+        self.src_cb.setMinimumHeight(38)
+        self.src_cb.setMinimumWidth(380)
+        for key, text in FLASH_PRESETS:
+            self.src_cb.addItem(text, key)
+        self.src_cb.addItem("Eigene Datei …", FLASH_CUSTOM)
+        self.src_cb.activated.connect(self._src_chosen)
+        row.addLayout(Field("Abbild", self.src_cb), 1)
+        src.body.addLayout(row)
+        self.src_info = Label("", "Hint", wrap=True)
+        src.body.addWidget(self.src_info)
+        self.lay.addWidget(src)
+
+        dst = Panel("2 · USB-Stick wählen", [Button("↻", "icon", self.refresh_targets, "Sticks neu einlesen")])
+        self.dev_cb = QComboBox()
+        self.dev_cb.setMinimumHeight(38)
+        dst.body.addWidget(self.dev_cb)
+        dst.body.addWidget(Label("Alles auf dem Stick wird gelöscht. Es werden nur Wechseldatenträger angeboten – "
+                                 "nie die Platte, auf der dein System liegt.", "Warn", wrap=True))
+        self.cb_verify = QCheckBox("Nach dem Schreiben prüfen (liest den Stick zurück und vergleicht)")
+        self.cb_verify.setChecked(True)
+        dst.body.addWidget(self.cb_verify)
+        self.lay.addWidget(dst)
+
+        go = Panel("3 · Schreiben")
+        brow = QHBoxLayout()
+        brow.setSpacing(8)
+        self.b_go = Button("Auf Stick schreiben", "primary", self.start)
+        self.b_cancel = Button("Abbrechen", "danger", self.cancel)
+        self.b_cancel.hide()
+        brow.addWidget(self.b_go)
+        brow.addWidget(self.b_cancel)
+        brow.addStretch(1)
+        go.body.addLayout(brow)
+        self.bar = ProgressBar()
+        self.bar.hide()
+        go.body.addWidget(self.bar)
+        self.status = Label("", "Hint", wrap=True)
+        go.body.addWidget(self.status)
+        self.lay.addWidget(go)
+
+        out = Panel("Ausgabe")
+        self.log = LogView(130)
+        out.body.addWidget(self.log)
+        self.lay.addWidget(out)
+
+        self._src_chosen()
+        self.refresh_targets()
+
+    # ---- Auswahl ------------------------------------------------------------
+    def _src_chosen(self, *_):
+        key = self.src_cb.currentData()
+        if key == FLASH_CUSTOM:
+            from PySide6.QtWidgets import QFileDialog
+            f, _ = QFileDialog.getOpenFileName(self, "Abbild wählen", os.path.expanduser("~"),
+                                               "Abbilder (*.iso *.img *.raw *.xz *.gz);;Alle Dateien (*)")
+            if f:
+                self.custom = f
+            elif not self.custom:
+                self.src_cb.setCurrentIndex(0)
+                key = "arch"
+        if self.src_cb.currentData() == FLASH_CUSTOM:
+            self.src_info.setText(f"{short_path(self.custom)} · {fmt_bytes(os.path.getsize(self.custom))}"
+                                  if self.custom and os.path.exists(self.custom) else "")
+            self.b_go.setText("Auf Stick schreiben")
+        elif self.src_cb.currentData() == "arch":
+            self.src_info.setText("Wird von mirror.pkgbuild.com geladen und mit der Prüfsumme der Arch-Webseite "
+                                  "verglichen.")
+            self.b_go.setText("Herunterladen und schreiben")
+        else:
+            self.src_info.setText("Offizielles Abbild von github.com/home-assistant/operating-system (neueste "
+                                  "Version), mit Prüfsumme.")
+            self.b_go.setText("Herunterladen und schreiben")
+
+    def refresh_targets(self):
+        self.targets = usb_targets()
+        self.dev_cb.clear()
+        if not self.targets:
+            self.dev_cb.addItem("Kein USB-Stick gefunden – Stick einstecken und ↻ klicken", None)
+            return
+        for t in self.targets:
+            self.dev_cb.addItem(f"{t['model']} · {fmt_bytes(t['size'])} · {t['path']}", t["path"])
+
+    # ---- Ablauf -------------------------------------------------------------
+    def _phase(self, text, pct=None):
+        self.status.setText(text)
+        self.bar.show()
+        self.bar.set(pct, "" if pct is None else f"{pct} %")
+
+    def start(self):
+        if self.running:
+            return
+        key = self.src_cb.currentData()
+        if key == FLASH_CUSTOM and not (self.custom and os.path.isfile(self.custom)):
+            show_info(self, "Abbild", "Bitte zuerst eine Abbild-Datei wählen.")
+            return
+        if key == FLASH_CUSTOM and not self.custom.lower().endswith(FLASH_EXTS):
+            show_warning(self, "Abbild", "Diese Datei sieht nicht wie ein Abbild aus (.iso, .img, .img.xz, .img.gz).")
+            return
+        self.refresh_targets()
+        dev = self.dev_cb.currentData()
+        t = next((x for x in self.targets if x["path"] == dev), None)
+        if not t:
+            show_info(self, "USB-Stick", "Bitte einen USB-Stick einstecken und auswählen.")
+            return
+        label = self.src_cb.currentText() if key != FLASH_CUSTOM else short_path(self.custom)
+        if key == FLASH_CUSTOM and not self.custom.lower().endswith((".xz", ".gz")) \
+                and os.path.getsize(self.custom) > t["size"]:
+            show_warning(self, "USB-Stick", "Der Stick ist kleiner als das Abbild.")
+            return
+        if not ask_confirm(self, "Stick überschreiben",
+                           f"ALLE Daten auf diesem Stick werden gelöscht:\n\n{t['model']} · {fmt_bytes(t['size'])} "
+                           f"· {t['path']}\n\nGeschrieben wird: {label}\n\nWirklich fortfahren?",
+                           "Stick überschreiben", danger=True):
+            return
+        if not self.app.priv.ensure(self):
+            return
+        self.running = True
+        self.cancel_ev = threading.Event()
+        self.b_go.hide()
+        self.b_cancel.show()
+        self.badge.set("info", "Läuft")
+        self.log.set_text("")
+        verify = self.cb_verify.isChecked()
+        custom = self.custom
+        cancel = self.cancel_ev
+
+        def log(s):
+            ui(lambda: self.log.append_text(s))
+
+        def worker():
+            ok, msg = False, ""
+            try:
+                if key == FLASH_CUSTOM:
+                    path = custom
+                else:
+                    ui(lambda: self._phase("Suche das aktuelle Abbild …"))
+                    info = resolve_image(key)
+                    log(f"Quelle: {info['url']}\n" + (f"Prüfsumme (SHA-256): {info['sha256']}\n" if info.get("sha256")
+                                                      else "Hinweis: Für dieses Abbild gibt es keine Prüfsumme.\n"))
+                    last = [0]
+
+                    def prog(done, total):
+                        pct = int(done * 100 / total) if total else None
+                        if pct is None or pct != last[0]:
+                            last[0] = pct
+                            ui(lambda: self._phase(f"Lade herunter … {fmt_bytes(done)}"
+                                                   + (f" von {fmt_bytes(total)}" if total else ""), pct))
+                    path = download_image(info, prog, cancel)
+                    log(f"Abbild: {short_path(path)}\n")
+                # eingehängte Partitionen des Sticks aushängen
+                for mp in t["mounts"]:
+                    rc, _o, e = sudo_run(["umount", "--", mp])
+                    log(f"$ sudo umount {mp}\n" + (e if rc else ""))
+                    if rc:
+                        raise OSError(f"{mp} ließ sich nicht aushängen: {e.strip()}")
+                log(f"$ sudo dd of={dev} bs=4M conv=fsync  (Daten aus {os.path.basename(path)})\n")
+
+                def wprog(phase, frac):
+                    pct = int(frac * 100)
+                    txt = {"write": "Schreibe auf den Stick …", "sync": "Schließe das Schreiben ab (kann dauern) …",
+                           "verify": "Prüfe den Stick …"}[phase]
+                    ui(lambda: self._phase(txt, None if phase == "sync" else pct))
+                ok, written, msg = flash_image(path, dev, wprog, cancel, verify)
+                if ok:
+                    log(f"{fmt_bytes(written)} geschrieben" + (" und geprüft" if verify else "") + ".\n")
+                    sudo_run(["sync"])
+            except InterruptedError:
+                msg = "Abgebrochen"
+            except Exception as e:
+                msg = str(e) or type(e).__name__
+            ui(lambda: self._finished(ok, msg))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def cancel(self):
+        if self.cancel_ev and ask_confirm(self, "Abbrechen", "Vorgang abbrechen? Der Stick ist dann unvollständig "
+                                          "beschrieben und nicht bootfähig.", "Abbrechen", danger=True):
+            self.cancel_ev.set()
+
+    def _finished(self, ok, msg):
+        self.running = False
+        self.b_cancel.hide()
+        self.b_go.show()
+        self.badge.set("ok" if ok else "danger", "Fertig" if ok else "Fehlgeschlagen")
+        if ok:
+            self._phase("Fertig – der Stick kann entfernt werden.", 100)
+        else:
+            self.bar.hide()
+            self.status.setText(msg)
+        self.log.append_text(("\n" if ok else "error: ") + (msg if not ok else "Stick fertig – du kannst ihn jetzt "
+                                                                              "sicher entfernen.") + "\n")
+        self.refresh_targets()
 
 
 # --------------------------------------------------------------------------
@@ -4941,6 +5791,133 @@ class NoteDialog(QDialog):
         self.entry.setFocus()
 
 
+# Gruppen, die man als Anwender kennen sollte: Name → Erklärung. „Gefährlich“ = praktisch root-Rechte.
+KNOWN_GROUPS = {
+    "wheel": "Administrator: darf sudo nutzen (praktisch root-Rechte)",
+    "sudo": "Administrator: darf sudo nutzen (praktisch root-Rechte)",
+    "docker": "Docker nutzen (praktisch root-Rechte)",
+    "video": "Grafikkarte, Kamera und Bildschirm-Helligkeit nutzen",
+    "audio": "Audiogeräte direkt nutzen",
+    "input": "Eingabegeräte direkt lesen (Tastatur, Maus, Gamepad)",
+    "storage": "Wechseldatenträger einhängen",
+    "optical": "CD/DVD-Laufwerke nutzen",
+    "scanner": "Scanner nutzen",
+    "lp": "Drucker nutzen",
+    "network": "Netzwerkverbindungen verwalten",
+    "power": "Energie-Einstellungen ändern",
+    "games": "Spielstände und Spiele-Zubehör",
+    "uucp": "Serielle Schnittstellen (USB-Seriell, Arduino)",
+    "kvm": "Virtuelle Maschinen mit KVM beschleunigen",
+    "libvirt": "Virtuelle Maschinen verwalten (libvirt)",
+    "users": "Normale Benutzergruppe",
+    "adm": "Systemprotokolle lesen",
+    "systemd-journal": "Systemprotokolle lesen",
+}
+DANGEROUS_GROUPS = {"wheel", "sudo", "docker"}
+
+
+def list_groups():
+    """[(name, gid, [mitglieder])] aus `getent group`, nach Name sortiert."""
+    res = []
+    for line in _cmd_out(["getent", "group"]).splitlines():
+        f = line.split(":")
+        if len(f) >= 4 and f[2].isdigit():
+            res.append((f[0], int(f[2]), [m for m in f[3].split(",") if m]))
+    return sorted(res)
+
+
+class GroupsDialog(QDialog):
+    """Gruppen eines Benutzers per Häkchen zuweisen oder entziehen."""
+
+    def __init__(self, parent, user, groups, primary_gid):
+        super().__init__(parent)
+        self.setWindowTitle("Gruppen zuweisen")
+        self.user, self.groups = user, groups
+        self.primary = next((g[0] for g in groups if g[1] == primary_gid), "")
+        self.orig = {g[0] for g in groups if user in g[2]} | ({self.primary} if self.primary else set())
+        self.state = {g[0]: g[0] in self.orig for g in groups}
+        lay = QVBoxLayout(self)
+        lay.setSizeConstraint(QLayout.SetMinimumSize)
+        spacer = QWidget()
+        spacer.setFixedSize(520, 0)
+        lay.addWidget(spacer)
+        lay.setContentsMargins(32, 28, 32, 24)
+        lay.setSpacing(12)
+        lay.addWidget(Label(f"Gruppen von {user}", "DialogTitle"))
+        lay.addWidget(Label("Häkchen setzen = zur Gruppe hinzufügen, entfernen = aus der Gruppe nehmen. Die "
+                            "Änderung gilt ab der nächsten Anmeldung des Benutzers. Die Hauptgruppe lässt sich hier "
+                            "nicht entfernen.", "Small", wrap=True))
+        row = QHBoxLayout()
+        row.setSpacing(12)
+        self.filter = LineEdit(placeholder="Gruppe suchen …")
+        self.filter.textChanged.connect(self._fill)
+        row.addWidget(self.filter, 1)
+        self.cb_sys = QCheckBox("Alle Systemgruppen zeigen")
+        self.cb_sys.toggled.connect(self._fill)
+        row.addWidget(self.cb_sys)
+        lay.addLayout(row)
+        self.list = QListWidget()
+        self.list.setMinimumHeight(280)
+        self.list.itemChanged.connect(self._changed)
+        lay.addWidget(self.list)
+        self.err = Label("", "Warn", wrap=True)
+        lay.addWidget(self.err)
+        btns = QHBoxLayout()
+        btns.addStretch(1)
+        btns.addWidget(Button("Abbrechen", "ghost", self.reject))
+        self.ok = Button("Übernehmen", "primary", self._apply)
+        self.ok.setDefault(True)
+        btns.addWidget(self.ok)
+        lay.addLayout(btns)
+        self._fill()
+
+    def _fill(self, *_):
+        q = self.filter.text().strip().lower()
+        show_all = self.cb_sys.isChecked()
+        self.list.blockSignals(True)
+        self.list.clear()
+        for name, gid, _m in self.groups:
+            # Normalfall: eigene Gruppen (ab 1000), bekannte Gruppen und Gruppen des Benutzers
+            if not show_all and not (gid >= 1000 or name in KNOWN_GROUPS or self.state[name]):
+                continue
+            if gid == 65534 or name == "nobody" and not show_all:
+                continue
+            if q and q not in name.lower() and q not in tr(KNOWN_GROUPS.get(name, "")).lower():
+                continue
+            txt = name + (f"  –  {tr(KNOWN_GROUPS[name])}" if name in KNOWN_GROUPS else "")
+            if name == self.primary:
+                txt += "  –  " + tr("Hauptgruppe")
+            it = QListWidgetItem(txt)
+            it.setData(Qt.UserRole, name)
+            flags = it.flags() | Qt.ItemIsUserCheckable
+            if name == self.primary:
+                flags &= ~Qt.ItemIsEnabled
+            it.setFlags(flags)
+            it.setCheckState(Qt.Checked if self.state[name] else Qt.Unchecked)
+            self.list.addItem(it)
+        self.list.blockSignals(False)
+
+    def _changed(self, it):
+        self.state[it.data(Qt.UserRole)] = it.checkState() == Qt.Checked
+
+    def changes(self):
+        add = sorted(n for n, v in self.state.items() if v and n not in self.orig)
+        rem = sorted(n for n, v in self.state.items() if not v and n in self.orig and n != self.primary)
+        return add, rem
+
+    def _apply(self):
+        add, rem = self.changes()
+        if not add and not rem:
+            self.reject()
+            return
+        risky = [g for g in add if g in DANGEROUS_GROUPS]
+        if risky and not ask_confirm(self, "Gruppen zuweisen",
+                                     f"{', '.join(risky)} gibt {self.user} praktisch volle Administrator-Rechte "
+                                     "(root). Wirklich hinzufügen?", "Hinzufügen", danger=True):
+            return
+        self.accept()
+
+
 class AddUserDialog(QDialog):
     def __init__(self, parent, has_wheel):
         super().__init__(parent)
@@ -5004,8 +5981,9 @@ class AddUserDialog(QDialog):
 
 
 class UsersTab(Page):
-    COLS = [("Benutzer", 120), ("Beschreibung", 230), ("Passwort geändert", 150), ("Speicher (Home)", 130),
-            ("RAM", 90), ("Aktive Zeit", 130), ("Letzter Login", 200)]
+    COLS = [("Benutzer", 120), ("Beschreibung", 200), ("Gruppen", 150), ("Passwort geändert", 150),
+            ("Speicher (Home)", 130), ("RAM", 90), ("Aktive Zeit", 130), ("Letzter Login", 200)]
+    C_NOTE, C_GROUPS, C_PW, C_SIZE, C_RAM, C_ACTIVE, C_LOGIN = 1, 2, 3, 4, 5, 6, 7
 
     def __init__(self, app):
         super().__init__()
@@ -5026,7 +6004,7 @@ class UsersTab(Page):
         self.tree.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.tree.setSelectionMode(QAbstractItemView.SingleSelection)
         self.tree.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.tree.verticalHeader().setDefaultSectionSize(32)
+        self.tree.verticalHeader().setDefaultSectionSize(40)
         hh = self.tree.horizontalHeader()
         hh.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         for i, (_, w) in enumerate(self.COLS):
@@ -5040,6 +6018,7 @@ class UsersTab(Page):
         row = QHBoxLayout()
         row.setSpacing(8)
         row.addWidget(Button("Passwort ändern …", "ghost", self.change_password))
+        row.addWidget(Button("Gruppen zuweisen …", "ghost", self.edit_groups))
         row.addWidget(Button("Beschreibung bearbeiten …", "ghost", self.edit_note))
         row.addStretch(1)
         p.body.addLayout(row)
@@ -5063,6 +6042,31 @@ class UsersTab(Page):
     def _set(self, r, c, text):
         it = QTableWidgetItem(text)
         self.tree.setItem(r, c, it)
+
+    def _user_groups(self, names):
+        """{benutzer: [gruppen]} – Hauptgruppe zuerst, danach alle weiteren Mitgliedschaften."""
+        import pwd
+        groups = list_groups()
+        by_gid = {g[1]: g[0] for g in groups}
+        res = {}
+        for n in names:
+            try:
+                prim = by_gid.get(pwd.getpwnam(n).pw_gid)
+            except KeyError:
+                prim = None
+            rest = sorted(g[0] for g in groups if n in g[2] and g[0] != prim)
+            res[n] = ([prim] if prim else []) + rest
+        return res
+
+    def _group_combo(self, r, groups):
+        """Aufklappliste statt langer Zeile: oben die Anzahl, darunter alle Gruppen (nur zum Ansehen)."""
+        cb = QComboBox()
+        cb.setMinimumHeight(30)
+        cb.addItem(f"{len(groups)} Gruppen")
+        cb.addItems(groups)
+        cb.setToolTip(", ".join(groups))
+        cb.activated.connect(lambda _=0, c=cb: c.setCurrentIndex(0))
+        self.tree.setCellWidget(r, self.C_GROUPS, cb)
 
     def _row_of(self, name):
         for r in range(self.tree.rowCount()):
@@ -5097,13 +6101,15 @@ class UsersTab(Page):
             self.info[name] = (uid, home, shell, full)
             r = self.tree.rowCount()
             self.tree.insertRow(r)
-            for c, v in enumerate((name, notes.get(name, ""), "…", "…", "…", "…", "—")):
+            for c, v in enumerate((name, notes.get(name, ""), "", "…", "…", "…", "…", "—")):
                 self._set(r, c, v)
 
         ram = user_ram()
+        groups = self._user_groups(name for name in self.info)
         for name in self.info:
             r = self._row_of(name)
-            self._set(r, 4, fmt_bytes(ram.get(name, 0)))
+            self._set(r, self.C_RAM, fmt_bytes(ram.get(name, 0)))
+            self._group_combo(r, groups.get(name, []))
 
         def worker():
             try:
@@ -5137,7 +6143,7 @@ class UsersTab(Page):
                 if r < 0:
                     continue
                 if name not in sh:
-                    self._set(r, 2, "root nötig")
+                    self._set(r, self.C_PW, "root nötig")
                     continue
                 days, locked = sh[name]
                 if days is None:
@@ -5146,7 +6152,7 @@ class UsersTab(Page):
                     ago = today - days
                     txt = datetime.fromtimestamp(days * 86400).strftime("%d.%m.%Y") + \
                         (" (heute)" if ago <= 0 else f" (vor {ago} Tagen)")
-                self._set(r, 2, txt + (" · gesperrt" if locked else ""))
+                self._set(r, self.C_PW, txt + (" · gesperrt" if locked else ""))
         run_capture_async(["getent", "shadow"], cb_shadow, needs_sudo=True)
 
     def _apply_active(self, gen, act):
@@ -5155,14 +6161,14 @@ class UsersTab(Page):
         for name in self.info:
             r = self._row_of(name)
             if r >= 0:
-                self._set(r, 5, fmt_active(act.get(name, 0)) if act is not None else "—")
+                self._set(r, self.C_ACTIVE, fmt_active(act.get(name, 0)) if act is not None else "—")
 
     def _apply_size(self, gen, name, size, complete):
         if gen != self.gen:
             return
         r = self._row_of(name)
         if r >= 0:
-            self._set(r, 3, "—" if size is None else ("" if complete else "≥ ") + fmt_bytes(size))
+            self._set(r, self.C_SIZE, "—" if size is None else ("" if complete else "≥ ") + fmt_bytes(size))
 
     def refresh_with_auth(self):
         self.app.priv.ensure(self)
@@ -5178,7 +6184,7 @@ class UsersTab(Page):
             logins[uname] = rest if rest else "nie"
         for r in range(self.tree.rowCount()):
             name = self.tree.item(r, 0).text()
-            self._set(r, 6, logins.get(name, "unbekannt"))
+            self._set(r, self.C_LOGIN, logins.get(name, "unbekannt"))
 
     def _selected_user(self):
         r = self.tree.currentRow()
@@ -5263,6 +6269,31 @@ class UsersTab(Page):
             steps.append((f"chage -d 0 {name}", ["chage", "-d", "0", name], None))
         self._run_steps(steps)
 
+    def edit_groups(self):
+        import pwd
+        name = self._selected_user()
+        if not name:
+            return
+        try:
+            gid = pwd.getpwnam(name).pw_gid
+        except KeyError:
+            return
+        dlg = GroupsDialog(self, name, list_groups(), gid)
+        if dlg.exec() != QDialog.Accepted:
+            return
+        add, rem = dlg.changes()
+        if not add and not rem:
+            return
+        if not self.app.priv.ensure(self):
+            return
+        steps = []
+        if add:
+            steps.append((f"usermod -aG {','.join(add)} {name}", ["usermod", "-aG", ",".join(add), name], None))
+        for g in rem:
+            steps.append((f"gpasswd -d {name} {g}", ["gpasswd", "-d", name, g], None))
+        self._run_steps(steps, lambda ok: ok and self.log.append_text(
+            f"Gruppen von {name} geändert – gilt ab der nächsten Anmeldung.\n"))
+
     def edit_note(self):
         name = self._selected_user()
         if not name:
@@ -5272,7 +6303,7 @@ class UsersTab(Page):
             save_user_note(name, dlg.entry.text())
             r = self._row_of(name)
             if r >= 0:
-                self._set(r, 1, dlg.entry.text().strip())
+                self._set(r, self.C_NOTE, dlg.entry.text().strip())
 
 
 
@@ -9949,7 +10980,7 @@ class AntivirusTab(Page):
                                      "„Automatische Updates aktivieren“.\n")
             self.refresh_status()
         run_streaming(["pacman", "-S", "--needed", "--noconfirm", "clamav"], self.log, needs_sudo=True,
-                      clear_first=False, interactive=True, on_done=done, on_percent=busy)
+                      clear_first=False, interactive=True, on_done=done, on_text=busy)
 
     def update_signatures(self):
         if not self.app.priv.ensure(self):
@@ -14010,7 +15041,7 @@ BUILD_DIR = os.path.join(os.path.expanduser("~/.cache"), "tuxdex", "build")
 
 def load_settings():
     s = {"repo": DEFAULT_REPO, "branch": DEFAULT_BRANCH, "auto_check": True, "ask_on_start": True, "local_dir": "",
-         "sys_check_on_start": True}
+         "sys_check_on_start": True, "poll_check": True, "poll_secs": 30}
     s.update(_load_json(SETTINGS_FILE, {}))
     if s.get("repo", "").lower() == "pyloger/tuxdex":      # Repository ist zu VoxellabDE umgezogen
         s["repo"] = DEFAULT_REPO
@@ -14236,6 +15267,25 @@ class UpdatePanel(QWidget):
         self.cb_ask.setEnabled(self.cb_auto.isChecked())
         self.cb_ask.toggled.connect(self._ask_changed)
         p.body.addWidget(self.cb_ask)
+        prow = QHBoxLayout()
+        prow.setSpacing(8)
+        self.cb_poll = QCheckBox("Bei geöffnetem Fenster regelmäßig nach Tuxdex-Updates suchen, alle")
+        self.cb_poll.setChecked(bool(self.settings.get("poll_check", True)))
+        self.cb_poll.toggled.connect(self._poll_changed)
+        prow.addWidget(self.cb_poll)
+        self.poll_edit = LineEdit(str(self.settings.get("poll_secs", 30)), mono=True)
+        self.poll_edit.setMaximumWidth(80)
+        self.poll_edit.setEnabled(self.cb_poll.isChecked())
+        self.poll_edit.editingFinished.connect(self._poll_secs_changed)
+        prow.addWidget(self.poll_edit)
+        prow.addWidget(Label("Sekunden (15 bis 86400)"))
+        prow.addStretch(1)
+        p.body.addLayout(prow)
+        self._offered = set()          # Versionen, die schon angeboten wurden – kein zweites Fenster dafür
+        self._checking = False
+        self._poll_timer = QTimer(self)
+        self._poll_timer.timeout.connect(self._poll)
+        self._restart_poll()
 
         # Lokal
         p.body.addWidget(Label("LOKAL AKTUALISIEREN", "FieldLabel"))
@@ -14301,15 +15351,27 @@ class UpdatePanel(QWidget):
         self._show_channel_info()
         self.check()
 
+    def _vl(self, ver):
+        """Version aus dem gewählten Update-Kanal beschriftet: Beta mit „-beta“, Stabil ohne Zusatz."""
+        return vlabel(ver, "beta" if self.settings.get("branch") == "beta" else "stable")
+
+    def _cache_channels(self, vers):
+        """Die zuletzt bekannten Versionen merken, damit der Kanal der installierten Version auch ohne Netz stimmt."""
+        known = {b: v for b, v in vers.items() if v}
+        if known and known != (self.settings.get("channels") or {}):
+            self.settings["channels"] = {**(self.settings.get("channels") or {}), **known}
+            save_settings(self.settings)
+            if hasattr(self.app, "refresh_version_labels"):
+                self.app.refresh_version_labels()
+
     def _show_channel_info(self):
         """Welche Version gibt es in welchem Zweig – und was ist installiert?"""
         rv = self.remote_versions
-        inst = "Beta" if "beta" in APP_VERSION or "rc" in APP_VERSION else tr("Stabil")
         parts = []
         for b, name in (("main", "Stabil"), ("beta", "Beta")):
             v = rv.get(b)
-            parts.append(f"{name}: <b>{vlabel(v)}</b>" if v else f"{name}: {'…' if b not in rv else '—'}")
-        self.channel_info.setText(" · ".join(parts) + f"<br>Installiert: <b>{vlabel()}</b> ({inst})")
+            parts.append(f"{name}: <b>{vlabel(v, 'beta' if b == 'beta' else 'stable')}</b>" if v else f"{name}: {'…' if b not in rv else '—'}")
+        self.channel_info.setText(" · ".join(parts) + f"<br>Installiert: <b>{vlabel()}</b>")
 
     def _auto_changed(self, on):
         self.settings["auto_check"] = on
@@ -14319,6 +15381,46 @@ class UpdatePanel(QWidget):
     def _ask_changed(self, on):
         self.settings["ask_on_start"] = on
         save_settings(self.settings)
+
+    # ---- regelmäßige Prüfung bei geöffnetem Fenster --------------------------------
+    def _restart_poll(self):
+        self._poll_timer.stop()
+        if self.settings.get("poll_check", True):
+            try:
+                secs = max(15, min(86400, int(self.settings.get("poll_secs", 30))))
+            except (TypeError, ValueError):
+                secs = 30
+            self._poll_timer.start(secs * 1000)
+
+    def _poll_changed(self, on):
+        self.settings["poll_check"] = on
+        self.poll_edit.setEnabled(on)
+        save_settings(self.settings)
+        self._restart_poll()
+
+    def _poll_secs_changed(self):
+        try:
+            secs = max(15, min(86400, int(self.poll_edit.text().strip())))
+        except ValueError:
+            secs = int(self.settings.get("poll_secs", 30))
+        self.poll_edit.setText(str(secs))
+        self.settings["poll_secs"] = secs
+        save_settings(self.settings)
+        self._restart_poll()
+
+    def _poll(self):
+        """Leichte Abfrage (nur die Commit-ID über das Git-Protokoll, kein Abfragelimit); erst bei einem neuen
+        Commit wird richtig geprüft und ggf. das Update-Fenster gezeigt."""
+        repo = self.settings.get("repo")
+        if not repo or self._checking or QApplication.activeModalWidget() is not None:
+            return
+        branch = self.settings.get("branch", "main")
+
+        def worker():
+            sha = latest_commit(repo, branch)
+            if sha and sha != self.remote_sha:
+                ui(lambda: self.check(silent=True) if not self._checking else None)
+        threading.Thread(target=worker, daemon=True).start()
 
     # ---- GitHub ---------------------------------------------------------------
 
@@ -14330,6 +15432,7 @@ class UpdatePanel(QWidget):
             return
         self.badge.set("info", "Prüfe …")
         self.b_check.setEnabled(False)
+        self._checking = True
         branch = self.settings.get("branch", "main")
 
         def worker():
@@ -14347,11 +15450,12 @@ class UpdatePanel(QWidget):
                         vers[b] = remote_info(repo, b)[0]
                     except Exception:
                         vers[b] = None
-            ui(lambda: (self.remote_versions.update(vers), self._show_channel_info(),
+            ui(lambda: (self.remote_versions.update(vers), self._cache_channels(vers), self._show_channel_info(),
                         self._checked(*res, silent=silent)))
         threading.Thread(target=worker, daemon=True).start()
 
     def _checked(self, ver, cl, err, silent=False):
+        self._checking = False
         self.b_check.setEnabled(True)
         if err:
             self.badge.set("danger", "Prüfen fehlgeschlagen")
@@ -14369,20 +15473,21 @@ class UpdatePanel(QWidget):
         # Von einer Beta zurück zur stabilen Version: ältere Version anbieten, aber nicht beim Start aufdrängen
         back = not newer and self.settings.get("branch", "main") == "main" and \
             version_tuple(ver) < version_tuple(APP_VERSION)
-        self.b_update.setText(f"Zur stabilen Version {vlabel(ver)} wechseln" if back else "Jetzt aktualisieren")
+        self.b_update.setText(f"Zur stabilen Version {self._vl(ver)} wechseln" if back else "Jetzt aktualisieren")
         self.b_update.setVisible(newer or back)
         self.app.show_update_hint(ver if newer else None)
         if back:
-            self.badge.set("info", f"Beta {vlabel()} installiert")
-            self.changes.setText(f"Die aktuelle stabile Version ist {vlabel(ver)}. Du nutzt noch die Beta {vlabel()} – "
+            self.badge.set("info", f"{vlabel()} installiert")
+            self.changes.setText(f"Die aktuelle stabile Version ist {self._vl(ver)}. Du nutzt noch {vlabel()} – "
                                  "wechseln installiert die stabile Version.")
             self.changes.setVisible(not silent)
         elif newer:
-            self.badge.set("warn", f"Version {vlabel(ver)} verfügbar")
+            self.badge.set("warn", f"Version {self._vl(ver)} verfügbar")
             txt = changes_since(cl, APP_VERSION)
-            set_text_raw(self.changes, txt) if txt else self.changes.setText(f"Neue Version {vlabel(ver)}.")
+            set_text_raw(self.changes, txt) if txt else self.changes.setText(f"Neue Version {self._vl(ver)}.")
             self.changes.show()
-            if silent and self.settings.get("ask_on_start", True):
+            if silent and self.settings.get("ask_on_start", True) and ver not in self._offered:
+                self._offered.add(ver)
                 self._offer_update(ver, txt)
         else:
             self.badge.set("ok", "Aktuell")
@@ -14395,7 +15500,7 @@ class UpdatePanel(QWidget):
         set_msg_icon(box, QMessageBox.Information)
         box.setWindowTitle("Update verfügbar")
         box.setTextFormat(Qt.RichText)
-        box.setText(f"<b>Tuxdex {vlabel(ver)} ist verfügbar</b> – installiert ist {vlabel()}.")
+        box.setText(f"<b>Tuxdex {self._vl(ver)} ist verfügbar</b> – installiert ist {vlabel()}.")
         set_text_raw(box, changes_html or "", "setInformativeText")
         later = box.addButton("Später", QMessageBox.RejectRole)
         later.setProperty("variant", "ghost")
@@ -14566,7 +15671,7 @@ class UpdatePanel(QWidget):
         m = re.search(r"^pkgver=([\w.]+)", _read(os.path.join(src, "PKGBUILD")), re.M)
         ver = m.group(1) if m else "?"
         if version_tuple(ver) <= version_tuple(APP_VERSION):
-            if not ask_confirm(self, "Gleiche oder ältere Version", f"{origin} enthält Version {vlabel(ver)} – installiert ist "
+            if not ask_confirm(self, "Gleiche oder ältere Version", f"{origin} enthält Version {self._vl(ver)} – installiert ist "
                                f"{vlabel()}. Trotzdem neu installieren?", "Installieren"):
                 self._prog_fail("Abgebrochen")
                 return
@@ -14701,15 +15806,14 @@ class UpdatePanel(QWidget):
 
 
 class SettingsPage(Page):
-    def _lang_changed(self, _=0):
-        code = self.cb_lang.currentData()
+    def _lang_changed(self, idx=0):
+        code = ("de", "en")[idx]
         st = load_settings()
         st["lang"] = code
         save_settings(st)
         self.update_panel.settings["lang"] = code
-        if code != LANG and ask_confirm(self, "Sprache", "Tuxdex jetzt neu starten, damit die Sprache wechselt?",
-                                        "Neu starten"):
-            self.app.restart()
+        if code != LANG:
+            self.app.switch_language(code)       # baut das Fenster neu auf – kein Neustart nötig
 
     def _modules_panel(self):
         p = self.mod_panel = Panel("Module")
@@ -14776,23 +15880,18 @@ class SettingsPage(Page):
                                   "installiert wird erst, wenn du im Tab „Updates“ auf „Update starten“ klickst.",
                                   "Hint", wrap=True))
         self.lay.addWidget(sysp)
+        self.update_panel = UpdatePanel(app)          # Tuxdex-Aktualisierung direkt unter den System-Updates
+        self.lay.addWidget(self.update_panel)
         langp = Panel("Sprache · Language")
         lrow = QHBoxLayout()
-        self.cb_lang = QComboBox()
-        self.cb_lang.setMinimumHeight(38)
-        self.cb_lang.setMinimumWidth(220)
-        for text, code in (("Deutsch", "de"), ("English", "en")):
-            self.cb_lang.addItem(text, code)
-        self.cb_lang.setCurrentIndex(0 if LANG == "de" else 1)
-        self.cb_lang.currentIndexChanged.connect(self._lang_changed)
-        lrow.addWidget(self.cb_lang)
+        self.lang_seg = Segmented(["DE", "EN"], self._lang_changed)       # ein Umschalter statt Auswahlliste
+        self.lang_seg.set(0 if LANG == "de" else 1)
+        lrow.addWidget(self.lang_seg)
         lrow.addStretch(1)
         langp.body.addLayout(lrow)
-        langp.body.addWidget(Label("Wirkt nach einem Neustart von Tuxdex.", "Hint", wrap=True))
+        langp.body.addWidget(Label("Wirkt sofort – das Fenster wird dabei neu aufgebaut.", "Hint", wrap=True))
         self.lay.addWidget(langp)
         self.lay.addWidget(self._modules_panel())
-        self.update_panel = UpdatePanel(app)
-        self.lay.addWidget(self.update_panel)
 
         # --- Über ---
         about = Panel("Über das Projekt")
@@ -14821,6 +15920,7 @@ class SettingsPage(Page):
             "software": "Pakete mit Icons, Größe, Version und Datum – per Kästchen auswählen und entfernen",
             "flatpak": "Flatpak-Apps und ihre Rechte (Dateien, Geräte, Netzwerk …) wie mit Flatseal",
             "disks": "Laufwerke einhängen, umbenennen, prüfen, formatieren, sicher entfernen",
+            "flash": "Bootfähige USB-Sticks mit Arch Linux, Home Assistant OS oder eigener Datei erstellen",
             "storage": "Belegung je Festplatte, größte Ordner, Aufräumen",
             "backup": "Snapshots, Spiegel und komprimierte Archive – auf mehrere Ziele gleichzeitig",
             "swap": "Fallback-Speicher (Swapfile) und Swappiness",
@@ -14966,8 +16066,8 @@ class MainWindow(QWidget):
         tl.addWidget(logo)
         tl.addSpacing(4)
         tl.addWidget(Label("Tuxdex", "AppTitle"))
-        self.alpha_badge = StatusBadge("warn", "ALPHA")
-        self.alpha_badge.setToolTip("Alpha-Version: Aktionen mit root-Rechten auf eigenes Risiko. "
+        self.alpha_badge = StatusBadge("warn", "BETA")
+        self.alpha_badge.setToolTip("Beta-Version: Aktionen mit root-Rechten auf eigenes Risiko. "
                                     "Vor der ersten root-Aktion fragt Tuxdex einmal nach deiner Zustimmung.")
         tl.addWidget(self.alpha_badge)
         tl.addStretch(1)
@@ -14980,9 +16080,34 @@ class MainWindow(QWidget):
         # Tab-Leiste
         tabbar = QFrame()
         tabbar.setObjectName("TabBar")
-        tb = QHBoxLayout(tabbar)
-        tb.setContentsMargins(16, 4, 16, 0)
+        outer = QHBoxLayout(tabbar)
+        outer.setContentsMargins(8, 4, 8, 0)
+        outer.setSpacing(2)
+        # Passen nicht alle Tabs ins Fenster, bleiben sie in voller Breite lesbar und die Leiste lässt sich
+        # scrollen (Mausrad oder ‹ ›) – statt die Namen abzuschneiden.
+        self.tab_left = Button("‹", "icon", lambda: self._step_tabs(-1))
+        self.tab_right = Button("›", "icon", lambda: self._step_tabs(1))
+        for b in (self.tab_left, self.tab_right):
+            b.setFixedWidth(28)
+            b.hide()
+        outer.addWidget(self.tab_left)
+        self.tab_scroll = QScrollArea()
+        self.tab_scroll.setObjectName("TabScroll")
+        self.tab_scroll.setFrameShape(QFrame.NoFrame)
+        self.tab_scroll.setWidgetResizable(True)
+        self.tab_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.tab_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        inner = QWidget()
+        inner.setObjectName("TabInner")
+        tb = QHBoxLayout(inner)
+        tb.setContentsMargins(8, 0, 8, 0)
         tb.setSpacing(2)
+        self.tab_scroll.setWidget(inner)
+        self.tab_scroll.viewport().installEventFilter(self)
+        self.tab_scroll.horizontalScrollBar().rangeChanged.connect(lambda *_: self._update_tab_arrows())
+        self.tab_scroll.horizontalScrollBar().valueChanged.connect(lambda *_: self._update_tab_arrows())
+        outer.addWidget(self.tab_scroll, 1)
+        outer.addWidget(self.tab_right)
         root.addWidget(tabbar)
 
         self.stack = QStackedWidget()
@@ -15013,19 +16138,20 @@ class MainWindow(QWidget):
         sl.addWidget(self.sys_hint)
         sl.addSpacing(8)
         self._sys_updates = (0, 0)
-        self.upd_hint = Button("", "ghost", self.open_settings)
+        self.upd_hint = Button("", "ghost", self.open_update)
         self.upd_hint.setObjectName("UpdHint")
         self.upd_hint.hide()
         sl.addWidget(self.upd_hint)
         sl.addSpacing(12)
-        sl.addWidget(Label(f"Version {vlabel()}", "StatusText"))
+        self.ver_label = Label(f"Version {vlabel()}", "StatusText")
+        sl.addWidget(self.ver_label)
         root.addWidget(sb)
 
         # Tabs werden erst beim ersten Öffnen gebaut (spart RAM und Startzeit);
         # bis dahin steht ein leerer Platzhalter im Stack, damit die Indizes stimmen.
         self.page_classes = {
             "update": UpdaterTab, "software": SoftwareTab, "flatpak": FlatpakTab, "swap": SwapTab, "restore": RestoreTab, "setup": SetupTab,
-            "disks": DisksTab, "storage": StorageTab, "backup": BackupTab, "tasks": TaskTab, "antivirus": AntivirusTab,
+            "disks": DisksTab, "flash": FlashTab, "storage": StorageTab, "backup": BackupTab, "tasks": TaskTab, "antivirus": AntivirusTab,
             "security": SecurityTab, "users": UsersTab,
         }
         self.tabs = []
@@ -15039,6 +16165,7 @@ class MainWindow(QWidget):
             tb.addWidget(t)
             self.tabs.append(t)
         tb.addStretch(1)
+        self.tab_scroll.setFixedHeight(inner.sizeHint().height() + 2)
         self.page("update")          # prüft beim Start auf System-Updates
         self.show_sys_updates(*self._sys_updates)
         self.settings_page = SettingsPage(self)
@@ -15240,6 +16367,52 @@ class MainWindow(QWidget):
         for t in self.tabs:
             t.set_selected(False)
 
+    def switch_language(self, code):
+        """Sprache sofort wechseln: neues Hauptfenster in der neuen Sprache an derselben Stelle öffnen, das alte
+        schließen. Läuft gerade ein Vorgang (Update, Backup, Scan …), wird nicht gewechselt, sondern beim nächsten
+        Start – sonst ginge dessen Anzeige verloren."""
+        busy = running_children()
+        if busy:
+            show_info(self, "Sprache", "Es läuft noch ein Vorgang. Die Sprache wird beim nächsten Start von Tuxdex "
+                      "gewechselt – oder jetzt, wenn der Vorgang fertig ist (Sprache dann noch einmal umschalten).")
+            return False
+        was_settings = self.stack.currentWidget() is self.settings_page
+        last = self._last_tab
+        geo = self.geometry()
+        set_language(code)
+        new = MainWindow()
+        new.setFocusPolicy(Qt.ClickFocus)
+        new.setGeometry(geo)
+        new.show()
+        new.setFocus()
+        if was_settings:
+            new.open_settings()
+        else:
+            new.select(last)
+        QApplication.instance()._tuxdex_window = new      # Referenz halten, sonst räumt Python das Fenster ab
+        self.hide()
+        self.deleteLater()
+        return True
+
+    def refresh_version_labels(self):
+        self.ver_label.setText(tr("Version") + f" {vlabel()}")
+
+    def open_update(self):
+        """Klick auf „Version … verfügbar“: Einstellungen öffnen und direkt zum Update-Feld springen; ein zweiter
+        Klick schließt die Einstellungen wieder."""
+        if self.stack.currentWidget() is self.settings_page:
+            self.back_from_settings()
+            return
+        self.open_settings()
+
+        def jump():
+            sp = self.settings_page
+            panel = sp.update_panel
+            y = panel.mapTo(sp.widget(), panel.rect().topLeft()).y()
+            sp.verticalScrollBar().setValue(max(0, y - 12))
+        QTimer.singleShot(0, jump)
+        QTimer.singleShot(120, jump)       # nach dem ersten Layout nochmals, falls sich Höhen geändert haben
+
     def back_from_settings(self):
         self.select(self._last_tab)
 
@@ -15255,8 +16428,47 @@ class MainWindow(QWidget):
         if not on and self._last_tab == i:
             self._last_tab = 0
 
+    def _scroll_tabs(self, dx):
+        sb = self.tab_scroll.horizontalScrollBar()
+        sb.setValue(sb.value() + dx)
+
+    def _step_tabs(self, direction):
+        """Pfeil: genau einen Tab weiter – die Schrittweite folgt der Breite der Tabs (Sprache, Schriftgröße)."""
+        sb = self.tab_scroll.horizontalScrollBar()
+        # Scrollwert, bei dem der jeweilige Tab am linken Rand steht (innerer Rand 8 px abgezogen)
+        edges = sorted(max(0, t.geometry().x() - 8) for t in self.tabs if t.isVisible())
+        cur = sb.value()
+        if direction > 0:
+            target = next((x for x in edges if x > cur + 1), sb.maximum())
+        else:
+            target = next((x for x in reversed(edges) if x < cur - 1), 0)
+        target = max(0, min(sb.maximum(), target))
+        anim = QPropertyAnimation(sb, b"value", self)
+        anim.setDuration(160)
+        anim.setStartValue(cur)
+        anim.setEndValue(target)
+        anim.start(QPropertyAnimation.DeleteWhenStopped)
+        self._tab_anim = anim
+
+    def _update_tab_arrows(self):
+        sb = self.tab_scroll.horizontalScrollBar()
+        more = sb.maximum() > 0
+        self.tab_left.setVisible(more)
+        self.tab_right.setVisible(more)
+        self.tab_left.setEnabled(sb.value() > 0)
+        self.tab_right.setEnabled(sb.value() < sb.maximum())
+
+    def eventFilter(self, obj, ev):
+        # Mausrad über der Tab-Leiste scrollt sie seitwärts
+        if obj is self.tab_scroll.viewport() and ev.type() == QEvent.Wheel:
+            d = ev.angleDelta()
+            self._scroll_tabs(-(d.x() or d.y()))
+            return True
+        return super().eventFilter(obj, ev)
+
     def select(self, idx):
         self.tabs[idx].setVisible(True)      # Sprung aus einem anderen Modul in ein abgewähltes: Tab kurz zeigen
+        QTimer.singleShot(0, lambda: self.tab_scroll.ensureWidgetVisible(self.tabs[idx], 40, 0))
         self._last_tab = idx
         self.gear.setChecked(False)
         new = MODULES[idx][0] not in self.pages
@@ -15593,7 +16805,7 @@ EN = {
     'Abbrechen': 'Cancel',
     'Abgebrochen': 'Cancelled',
     'Abgebrochen – Admin-Rechte nötig': 'Cancelled – admin rights needed',
-    'Abgebrochen: Der Alpha-Hinweis wurde nicht bestätigt – keine Aktion mit root-Rechten.': 'Cancelled: the alpha notice was not confirmed – no action with root rights.',
+    'Abgebrochen: Der Beta-Hinweis wurde nicht bestätigt – keine Aktion mit root-Rechten.': 'Cancelled: the beta notice was not confirmed – no action with root rights.',
     'Abgeschaltet': 'Disabled',
     'abgeschlossen': 'finished',
     'Abgestürzte Programme hinterlassen keine Speicherabbilder.': "Crashed programs don't leave memory dumps.",
@@ -15644,9 +16856,9 @@ EN = {
     'Alles gut': 'All good',
     'Alles in Ordnung': 'All good',
     'Alles neu prüfen': 'Check everything again',
-    'Alpha-Hinweis nicht bestätigt – keine root-Aktion.': 'Alpha notice not confirmed – no root action.',
-    'Alpha-Version – Hinweis': 'Alpha version – notice',
-    'Alpha-Version: Aktionen mit root-Rechten auf eigenes Risiko. Vor der ersten root-Aktion fragt Tuxdex einmal nach deiner Zustimmung.': 'Alpha version: actions with root rights at your own risk. Before the first root action, Tuxdex asks once for your consent.',
+    'Beta-Hinweis nicht bestätigt – keine root-Aktion.': 'Alpha notice not confirmed – no root action.',
+    'Beta-Version – Hinweis': 'Beta version – notice',
+    'Beta-Version: Aktionen mit root-Rechten auf eigenes Risiko. Vor der ersten root-Aktion fragt Tuxdex einmal nach deiner Zustimmung.': 'Beta version: actions with root rights at your own risk. Before the first root action, Tuxdex asks once for your consent.',
     'als Abhängigkeit': 'as dependency',
     'als Paket (pacman)': 'as package (pacman)',
     'als Paket installiert': 'installed as package',
@@ -16311,6 +17523,114 @@ EN = {
     'makepkg (Paket pacman, Gruppe base-devel) wird benötigt.': 'makepkg (package pacman, group base-devel) is required.',
     'makepkg fehlt': 'makepkg missing',
     'Bauwerkzeuge fehlen': 'Build tools missing',
+    'Standard-App ließ sich nicht setzen.': 'Default app could not be set.',
+    'Wirkt sofort – das Fenster wird dabei neu aufgebaut.': 'Takes effect immediately – the window is rebuilt.',
+    'Es läuft noch ein Vorgang. Die Sprache wird beim nächsten Start von Tuxdex gewechselt – oder jetzt, wenn der Vorgang fertig ist (Sprache dann noch einmal umschalten).': 'An operation is still running. The language changes at the next start of Tuxdex – or now once the operation has finished (then switch the language again).',
+    'Entwicklungsstand': 'development build',
+    'veraltet': 'outdated',
+    'Beliebte Programme': 'Popular programs',
+    'Alle Kategorien': 'All categories',
+    'Kategorie': 'Category',
+    'Programm suchen …': 'Search program …',
+    'Nichts gefunden.': 'Nothing found.',
+    'Direkt installieren – gleich unter dem Namen steht, woher das Programm kommt (pacman = Arch-Paketquellen, Flatpak = Flathub).': 'Install directly – the button shows where the program comes from (pacman = Arch repositories, Flatpak = Flathub).',
+    'Kommunikation': 'Communication',
+    'Notizen & Organisation': 'Notes & organisation',
+    'Sicherheit & Passwörter': 'Security & passwords',
+    'Internet & Übertragen': 'Internet & transfer',
+    'Audio & Video': 'Audio & video',
+    'Entwicklung & Netzwerk': 'Development & network',
+    'Konstruktion & Wissenschaft': 'Engineering & science',
+    'Werkzeuge': 'Tools',
+    'Chat, Sprache und Video für Communities und Freunde': 'Chat, voice and video for communities and friends',
+    'Verschlüsselter Messenger': 'Encrypted messenger',
+    'E-Mail, Kalender und Kontakte': 'Email, calendar and contacts',
+    'Notizen mit Verknüpfungen, alles als Textdateien': 'Linked notes, all stored as text files',
+    'Aufgabenliste mit Zeiterfassung': 'Task list with time tracking',
+    'Passwort-Manager, Daten bleiben auf deinem Rechner': 'Password manager, data stays on your computer',
+    'Passwort-Manager mit Cloud-Abgleich': 'Password manager with cloud sync',
+    'Verschlüsselte Container und Laufwerke': 'Encrypted containers and drives',
+    'Cloud-Ordner (Dropbox, Drive …) verschlüsseln': 'Encrypt cloud folders (Dropbox, Drive …)',
+    'Browser mit eingebautem Werbeblocker': 'Browser with built-in ad blocker',
+    'Torrent-Client': 'Torrent client',
+    'FTP- und SFTP-Client': 'FTP and SFTP client',
+    'Dateien im WLAN an andere Geräte schicken (wie AirDrop)': 'Send files to other devices over Wi-Fi (like AirDrop)',
+    'Bildschirm aufnehmen und streamen': 'Record and stream your screen',
+    'Musik-Streaming': 'Music streaming',
+    'Audio-Konverter und CD-Ripper': 'Audio converter and CD ripper',
+    'Code-Editor von Microsoft': 'Code editor from Microsoft',
+    'Netzwerkverkehr mitschneiden und analysieren': 'Capture and analyse network traffic',
+    '3D-Konstruktion (CAD)': '3D design (CAD)',
+    'Platinen und Schaltpläne entwerfen': 'Design circuit boards and schematics',
+    'Mathematik und Numerik (ähnlich MATLAB)': 'Mathematics and numerics (similar to MATLAB)',
+    'Minecraft mit mehreren Instanzen und Mods': 'Minecraft with multiple instances and mods',
+    'Archive packen und entpacken (ZIP, 7z, RAR …)': 'Pack and unpack archives (ZIP, 7z, RAR …)',
+    'Flash-Stick': 'Flash stick',
+    'USB-Stick': 'USB stick',
+    'Stick flashen': 'Flash stick',
+    'Bootfähige Sticks erstellen – z. B. zum Installieren von Arch Linux oder für einen Home-Assistant-Rechner. Windows-ISOs lassen sich so nicht einfach schreiben, dafür braucht es spezielle Werkzeuge.': "Create bootable sticks – e.g. to install Arch Linux or for a Home Assistant machine. Windows ISOs can't simply be written this way; that needs special tools.",
+    '1 · Abbild wählen': '1 · Choose image',
+    '2 · USB-Stick wählen': '2 · Choose USB stick',
+    '3 · Schreiben': '3 · Write',
+    'Abbild': 'Image',
+    'Arch Linux – aktuelle ISO (ca. 1,3 GB)': 'Arch Linux – current ISO (about 1.3 GB)',
+    'Home Assistant OS – PC / Mini-PC (x86-64)': 'Home Assistant OS – PC / mini PC (x86-64)',
+    'Home Assistant OS – Raspberry Pi 5': 'Home Assistant OS – Raspberry Pi 5',
+    'Home Assistant OS – Raspberry Pi 4': 'Home Assistant OS – Raspberry Pi 4',
+    'Home Assistant OS – Raspberry Pi 3 (64 Bit)': 'Home Assistant OS – Raspberry Pi 3 (64 bit)',
+    'Home Assistant OS – Home Assistant Green': 'Home Assistant OS – Home Assistant Green',
+    'Eigene Datei …': 'Own file …',
+    'Wird von mirror.pkgbuild.com geladen und mit der Prüfsumme der Arch-Webseite verglichen.': 'Downloaded from mirror.pkgbuild.com and compared with the checksum from the Arch website.',
+    'Offizielles Abbild von github.com/home-assistant/operating-system (neueste Version), mit Prüfsumme.': 'Official image from github.com/home-assistant/operating-system (latest version), with checksum.',
+    'Kein USB-Stick gefunden – Stick einstecken und ↻ klicken': 'No USB stick found – plug one in and click ↻',
+    'Alles auf dem Stick wird gelöscht. Es werden nur Wechseldatenträger angeboten – nie die Platte, auf der dein System liegt.': 'Everything on the stick will be erased. Only removable drives are offered – never the disk your system is on.',
+    'Nach dem Schreiben prüfen (liest den Stick zurück und vergleicht)': 'Verify after writing (reads the stick back and compares)',
+    'Auf Stick schreiben': 'Write to stick',
+    'Herunterladen und schreiben': 'Download and write',
+    'Stick überschreiben': 'Overwrite stick',
+    'Bitte zuerst eine Abbild-Datei wählen.': 'Please choose an image file first.',
+    'Diese Datei sieht nicht wie ein Abbild aus (.iso, .img, .img.xz, .img.gz).': "This file doesn't look like an image (.iso, .img, .img.xz, .img.gz).",
+    'Der Stick ist kleiner als das Abbild.': 'The stick is smaller than the image.',
+    'Bitte einen USB-Stick einstecken und auswählen.': 'Please plug in and select a USB stick.',
+    'Suche das aktuelle Abbild …': 'Looking for the current image …',
+    'Schreibe auf den Stick …': 'Writing to the stick …',
+    'Schließe das Schreiben ab (kann dauern) …': 'Finishing the write (may take a while) …',
+    'Prüfe den Stick …': 'Checking the stick …',
+    'Fertig – der Stick kann entfernt werden.': 'Done – the stick can be removed.',
+    'Vorgang abbrechen? Der Stick ist dann unvollständig beschrieben und nicht bootfähig.': 'Cancel? The stick will then be incompletely written and not bootable.',
+    'Stick fertig – du kannst ihn jetzt sicher entfernen.': 'Stick ready – you can now safely remove it.',
+    'Für diese Plattform wurde kein Abbild gefunden.': 'No image was found for this platform.',
+    'Die Prüfsumme des Downloads stimmt nicht – bitte erneut versuchen.': "The checksum of the download doesn't match – please try again.",
+    'Bootfähige USB-Sticks erstellen (Arch Linux, Home Assistant OS oder eigene Abbild-Datei).': 'Create bootable USB sticks (Arch Linux, Home Assistant OS or your own image file).',
+    'Bootfähige USB-Sticks mit Arch Linux, Home Assistant OS oder eigener Datei erstellen': 'Create bootable USB sticks with Arch Linux, Home Assistant OS or your own file',
+    'Bei geöffnetem Fenster regelmäßig nach Tuxdex-Updates suchen, alle': 'While the window is open, check for Tuxdex updates regularly, every',
+    'Sekunden (15 bis 86400)': 'seconds (15 to 86400)',
+    'Gruppen': 'Groups',
+    '{} Gruppen': '{} groups',
+    'Gruppen zuweisen …': 'Assign groups …',
+    'Gruppen zuweisen': 'Assign groups',
+    'Gruppe suchen …': 'Search group …',
+    'Alle Systemgruppen zeigen': 'Show all system groups',
+    'Hauptgruppe': 'Primary group',
+    'Gruppen von {}': 'Groups of {}',
+    'Häkchen setzen = zur Gruppe hinzufügen, entfernen = aus der Gruppe nehmen. Die Änderung gilt ab der nächsten Anmeldung des Benutzers. Die Hauptgruppe lässt sich hier nicht entfernen.': "Tick = add to the group, untick = remove from the group. The change applies from the user's next login. The primary group can't be removed here.",
+    'Administrator: darf sudo nutzen (praktisch root-Rechte)': 'Administrator: may use sudo (practically root rights)',
+    'Docker nutzen (praktisch root-Rechte)': 'Use Docker (practically root rights)',
+    'Grafikkarte, Kamera und Bildschirm-Helligkeit nutzen': 'Use graphics card, camera and screen brightness',
+    'Audiogeräte direkt nutzen': 'Use audio devices directly',
+    'Eingabegeräte direkt lesen (Tastatur, Maus, Gamepad)': 'Read input devices directly (keyboard, mouse, gamepad)',
+    'Wechseldatenträger einhängen': 'Mount removable drives',
+    'CD/DVD-Laufwerke nutzen': 'Use CD/DVD drives',
+    'Scanner nutzen': 'Use scanners',
+    'Drucker nutzen': 'Use printers',
+    'Netzwerkverbindungen verwalten': 'Manage network connections',
+    'Energie-Einstellungen ändern': 'Change power settings',
+    'Spielstände und Spiele-Zubehör': 'Game saves and accessories',
+    'Serielle Schnittstellen (USB-Seriell, Arduino)': 'Serial ports (USB serial, Arduino)',
+    'Virtuelle Maschinen mit KVM beschleunigen': 'Accelerate virtual machines with KVM',
+    'Virtuelle Maschinen verwalten (libvirt)': 'Manage virtual machines (libvirt)',
+    'Normale Benutzergruppe': 'Normal user group',
+    'Systemprotokolle lesen': 'Read system logs',
     'Automatische Updates deaktivieren': 'Disable automatic updates',
     'Automatische Updates': 'Automatic updates',
     'Ausschalten': 'Turn off',
@@ -16775,7 +18095,7 @@ EN = {
     'Tuxdex auf Version {} aktualisieren?\n\nQuelle: github.com/{} ({})': 'Update Tuxdex to version {}?\n\nSource: github.com/{} ({})',
     'Tuxdex beenden': 'Quit Tuxdex',
     'Tuxdex ist als Paket installiert – bitte das Archiv (tuxdex-X.Y.Z.tar.gz) oder den Ordner mit PKGBUILD wählen.': 'Tuxdex is installed as a package – please choose the archive (tuxdex-X.Y.Z.tar.gz) or the folder with the PKGBUILD.',
-    'Tuxdex ist in der <b>Alpha-Phase</b>. Aktionen mit Administrator-Rechten (root) ändern dein System direkt – z. B. Pakete, Datenträger, Swap, Firewall, Systemdateien. Trotz Rückfragen und Prüfungen können Fehler passieren, bis hin zu Datenverlust oder einem System, das nicht mehr startet.<br><br><b>Nutzung auf eigenes Risiko.</b> Es gibt keine Gewährleistung (MIT-Lizenz). Lege vorher ein Backup an und lies bei jeder Rückfrage, welcher Befehl ausgeführt wird – er steht immer im Ausgabefeld.': 'Tuxdex is in the <b>alpha stage</b>. Actions with administrator rights (root) change your system directly – e.g. packages, drives, swap, firewall, system files. Despite confirmations and checks, errors can happen, up to data loss or a system that no longer boots.<br><br><b>Use at your own risk.</b> There is no warranty (MIT license). Make a backup first and read which command will run at every confirmation – it is always shown in the output box.',
+    'Tuxdex ist in der <b>Beta-Phase</b>. Aktionen mit Administrator-Rechten (root) ändern dein System direkt – z. B. Pakete, Datenträger, Swap, Firewall, Systemdateien. Trotz Rückfragen und Prüfungen können Fehler passieren, bis hin zu Datenverlust oder einem System, das nicht mehr startet.<br><br><b>Nutzung auf eigenes Risiko.</b> Es gibt keine Gewährleistung (MIT-Lizenz). Lege vorher ein Backup an und lies bei jeder Rückfrage, welcher Befehl ausgeführt wird – er steht immer im Ausgabefeld.': 'Tuxdex is in the <b>beta stage</b>. Actions with administrator rights (root) change your system directly – e.g. packages, drives, swap, firewall, system files. Despite confirmations and checks, errors can happen, up to data loss or a system that no longer boots.<br><br><b>Use at your own risk.</b> There is no warranty (MIT license). Make a backup first and read which command will run at every confirmation – it is always shown in the output box.',
     'Tuxdex jetzt neu starten?': 'Restart Tuxdex now?',
     'Tuxdex {} aus {} installieren?': 'Install Tuxdex {} from {}?',
     'Tuxdex-Update wählen': 'Choose Tuxdex update',
@@ -17137,7 +18457,7 @@ EN = {
     '… {} weitere': '… {} more',
     '← Zurück': '← Back',
     '↑ {}/s · gesamt ↓ {} ↑ {}': '↑ {}/s · total ↓ {} ↑ {}',
-    '▲  Alpha-Version: Aktionen mit root-Rechten auf eigenes Risiko.': '▲  Alpha version: actions with root rights at your own risk.',
+    '▲  Beta-Version: Aktionen mit root-Rechten auf eigenes Risiko.': '▲  Beta version: actions with root rights at your own risk.',
     '▲ Die Signaturen sind {} Tage alt. Aktualisieren oder automatische Updates aktivieren.': '▲ The signatures are {} days old. Update them or enable automatic updates.',
     '▲ Major-Version': '▲ Major version',
     '▲ Noch keine Signaturen nach 10 Minuten – Meldungen oben prüfen.': '▲ Still no signatures after 10 minutes – check the messages above.',
@@ -17177,6 +18497,7 @@ def main():
     apply_theme(app)
     app.aboutToQuit.connect(stop_children)      # auch beim Neustart nach einem Update
     win = MainWindow()
+    app._tuxdex_window = win
     win.setFocusPolicy(Qt.ClickFocus)
     win.show()
     win.setFocus()

@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.5.2--alpha-2fb3a3">
+  <img alt="Version" src="https://img.shields.io/badge/version-1.5.17.1-2fb3a3">
   <img alt="Lizenz" src="https://img.shields.io/badge/lizenz-MIT-2fb3a3">
   <img alt="Für Arch Linux" src="https://img.shields.io/badge/f%C3%BCr-Arch%20Linux-1793d1">
   <img alt="Python" src="https://img.shields.io/badge/python-3.11%2B-3776ab">
@@ -24,7 +24,7 @@
 </p>
 
 > [!WARNING]
-> **Alpha-Version.** Aktionen mit Administrator-Rechten (root) ändern dein System direkt. Tuxdex fragt vor der ersten solchen Aktion einmal nach deiner Zustimmung. Nutzung auf eigenes Risiko – vorher ein Backup anlegen.
+> **Beta-Version.** Aktionen mit Administrator-Rechten (root) ändern dein System direkt. Tuxdex fragt vor der ersten solchen Aktion einmal nach deiner Zustimmung. Nutzung auf eigenes Risiko – vorher ein Backup anlegen.
 
 ---
 
@@ -58,9 +58,10 @@ Tuxdex ist ein **Baukasten**: Unter **Einstellungen → Module** wählst du selb
 |---|---|
 | **Updates** | Prüft beim Start automatisch auf Updates (pacman, AUR über paru, Flatpak – abschaltbar) und zeigt die Anzahl am Tab und unten rechts · einspielen per Klick · **Major-Updates** und Kernel/System-Pakete werden markiert · Neustart-Hinweis · Prüfergebnis bleibt nach dem Schließen erhalten |
 | **Einrichten** | Basics mit einem Klick: Schriften für Office-Dokumente, Audio-/Video-Codecs, Energieprofile · **Standard-Apps** festlegen · **Spiele-Setup** (Steam, GameMode, MangoHud, Lutris, Heroic, Bottles, Wine, 32-Bit-Unterstützung) · **Ersatz für Windows-Programme**: „Photoshop“, „Office“ & Co. eingeben, Linux-Alternative direkt installieren |
-| **Software** | Alle Pakete mit Icon, Version, Größe, Quelle/Ort und Installationsdatum · per Kästchen auswählen und gemeinsam deinstallieren · installieren aus pacman, AUR (paru) oder Flathub |
+| **Software** | **Beliebte Programme** nach Kategorie zum direkten Installieren (Discord, Signal, Thunderbird, OBS, Obsidian, KeePassXC, VS Code …) mit Fortschritt und „Starten“ · Alle Pakete mit Icon, Version, Größe, Quelle/Ort und Installationsdatum · per Kästchen auswählen und gemeinsam deinstallieren · installieren aus pacman, AUR (paru) oder Flathub |
 | **Flatpak** | Rechte jeder Flatpak-App per Schalter – Netzwerk, Dateien & Ordner, Geräte, Ton, Bildschirm, Umgebungsvariablen, Portal-Freigaben · Regeln für alle Apps · riskante Rechte sind markiert, Änderungen hervorgehoben · Flathub einrichten, Apps starten, aktualisieren, deinstallieren |
 | **Datenträger** | Laufwerke und Partitionen als Baum · Einhängen, Aushängen, **dauerhaft einhängen** (fstab per UUID, mit Sicherung), Umbenennen, Prüfen, **Formatieren** (ext4, btrfs, xfs, exFAT, FAT32, NTFS), sicher entfernen · erkennt neue USB-Sticks automatisch · System-Partitionen sind geschützt |
+| **Flash-Stick** | Bootfähige Sticks „flashen“: **Arch Linux** und **Home Assistant OS** (PC, Raspberry Pi, Green) mit Download und Prüfsumme – oder **eigene Abbild-Datei** (.iso, .img, .img.xz). Es werden nur Wechseldatenträger angeboten, nie die Systemplatte; danach Prüfung des Sticks |
 | **Speicher** | Belegung je Festplatte · **Tortendiagramm**: Betriebssystem, Anwendungen, Systemdaten, Fotos & Videos, eigene Dateien · „Was belegt den Platz?“ mit Drill-down in Ordner · Aufräumen: Paket-Cache, verwaiste Pakete, Journal, Papierkorb, Flatpak |
 | **Backup** | Snapshots (versioniert, platzsparend), Spiegel oder komprimierte Archive (zstd/xz/gzip, optional mit Passwort) · **mehrere Ziele gleichzeitig** · Prüfung nach dem Schreiben · eigene Namen mit Datum ([so geht’s](#backups-benennen)) · alte Versionen automatisch aufräumen · wiederherstellen · Zeitplan täglich/wöchentlich |
 | **Wiederherstellung** | System-Snapshots mit snapper (btrfs) oder Timeshift · **Snapshot vor jedem Update** · Liste, erstellen, löschen · **auf einen Stand zurücksetzen** per Klick |
@@ -68,7 +69,7 @@ Tuxdex ist ein **Baukasten**: Unter **Einstellungen → Module** wählst du selb
 | **Taskmanager** | Prozesse mit Programm-Icons, CPU, RAM, Datenträger-I/O, Energie-Schätzung · Leistung: CPU (Takt, Temperatur), RAM, GPU, Netzwerk, Datenträger, Akku · System: CPU-/GPU-Name, Mainboard, IP-Adressen, DNS · **Autostart & Bootzeit** · **Versionsstand** von Grafiktreiber, Microcode, BIOS, Kernel, Firmware |
 | **Antivirus** *(anfangs ausgeblendet)* | ClamAV ist vor allem für Server gedacht und auf Linux-Desktops wenig nützlich – ein eigenes Werkzeug für Desktop-Nutzer steht auf der [Roadmap](#roadmap). Bedienung für ein bereits installiertes ClamAV (optional): Signaturen aktualisieren, Ordner oder ganzes System scannen – mit **Live-Fortschritt** (Dateien, Datenmenge, Tempo, Restzeit) und Status, ob der Scan läuft oder hängt · Quarantäne mit Wiederherstellen |
 | **Sicherheit** | Sicherheits-Check (VPN, DNS, Proxy, Firewall, LUKS, Secure Boot, CPU-Microcode, Swap-Verschlüsselung, Kernel-Schutz, Updates, Antivirus, offene Ports, SSH, bekannte Sicherheitslücken) · **Checkliste für Wartung, Datenschutz & Performance** (Paketsignaturen, Mirrors, sudo, Protokoll-Größe, Core Dumps, Shell-Verlauf, TRIM, I/O-Scheduler, NTP, alte Kernel-Module, Paketliste …) · **DNS-Leak-Test & VPN/Proxy-Erkennung** · **offene Ports per Knopf sperren/freigeben** · Bedienung für ein bereits installiertes **Mullvad VPN** (optional: Konto, Standort, Kill-Switch, DNS-Filter) · ufw-Firewall mit Regeln |
-| **Benutzer** *(anfangs ausgeblendet)* | Benutzer **anlegen**, **Passwörter ändern** (inkl. Datum der letzten Änderung), **Speicherplatz** und **Arbeitsspeicher** je Benutzer, **aktive Zeit** (Summe der Anmeldungen), letzte Anmeldung und eine **Beschreibung**, wofür der Nutzer da ist |
+| **Benutzer** *(anfangs ausgeblendet)* | Benutzer **anlegen**, **Passwörter ändern** (inkl. Datum der letzten Änderung), **Speicherplatz** und **Arbeitsspeicher** je Benutzer, **aktive Zeit** (Summe der Anmeldungen), letzte Anmeldung und eine **Beschreibung**, wofür der Nutzer da ist, **Gruppen zuweisen** |
 
 ## Roadmap
 

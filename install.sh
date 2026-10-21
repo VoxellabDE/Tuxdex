@@ -25,7 +25,7 @@ command -v pacman >/dev/null || die "Dies ist kein Arch-System (pacman fehlt). T
 
 cat <<MSG
 
-  Tuxdex – Installer  (Alpha: Nutzung auf eigenes Risiko, vorher ein Backup anlegen)
+  Tuxdex – Installer  (Beta: Nutzung auf eigenes Risiko, vorher ein Backup anlegen)
 
   Das passiert:
     1. Das Tuxdex-Repository wird in $CONF eingetragen (vorher Sicherung als $CONF.tuxdex.bak)

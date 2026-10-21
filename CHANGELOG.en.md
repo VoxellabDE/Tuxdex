@@ -2,6 +2,91 @@
 
 English version of [CHANGELOG.md](CHANGELOG.md). Entries before 1.0.0 are only available in German.
 
+## 1.5.17.1
+Tab bar (beta).
+
+- **Arrows ‹ ›** jump exactly **one tab** at a time, with a short animation. The step follows the actual width of the tabs (language, font size) instead of a fixed pixel count.
+
+## 1.5.17
+Default apps (beta).
+
+- **Set up → Default apps**: the selection didn't take effect on many systems, especially under KDE. There, `kde-mimeapps.list` takes precedence over `mimeapps.list`, and `xdg-mime` only writes the latter. Tuxdex now writes the default app into all relevant files (including the one of the running desktop), removes it from the "Removed Associations" and then checks what really applies. The result is shown right below the selection – including a warning if the desktop overrides it.
+
+## 1.5.16
+Renaming (beta).
+
+- The "USB stick" module is now called **"Flash stick"** (page heading "Flash stick") – "flashing" is the usual term for writing an image to a stick.
+
+## 1.5.15
+Tab bar (beta).
+
+- **Small windows**: when not all modules fit in the bar, the names are no longer cut off. The tabs keep their full width, the bar can be scrolled (mouse wheel or the arrows ‹ ›), and the selected tab scrolls into view automatically. The arrows only appear when needed.
+
+## 1.5.14
+Language switch without restart (beta).
+
+- **DE | EN**: the language changes immediately – Tuxdex rebuilds the window in the new language and stays in the same place (same tab, same window size and position). If an operation is running (update, backup, scan …), nothing is switched so its display isn't lost; the language then applies from the next start or after switching again.
+
+## 1.5.13
+Beta label.
+
+- **Maturity**: the badge at the top of the bar now says **BETA** instead of ALPHA – likewise the notice before the first root action, README, SECURITY.md and the installer. A consent already given stays valid.
+
+## 1.5.12
+Version names (beta).
+
+- **Naming scheme**: the stable version is simply "1.5.2", the beta branch "1.5.12-beta". The former "-alpha" after every number is gone. Tuxdex determines the channel of the installed version by comparing with the versions on GitHub (newer than stable = beta) and remembers the values offline. Applies to the status bar, settings, update window and GitHub releases (releases from `main` carry no suffix).
+
+## 1.5.11
+Bug fix (beta).
+
+- **Settings → Updating**: the installed version was always labelled "(Stable)", even on the beta. Tuxdex now shows the correct channel – "Stable", "Beta" or "development build" (newer than the beta) – by comparing with the versions on GitHub.
+
+## 1.5.10
+Language (beta).
+
+- **Settings → Language**: a **DE | EN** toggle replaces the drop-down list.
+
+## 1.5.9
+Install display (beta).
+
+- **"Version … available"** (bottom right): one click opens the settings and jumps straight to the update panel – no scrolling. A second click closes the settings again.
+- **Progress in %**: the display no longer jumps to 99% after a few seconds. Tuxdex now calculates a real overall progress from the output of pacman (download, checks, installation package by package) and Flatpak (package i of n). The number never jumps back; 100% only comes when the operation is finished.
+- **Own bar per row**: while an installation runs, the program's row is framed and shows a progress bar below the description – so it's immediately clear which program is being installed. Applies to "Popular programs" and "Replacements for Windows programs".
+
+## 1.5.8
+Bug fix (beta).
+
+- **Popular programs**: programs installed via Flatpak are now also recognised as installed (with a "Start" button) when the catalog offers them from the Arch repositories – and the other way round. If the ID differs (e.g. fre:ac), the name of the Flatpak app is compared as well.
+
+## 1.5.7
+Programs and USB sticks (beta).
+
+- **Software → "Popular programs"**: 23 programs by category to install directly – Discord, Signal, Thunderbird, Obsidian, Super Productivity, KeePassXC, Bitwarden, VeraCrypt, Cryptomator, Brave, qBittorrent, FileZilla, LocalSend, OBS Studio, Spotify, fre:ac, Visual Studio Code, Wireshark, FreeCAD, KiCad, GNU Octave, Prism Launcher, PeaZip. With category filter, search, source on the button (pacman/Flatpak), progress in % and then "Start".
+- **New module "USB stick"**: create bootable sticks. Choose **Arch Linux** (current ISO) and **Home Assistant OS** (PC, Raspberry Pi 5/4/3, Green) – or an **own file** (.iso, .img, .img.xz, .img.gz). Downloads are checked against their checksum, then the stick is read back and compared. Only removable drives are offered, never the disk with the system; a clear confirmation comes before overwriting.
+
+## 1.5.6
+Settings (beta).
+
+- **Settings**: the "Updating" panel (Tuxdex updates) now sits directly below "System updates".
+
+## 1.5.5
+Updates while in use (beta).
+
+- **Update window while Tuxdex is open**: Tuxdex checks in the background every 30 seconds for a new version and shows the update window as soon as one appears – no restart needed. The query is light (only the commit ID via the Git protocol, no rate limit); each version is offered only once.
+- **Settings → Updating**: the regular check can be turned off and the interval adjusted (15 to 86400 seconds).
+
+## 1.5.4
+User groups (beta).
+
+- **Assign groups**: the checkmarks in the group list weren't visible (checked looked like unchecked) – fixed.
+- **Overview**: new "Groups" column as a drop-down – the count on top, below all groups of the user (primary group first).
+
+## 1.5.3
+Group management (beta).
+
+- **Users → "Assign groups …"**: add or remove a user's groups with checkboxes. Well-known groups (wheel, video, audio, docker, libvirt …) are explained, with search and the option "Show all system groups". The primary group stays protected; for groups with administrator rights (wheel, sudo, docker) Tuxdex asks first. The change applies from the next login.
+
 ## 1.5.2
 Bug fix.
 

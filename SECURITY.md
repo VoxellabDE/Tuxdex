@@ -4,5 +4,5 @@
 
 **English:** Please do **not** report security issues as public issues. Send an email to **contact@voxellab.de** with the version, steps to reproduce and the possible impact. You'll get a reply once the report has been reviewed.
 
-Tuxdex ist in der Alpha-Phase. Aktionen mit root-Rechten laufen nur nach einmaliger Zustimmung und immer sichtbar im Ausgabefeld.
-Tuxdex is in alpha. Actions with root privileges only run after a one-time consent and are always shown in the output box.
+Tuxdex ist in der Beta-Phase. Aktionen mit root-Rechten laufen nur nach einmaliger Zustimmung und immer sichtbar im Ausgabefeld.
+Tuxdex is in beta. Actions with root privileges only run after a one-time consent and are always shown in the output box.

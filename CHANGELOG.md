@@ -1,5 +1,90 @@
 # Changelog
 
+## 1.5.17.1
+Tab-Leiste (Beta).
+
+- **Pfeile ‹ ›** springen genau **einen Tab** weiter, mit kurzer Animation. Die Schrittweite richtet sich nach der tatsächlichen Breite der Tabs (Sprache, Schriftgröße), statt einer festen Pixelzahl.
+
+## 1.5.17
+Standard-Apps (Beta).
+
+- **Einrichten → Standard-Apps**: Die Auswahl wurde bei vielen Systemen nicht wirksam, vor allem unter KDE. Dort hat die Datei `kde-mimeapps.list` Vorrang vor `mimeapps.list`, und `xdg-mime` schreibt nur in die zweite. Tuxdex trägt die Standard-App jetzt in alle relevanten Dateien ein (auch die der laufenden Oberfläche), nimmt sie aus den „Removed Associations“ und prüft danach, was wirklich gilt. Das Ergebnis steht direkt unter der Auswahl – auch eine Warnung, falls die Oberfläche es überschreibt.
+
+## 1.5.16
+Umbenennung (Beta).
+
+- Das Modul „USB-Stick“ heißt jetzt **„Flash-Stick“** (Seitenüberschrift „Stick flashen“) – „flashen“ ist der übliche Begriff dafür, ein Abbild auf einen Stick zu schreiben.
+
+## 1.5.15
+Tab-Leiste (Beta).
+
+- **Kleine Fenster**: Passen nicht alle Module in die Leiste, werden die Namen nicht mehr abgeschnitten. Die Tabs behalten ihre volle Breite, die Leiste lässt sich scrollen (Mausrad oder die Pfeile ‹ ›), und der gewählte Tab scrollt automatisch ins Bild. Pfeile erscheinen nur, wenn sie gebraucht werden.
+
+## 1.5.14
+Sprachwechsel ohne Neustart (Beta).
+
+- **DE | EN**: Die Sprache wechselt sofort – Tuxdex baut das Fenster in der neuen Sprache neu auf und bleibt an derselben Stelle (gleicher Tab, gleiche Fenstergröße und -position). Läuft gerade ein Vorgang (Update, Backup, Scan …), wird nicht gewechselt, damit dessen Anzeige nicht verloren geht; die Sprache gilt dann ab dem nächsten Start oder nach erneutem Umschalten.
+
+## 1.5.13
+Beta-Kennzeichnung.
+
+- **Reifegrad**: Das Kennzeichen oben in der Leiste heißt jetzt **BETA** statt ALPHA – ebenso der Hinweis vor der ersten root-Aktion, README, SECURITY.md und der Installer. Die bereits gegebene Zustimmung bleibt gültig.
+
+## 1.5.12
+Versionsnamen (Beta).
+
+- **Namensschema**: Die stabile Version heißt einfach „1.5.2“, der Beta-Zweig „1.5.12-beta“. Das frühere „-alpha“ hinter jeder Nummer entfällt. Welcher Kanal die installierte Version ist, ermittelt Tuxdex durch Vergleich mit den Versionen auf GitHub (neuer als die stabile = Beta) und merkt sich die Werte auch ohne Netz. Gilt für Statusleiste, Einstellungen, Update-Fenster und GitHub-Releases (Releases aus `main` tragen keinen Zusatz).
+
+## 1.5.11
+Fehlerbehebung (Beta).
+
+- **Einstellungen → Aktualisierung**: Hinter der installierten Version stand immer „(Stabil)“, auch bei der Beta. Jetzt zeigt Tuxdex den richtigen Kanal – „Stabil“, „Beta“ oder „Entwicklungsstand“ (neuer als die Beta) –, ermittelt durch Vergleich mit den Versionen auf GitHub.
+
+## 1.5.10
+Sprache (Beta).
+
+- **Einstellungen → Sprache**: statt der Auswahlliste gibt es jetzt einen Umschalter **DE | EN**.
+
+## 1.5.9
+Installations-Anzeige (Beta).
+
+- **„Version … verfügbar“** (unten rechts): Ein Klick öffnet die Einstellungen und springt direkt zum Update-Feld – ohne Scrollen. Ein zweiter Klick schließt die Einstellungen wieder.
+- **Fortschritt in %**: Die Anzeige springt nicht mehr nach wenigen Sekunden auf 99 %. Tuxdex rechnet jetzt einen echten Gesamtfortschritt aus der Ausgabe von pacman (Download, Prüfungen, Installation Paket für Paket) und Flatpak (Paket i von n). Die Zahl springt nie zurück; 100 % gibt es erst, wenn der Vorgang fertig ist.
+- **Eigene Leiste je Zeile**: Läuft eine Installation, wird die Zeile des Programms umrahmt und zeigt unter der Beschreibung eine Fortschrittsleiste – so ist sofort klar, welches Programm gerade installiert. Gilt für „Beliebte Programme“ und „Ersatz für Windows-Programme“.
+
+## 1.5.8
+Fehlerbehebung (Beta).
+
+- **Beliebte Programme**: Per Flatpak installierte Programme werden jetzt auch dann als installiert erkannt (mit „Starten“-Knopf), wenn der Katalog sie aus den Arch-Paketquellen anbietet – und umgekehrt. Zusätzlich wird über den Namen der Flatpak-App verglichen, falls die Kennung abweicht (z. B. fre:ac).
+
+## 1.5.7
+Programme und USB-Sticks (Beta).
+
+- **Software → „Beliebte Programme“**: 23 Programme nach Kategorie zum direkten Installieren – Discord, Signal, Thunderbird, Obsidian, Super Productivity, KeePassXC, Bitwarden, VeraCrypt, Cryptomator, Brave, qBittorrent, FileZilla, LocalSend, OBS Studio, Spotify, fre:ac, Visual Studio Code, Wireshark, FreeCAD, KiCad, GNU Octave, Prism Launcher, PeaZip. Mit Kategorie-Auswahl, Suche, Quelle am Knopf (pacman/Flatpak), Fortschritt in % und danach „Starten“.
+- **Neues Modul „USB-Stick“**: bootfähige Sticks erstellen. Zur Auswahl **Arch Linux** (aktuelle ISO) und **Home Assistant OS** (PC, Raspberry Pi 5/4/3, Green) – oder eine **eigene Datei** (.iso, .img, .img.xz, .img.gz). Downloads werden mit der Prüfsumme geprüft, danach wird der Stick zurückgelesen und verglichen. Es werden nur Wechseldatenträger angeboten, nie die Platte mit dem System; vor dem Überschreiben gibt es eine deutliche Rückfrage.
+
+## 1.5.6
+Einstellungen (Beta).
+
+- **Einstellungen**: Das Feld „Aktualisierung“ (Tuxdex-Updates) steht jetzt direkt unter „System-Updates“.
+
+## 1.5.5
+Updates während der Nutzung (Beta).
+
+- **Update-Fenster bei geöffnetem Tuxdex**: Tuxdex prüft alle 30 Sekunden im Hintergrund, ob es eine neue Version gibt, und zeigt das Update-Fenster, sobald eine erscheint – ohne Neustart. Die Abfrage ist leicht (nur die Commit-ID über das Git-Protokoll, kein Abfragelimit); jede Version wird nur einmal angeboten.
+- **Einstellungen → Aktualisierung**: die regelmäßige Prüfung lässt sich ausschalten und das Intervall einstellen (15 bis 86400 Sekunden).
+
+## 1.5.4
+Benutzer-Gruppen (Beta).
+
+- **Gruppen zuweisen**: Die Häkchen in der Gruppenliste waren nicht sichtbar (gesetzt sah aus wie nicht gesetzt) – behoben.
+- **Übersicht**: neue Spalte „Gruppen“ als Aufklappliste – oben die Anzahl, darunter alle Gruppen des Benutzers (Hauptgruppe zuerst).
+
+## 1.5.3
+Gruppenverwaltung (Beta).
+
+- **Benutzer → „Gruppen zuweisen …“**: Gruppen eines Benutzers per Häkchen hinzufügen oder entziehen. Bekannte Gruppen (wheel, video, audio, docker, libvirt …) sind erklärt, mit Suche und der Option „Alle Systemgruppen zeigen“. Die Hauptgruppe bleibt geschützt; bei Gruppen mit Administrator-Rechten (wheel, sudo, docker) fragt Tuxdex nach. Die Änderung gilt ab der nächsten Anmeldung.
+
 ## 1.5.2
 Fehlerbehebung.
 
