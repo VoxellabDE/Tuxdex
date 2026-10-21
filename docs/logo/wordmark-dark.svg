@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="320" viewBox="0 0 820 320">
+  <title>Tuxdex</title>
+  <g transform="translate(32 32) scale(0.5)">
+  <!-- Kachel: bg-100 (#151a1d) mit line-Rand (#2a353b) -->
+  <rect x="8" y="8" width="496" height="496" rx="116" fill="#151a1d"/>
+  <rect x="13" y="13" width="486" height="486" rx="111" fill="none" stroke="#2a353b" stroke-width="10"/>
+  <!-- drei Regler = „steuern & verwalten“: Spur bg-300, Füllung accent (Petrol) -->
+  <g stroke-linecap="round" stroke-width="56">
+    <line x1="112" y1="148" x2="400" y2="148" stroke="#27343a"/>
+    <line x1="112" y1="256" x2="400" y2="256" stroke="#27343a"/>
+    <line x1="112" y1="364" x2="400" y2="364" stroke="#27343a"/>
+    <line x1="112" y1="148" x2="300" y2="148" stroke="#2fb3a3"/>
+    <line x1="112" y1="256" x2="196" y2="256" stroke="#2fb3a3"/>
+    <line x1="112" y1="364" x2="352" y2="364" stroke="#2fb3a3"/>
+  </g>
+  <!-- Knöpfe als abgerundete Quadrate – das Kachel-Motiv im Kleinen -->
+  <g fill="#e6edf0" stroke="#151a1d" stroke-width="14">
+    <rect x="252" y="100" width="96" height="96" rx="28"/>
+    <rect x="148" y="208" width="96" height="96" rx="28"/>
+    <rect x="304" y="316" width="96" height="96" rx="28"/>
+  </g>
+  </g>
+  <text x="330" y="202" font-family="IBM Plex Sans" font-size="128" font-weight="bold" letter-spacing="-3"><tspan fill="#e6edf0">Tux</tspan><tspan fill="#2fb3a3">dex</tspan></text>
+</svg>

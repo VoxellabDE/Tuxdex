@@ -1,0 +1,118 @@
+# Legt für jede neue Version auf main automatisch ein GitHub-Release an.
+# Version = APP_VERSION aus tuxdex.py, Text = passender Abschnitt aus CHANGELOG.md.
+# Gibt es das Release schon, wird nur sein Text aus dem CHANGELOG aktualisiert.
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      neu_anlegen:
+        description: "Release und Tag der aktuellen Version löschen und auf den neuesten main-Stand neu anlegen"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version und Changelog lesen
+        id: v
+        run: |
+          ver=$(sed -n 's/^APP_VERSION = "\(.*\)"/\1/p' tuxdex.py)
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+          stage=$(sed -n 's/^APP_STAGE = "\([a-z]*\)".*/\1/p' tuxdex.py)
+          case "$ver" in *-*|"") label=$ver ;; *) label=$ver${stage:+-$stage} ;; esac
+          echo "label=$label" >> "$GITHUB_OUTPUT"
+          section() { awk -v v="## $ver" '$0==v && !d{f=1;d=1;next} /^#/{f=0} f' "$1"; }
+          section CHANGELOG.md > notes.md
+          printf '\n**Installation:** siehe [README → Installation](https://github.com/%s#installation)\n' \
+            "$GITHUB_REPOSITORY" >> notes.md
+          if [ -f CHANGELOG.en.md ] && [ -n "$(section CHANGELOG.en.md | tr -d '[:space:]')" ]; then
+            printf '\n---\n\n### English\n' >> notes.md
+            section CHANGELOG.en.md >> notes.md
+            printf '\n**Installation:** see [README → Installation](https://github.com/%s/blob/main/README.en.md#installation)\n' \
+              "$GITHUB_REPOSITORY" >> notes.md
+          fi
+
+      - name: Release anlegen
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VER: ${{ steps.v.outputs.version }}
+          LABEL: ${{ steps.v.outputs.label }}
+        run: |
+          if [ "${{ inputs.neu_anlegen }}" = "true" ] && gh release view "v$VER" >/dev/null 2>&1; then
+            echo "Release v$VER wird neu angelegt."
+            gh release delete "v$VER" --yes --cleanup-tag
+          fi
+          if gh release view "v$VER" >/dev/null 2>&1; then
+            echo "Release v$VER gibt es schon – Text wird aktualisiert."
+            gh release edit "v$VER" --title "Tuxdex $LABEL" --notes-file notes.md
+            exit 0
+          fi
+          pre=""
+          case "$VER" in *-*) pre="--prerelease" ;; esac
+          gh release create "v$VER" --target "$GITHUB_SHA" --title "Tuxdex $LABEL" --notes-file notes.md $pre
+
+  # Eigenes pacman-Repo: Paket + Datenbank hängen am Release.
+  # Nutzer tragen in /etc/pacman.conf ein:  [tuxdex]  Server = https://github.com/<repo>/releases/latest/download
+  pacman-repo:
+    needs: release
+    if: ${{ !contains(needs.release.outputs.version, '-') }}
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    env:
+      HAS_KEY: ${{ secrets.PACMAN_GPG_KEY != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Paket bauen
+        run: |
+          pacman -Syu --noconfirm --needed github-cli git
+          useradd -m builder
+          chown -R builder "$GITHUB_WORKSPACE"
+          # nur Paketieren – Laufzeit-Abhängigkeiten (PySide6 …) werden hier nicht gebraucht
+          su builder -c "cd '$GITHUB_WORKSPACE' && makepkg -d -f --noconfirm"
+
+      - name: Signieren (optional, wenn der Schlüssel als Secret hinterlegt ist)
+        if: ${{ env.HAS_KEY == 'true' }}
+        env:
+          GPG_KEY: ${{ secrets.PACMAN_GPG_KEY }}
+        run: |
+          echo "$GPG_KEY" | gpg --batch --import
+          for f in *.pkg.tar.zst; do gpg --batch --yes --detach-sign --no-armor "$f"; done
+          echo "SIGN=--sign" >> "$GITHUB_ENV"
+
+      - name: Repo-Datenbank anlegen
+        run: |
+          mkdir repo
+          for f in *.pkg.tar.zst; do
+            # GitHub ersetzt „:“ (Epoch) in Dateinamen – daher vorher selbst umbenennen
+            n=$(echo "$f" | tr ':' '.')
+            mv "$f" "repo/$n"
+            [ -f "$f.sig" ] && mv "$f.sig" "repo/$n.sig"
+          done
+          cd repo
+          repo-add $SIGN tuxdex.db.tar.gz *.pkg.tar.zst
+          # Release-Dateien können keine Verknüpfungen sein: echte Kopien unter den Namen, die pacman lädt
+          for x in db files; do
+            rm -f "tuxdex.$x"; cp "tuxdex.$x.tar.gz" "tuxdex.$x"
+            [ -f "tuxdex.$x.tar.gz.sig" ] && cp "tuxdex.$x.tar.gz.sig" "tuxdex.$x.sig"
+          done
+          ls -la
+
+      - name: An das Release hängen
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VER: ${{ needs.release.outputs.version }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          gh release upload "v$VER" repo/* --clobber --repo "$GITHUB_REPOSITORY"

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Tuxdex
+GenericName=Systemverwaltung für Arch Linux
+Comment=Updates, Software, Datenträger, Speicher, Taskmanager, Antivirus, Sicherheit & VPN, Benutzer
+Exec=tuxdex
+Icon=tuxdex
+Terminal=false
+Categories=System;Monitor;
+Keywords=update;pacman;paket;datenträger;usb;speicher;task;prozess;virus;clamav;vpn;mullvad;firewall;

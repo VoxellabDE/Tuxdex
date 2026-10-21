@@ -1,0 +1,373 @@
+# Changelog
+
+## 1.6.0.2
+Lizenz (Beta).
+
+- **Lizenz**: Tuxdex steht ab dieser Version unter der **GPL-3.0-or-later**. `LICENSE`, `PKGBUILD`, README, SECURITY-Hinweise, der „Über“-Dialog und die Quelltext-Kopfzeilen (SPDX) sind angepasst. Wer Tuxdex verändert und weitergibt, muss den Quellcode unter derselben Lizenz mitgeben.
+
+## 1.6.0.1
+Auswahllisten (Beta).
+
+- **Dropdowns**: Alle Auswahllisten in Tuxdex zeigen jetzt bis zu **5 Einträge vollständig** und scrollen erst bei mehr. Am unteren Bildschirmrand klappt die Liste nach oben auf, statt auf ein bis zwei halbe Zeilen zusammengedrückt zu werden. Bedienung wie gewohnt: Maus, Pfeiltasten, Enter, Esc.
+
+## 1.6.0
+Treiber, Diagnose und Windows-Daten (Beta).
+
+Drei neue Module aus der Roadmap:
+
+- **Treiber**: Erkennt Grafikkarte, WLAN, Bluetooth und Drucker und richtet fehlende Treiber mit einem Klick ein (pacman). NVIDIA mit Hinweis je nach Kartengeneration (open-Treiber ab Turing, Legacy-Hinweis für ältere), Kernel-passende Pakete (auch DKMS und CachyOS), Hybrid-Laptops (`prime-run`); AMD und Intel mit Vulkan und Videobeschleunigung; WLAN mit Hinweisen zu Broadcom, Realtek und Intel-Firmware und Entsperren des Flugmodus; Bluetooth (bluez, Dienst, Sperre); Drucker (CUPS, Avahi, HP).
+- **Diagnose**: Fehlersuche in Klartext für „Internet / WLAN geht nicht“, „Kein Ton“, „Bluetooth geht nicht“, „Bildschirm / Grafik“, „System startet langsam“, „Speicher ist voll“, „Updates schlagen fehl“ und „Drucker druckt nicht“. Jeder Befund erklärt verständlich, was los ist, und bietet wo möglich einen Knopf zur Behebung. Dazu ein **Gerätemanager** mit Treiber je Gerät (gelb: kein Treiber geladen).
+- **Windows-Daten**: Findet NTFS-/Windows-Laufwerke, hängt sie nur lesend ein (mit klaren Hinweisen bei Schnellstart/Ruhezustand und BitLocker) und übernimmt Dokumente, Bilder, Videos, Musik, Downloads und Desktop – in einen eigenen Ordner oder direkt in deine Ordner. Vorhandene Dateien werden nie überschrieben. Erkennt Dual-Boot und weist auf os-prober hin.
+- Die Tab-Leiste und Listen räumen alte Zeilen jetzt sofort ab (kein Überlappen beim schnellen Neuzeichnen).
+
+## 1.5.17.2
+Anmelde-Dialog (Beta).
+
+- **Pop-ups**: Passen sich nach dem Aufbau der Beschriftungen in der Größe an. Beim Anmelde-Fenster konnten sich Eingabefeld und Knöpfe sonst zusammenschieben, wenn das Fenster zu klein blieb.
+
+## 1.5.17.1
+Tab-Leiste (Beta).
+
+- **Pfeile ‹ ›** springen genau **einen Tab** weiter, mit kurzer Animation. Die Schrittweite richtet sich nach der tatsächlichen Breite der Tabs (Sprache, Schriftgröße), statt einer festen Pixelzahl.
+
+## 1.5.17
+Standard-Apps (Beta).
+
+- **Einrichten → Standard-Apps**: Die Auswahl wurde bei vielen Systemen nicht wirksam, vor allem unter KDE. Dort hat die Datei `kde-mimeapps.list` Vorrang vor `mimeapps.list`, und `xdg-mime` schreibt nur in die zweite. Tuxdex trägt die Standard-App jetzt in alle relevanten Dateien ein (auch die der laufenden Oberfläche), nimmt sie aus den „Removed Associations“ und prüft danach, was wirklich gilt. Das Ergebnis steht direkt unter der Auswahl – auch eine Warnung, falls die Oberfläche es überschreibt.
+
+## 1.5.16
+Umbenennung (Beta).
+
+- Das Modul „USB-Stick“ heißt jetzt **„Flash-Stick“** (Seitenüberschrift „Stick flashen“) – „flashen“ ist der übliche Begriff dafür, ein Abbild auf einen Stick zu schreiben.
+
+## 1.5.15
+Tab-Leiste (Beta).
+
+- **Kleine Fenster**: Passen nicht alle Module in die Leiste, werden die Namen nicht mehr abgeschnitten. Die Tabs behalten ihre volle Breite, die Leiste lässt sich scrollen (Mausrad oder die Pfeile ‹ ›), und der gewählte Tab scrollt automatisch ins Bild. Pfeile erscheinen nur, wenn sie gebraucht werden.
+
+## 1.5.14
+Sprachwechsel ohne Neustart (Beta).
+
+- **DE | EN**: Die Sprache wechselt sofort – Tuxdex baut das Fenster in der neuen Sprache neu auf und bleibt an derselben Stelle (gleicher Tab, gleiche Fenstergröße und -position). Läuft gerade ein Vorgang (Update, Backup, Scan …), wird nicht gewechselt, damit dessen Anzeige nicht verloren geht; die Sprache gilt dann ab dem nächsten Start oder nach erneutem Umschalten.
+
+## 1.5.13
+Beta-Kennzeichnung.
+
+- **Reifegrad**: Das Kennzeichen oben in der Leiste heißt jetzt **BETA** statt ALPHA – ebenso der Hinweis vor der ersten root-Aktion, README, SECURITY.md und der Installer. Die bereits gegebene Zustimmung bleibt gültig.
+
+## 1.5.12
+Versionsnamen (Beta).
+
+- **Namensschema**: Die stabile Version heißt einfach „1.5.2“, der Beta-Zweig „1.5.12-beta“. Das frühere „-alpha“ hinter jeder Nummer entfällt. Welcher Kanal die installierte Version ist, ermittelt Tuxdex durch Vergleich mit den Versionen auf GitHub (neuer als die stabile = Beta) und merkt sich die Werte auch ohne Netz. Gilt für Statusleiste, Einstellungen, Update-Fenster und GitHub-Releases (Releases aus `main` tragen keinen Zusatz).
+
+## 1.5.11
+Fehlerbehebung (Beta).
+
+- **Einstellungen → Aktualisierung**: Hinter der installierten Version stand immer „(Stabil)“, auch bei der Beta. Jetzt zeigt Tuxdex den richtigen Kanal – „Stabil“, „Beta“ oder „Entwicklungsstand“ (neuer als die Beta) –, ermittelt durch Vergleich mit den Versionen auf GitHub.
+
+## 1.5.10
+Sprache (Beta).
+
+- **Einstellungen → Sprache**: statt der Auswahlliste gibt es jetzt einen Umschalter **DE | EN**.
+
+## 1.5.9
+Installations-Anzeige (Beta).
+
+- **„Version … verfügbar“** (unten rechts): Ein Klick öffnet die Einstellungen und springt direkt zum Update-Feld – ohne Scrollen. Ein zweiter Klick schließt die Einstellungen wieder.
+- **Fortschritt in %**: Die Anzeige springt nicht mehr nach wenigen Sekunden auf 99 %. Tuxdex rechnet jetzt einen echten Gesamtfortschritt aus der Ausgabe von pacman (Download, Prüfungen, Installation Paket für Paket) und Flatpak (Paket i von n). Die Zahl springt nie zurück; 100 % gibt es erst, wenn der Vorgang fertig ist.
+- **Eigene Leiste je Zeile**: Läuft eine Installation, wird die Zeile des Programms umrahmt und zeigt unter der Beschreibung eine Fortschrittsleiste – so ist sofort klar, welches Programm gerade installiert. Gilt für „Beliebte Programme“ und „Ersatz für Windows-Programme“.
+
+## 1.5.8
+Fehlerbehebung (Beta).
+
+- **Beliebte Programme**: Per Flatpak installierte Programme werden jetzt auch dann als installiert erkannt (mit „Starten“-Knopf), wenn der Katalog sie aus den Arch-Paketquellen anbietet – und umgekehrt. Zusätzlich wird über den Namen der Flatpak-App verglichen, falls die Kennung abweicht (z. B. fre:ac).
+
+## 1.5.7
+Programme und USB-Sticks (Beta).
+
+- **Software → „Beliebte Programme“**: 23 Programme nach Kategorie zum direkten Installieren – Discord, Signal, Thunderbird, Obsidian, Super Productivity, KeePassXC, Bitwarden, VeraCrypt, Cryptomator, Brave, qBittorrent, FileZilla, LocalSend, OBS Studio, Spotify, fre:ac, Visual Studio Code, Wireshark, FreeCAD, KiCad, GNU Octave, Prism Launcher, PeaZip. Mit Kategorie-Auswahl, Suche, Quelle am Knopf (pacman/Flatpak), Fortschritt in % und danach „Starten“.
+- **Neues Modul „USB-Stick“**: bootfähige Sticks erstellen. Zur Auswahl **Arch Linux** (aktuelle ISO) und **Home Assistant OS** (PC, Raspberry Pi 5/4/3, Green) – oder eine **eigene Datei** (.iso, .img, .img.xz, .img.gz). Downloads werden mit der Prüfsumme geprüft, danach wird der Stick zurückgelesen und verglichen. Es werden nur Wechseldatenträger angeboten, nie die Platte mit dem System; vor dem Überschreiben gibt es eine deutliche Rückfrage.
+
+## 1.5.6
+Einstellungen (Beta).
+
+- **Einstellungen**: Das Feld „Aktualisierung“ (Tuxdex-Updates) steht jetzt direkt unter „System-Updates“.
+
+## 1.5.5
+Updates während der Nutzung (Beta).
+
+- **Update-Fenster bei geöffnetem Tuxdex**: Tuxdex prüft alle 30 Sekunden im Hintergrund, ob es eine neue Version gibt, und zeigt das Update-Fenster, sobald eine erscheint – ohne Neustart. Die Abfrage ist leicht (nur die Commit-ID über das Git-Protokoll, kein Abfragelimit); jede Version wird nur einmal angeboten.
+- **Einstellungen → Aktualisierung**: die regelmäßige Prüfung lässt sich ausschalten und das Intervall einstellen (15 bis 86400 Sekunden).
+
+## 1.5.4
+Benutzer-Gruppen (Beta).
+
+- **Gruppen zuweisen**: Die Häkchen in der Gruppenliste waren nicht sichtbar (gesetzt sah aus wie nicht gesetzt) – behoben.
+- **Übersicht**: neue Spalte „Gruppen“ als Aufklappliste – oben die Anzahl, darunter alle Gruppen des Benutzers (Hauptgruppe zuerst).
+
+## 1.5.3
+Gruppenverwaltung (Beta).
+
+- **Benutzer → „Gruppen zuweisen …“**: Gruppen eines Benutzers per Häkchen hinzufügen oder entziehen. Bekannte Gruppen (wheel, video, audio, docker, libvirt …) sind erklärt, mit Suche und der Option „Alle Systemgruppen zeigen“. Die Hauptgruppe bleibt geschützt; bei Gruppen mit Administrator-Rechten (wheel, sudo, docker) fragt Tuxdex nach. Die Änderung gilt ab der nächsten Anmeldung.
+
+## 1.5.2
+Fehlerbehebung.
+
+- **Pop-ups**: Auch Häkchen-Felder in Dialogen liegen nicht mehr auf einem schwarzen Kasten.
+
+## 1.5.1
+Fehlerbehebung.
+
+- **Antivirus**: Die automatischen Signatur-Updates lassen sich wieder **ausschalten** – der Knopf wechselt zwischen „aktivieren“ und „deaktivieren“.
+
+## 1.5.0
+Benutzerverwaltung.
+
+- **Benutzer hinzufügen**: Name, vollständiger Name, Passwort, optional Administrator (Gruppe „wheel“) und „Passwort beim ersten Anmelden ändern“. Der Benutzername wird geprüft, das Passwort erscheint nie im Ausgabefeld.
+- **Passwort ändern** für jeden Benutzer, auf Wunsch mit Zwang zur Änderung beim nächsten Anmelden. Die Liste zeigt, **wann das Passwort zuletzt geändert wurde** (und ob das Konto gesperrt ist).
+- **Speicher je Benutzer**: Größe des Home-Ordners und Arbeitsspeicher aller laufenden Prozesse des Benutzers.
+- **Aktive Zeit**: Summe aller Anmeldungen aus dem Systemprotokoll (wtmp), laufende Sitzungen zählen mit.
+- **Beschreibung**: Wofür der Nutzer da ist (z. B. „Büro-PC“, „Kinderkonto“) – beim Anlegen oder später. Tuxdex speichert sie nur für sich unter `~/.config/tuxdex`, am System ändert sich nichts.
+
+## 1.4.2
+Kleine Verbesserungen und Fehlerbehebungen.
+
+- **Firewall (ufw)**: Regeln bekommen einen Namen/eine Bezeichnung (als ufw-Kommentar, steht in der Regelliste).
+- **Energieprofil**: Es werden nur noch Profile angeboten, die der Rechner wirklich kennt – „Leistung“ fehlt auf vielen Geräten und führte zu einer Fehlermeldung.
+- **Rückfragen und Textfenster**: auch hier ein „Kopieren“-Knopf für die ganze Ausgabe.
+- **Pop-ups**: Beschriftungen und Symbole liegen nicht mehr auf einem schwarzen Kasten (auch unter KDE).
+- **Antivirus**: ClamAV lässt sich direkt im Tab installieren (pacman), mit Fortschritt in %.
+
+## 1.4.1
+Fehlerbehebungen und kleine Verbesserungen.
+
+- **Firewall-Regeln mit IP-Adresse**: Regeln lassen sich jetzt auf eine IP-Adresse oder ein Netz beschränken (z. B. SSH nur von 192.168.1.20 erlauben). Port und IP sind beide optional, mindestens eins ist nötig.
+- **Installieren-Knöpfe**: zeigen beim Installieren den Fortschritt in % („Wird installiert … 42 %“) und werden danach zu einem blauen **„Starten“**-Knopf – so sieht man sofort, was schon installiert ist (bei Programmen mit Fenster; Konsolen-Tools bleiben „Installiert“).
+- **Backup**: Bei langen Läufen mit root-Rechten läuft das sudo-Ticket nicht mehr ab (Snapshots wurden sonst nicht abgeschlossen). Systemordner wie /etc: Tuxdex fragt nach root-Rechten, unvollständige Backups werden als „Unvollständig“ gekennzeichnet.
+- **Ausgabe-Felder**: „Kopieren“-Knopf kopiert die gesamte Ausgabe.
+- **Updater**: fehlende Bauwerkzeuge (`base-devel`) werden zur Installation angeboten; die Update-Prüfung beim Start wiederholt sich, wenn das Netzwerk noch fehlt.
+- **Leak-Test**: ungültige Antwort von ipapi.is führt nicht mehr zum Absturz.
+
+## 1.4.0
+Laufwerke dauerhaft einhängen.
+
+- **Datenträger → „Dauerhaft einhängen …“**: Eine Platte wird bei jedem Start automatisch eingehängt – ohne die `/etc/fstab` von Hand zu bearbeiten. Tuxdex trägt den Eintrag **per UUID** ein, wählt passende Optionen je Dateisystem (ext4, btrfs, xfs, f2fs, NTFS, exFAT, FAT32) und setzt `nofail`, damit der Start nicht hängt, wenn die Platte mal fehlt. Vorher gibt es eine Sicherung (`/etc/fstab.tuxdex.bak`); klappt das Einhängen nicht, wird die `fstab` automatisch zurückgesetzt. Bei Linux-Dateisystemen kann der Ordner dir zugewiesen werden, damit du darin schreiben darfst.
+- **„Dauerhaft entfernen“** löscht den Eintrag wieder. System-Einträge (/, /boot, /home, Swap) bleiben geschützt; Einhängepunkte in Systemordnern (/etc, /usr, /var …) werden abgelehnt.
+
+## 1.3.0
+Systemwiederherstellung und Einrichten für Umsteiger.
+
+- **Ein-Befehl-Installer**: `install.sh` trägt das pacman-Repository ein und installiert Tuxdex – eine Zeile zum Einfügen genügt (siehe README → Installation). Er fragt vorher nach, sichert die `pacman.conf`, repariert die alte Repository-Adresse und bietet `--dry-run`.
+- **Repository umgezogen** nach **github.com/VoxellabDE/Tuxdex**: Updater, PKGBUILD und README zeigen auf die neue Adresse, alte Einstellungen werden automatisch umgestellt. Wer das pacman-Repo nutzt: in `/etc/pacman.conf` die `Server`-Zeile anpassen (siehe README). Installationsanleitung korrigiert (`pacman -Syu` statt `-Sy`).
+- **Neues Modul „Wiederherstellung“**: Snapshots des Systems mit snapper (btrfs) oder Timeshift. Einrichten per Klick (auf btrfs mit snap-pac, dann entsteht vor und nach jeder Paketänderung ein Snapshot), Liste aller Snapshots, Snapshot jetzt erstellen, löschen und **auf einen Stand zurücksetzen**. Vor dem Zurücksetzen legt Tuxdex einen Sicherheits-Snapshot des jetzigen Stands an. Zurücksetzen mit snapper ist gesperrt, wenn /home nicht in einem eigenen Subvolume liegt – sonst würden eigene Dateien mit zurückgesetzt.
+- **Snapshot vor jedem Update**: Ist die Wiederherstellung eingerichtet, legt Tuxdex direkt vor „Update starten“ einen Snapshot an (abschaltbar; entfällt, wenn snap-pac oder timeshift-autosnap das schon tun).
+- **Neues Modul „Einrichten“**: Basics mit einem Klick – Schriften für Office-Dokumente, Audio- und Video-Codecs, Energieprofile mit Umschalter (Energiesparen, Ausgewogen, Leistung). Dazu **„Ersatz für Windows-Programme“**: „Photoshop“, „Office“, „Outlook“ & Co. eingeben und die passende Linux-Alternative direkt installieren (Arch-Paketquellen oder Flathub).
+- **Standard-Apps**: Browser, E-Mail, PDF, Bilder, Videos, Musik und Textdateien per Auswahl festlegen (gilt sofort, ohne root).
+- **Spiele-Setup**: Steam, GameMode, MangoHud, Lutris, Heroic, Bottles und Wine einzeln oder als Empfehlung installieren. Fehlt die 32-Bit-Unterstützung (multilib), schaltet Tuxdex sie auf Wunsch ein (mit Sicherung der pacman.conf und anschließendem vollem Update) – sonst kommt Steam von Flathub. Dazu ein Hinweis, dass Spiele mit Kernel-Anti-Cheat (Valorant, League of Legends, Fortnite) nicht laufen.
+- **Speicher: Tortendiagramm** – woraus der belegte Platz besteht: Betriebssystem, Anwendungen, Systemdaten, Fotos & Videos (inkl. GIFs), weitere eigene Dateien und Sonstiges, dazu der freie Platz. Ungefähre Werte, mit Anmeldung genauer.
+- **Quelle immer sichtbar**: Jeder Installieren-Knopf zeigt, woher das Programm kommt – „Installieren (pacman)“, „(Flatpak)“ oder „(AUR)“, auch im Software-Tab und bei den Sicherheits-Werkzeugen.
+- **CachyOS**: CachyOS-Kernel (linux-cachyos, -bore, -lts, -hardened …) werden als Kernel erkannt – für Update-Markierung, Neustart-Hinweis, Versionsstand und Checkliste.
+
+## 1.2.0
+Module als Baukasten, klarere Zielgruppe, Roadmap.
+
+- **Einstellungen → Module**: Tuxdex lässt sich jetzt selbst zusammenstellen. Jedes Modul außer Updates kann entfernt und wieder hinzugefügt werden; abgewählte Module verschwinden aus der Leiste und werden nicht geladen.
+- **Swap, Antivirus und Benutzer sind anfangs ausgeblendet** – sie sind eher für Fortgeschrittene, und ClamAV bringt auf Linux-Desktops wenig. Wer sie nutzt: unter Einstellungen → Module wieder hinzufügen. Links aus anderen Modulen (z. B. aus dem Sicherheits-Check) öffnen sie weiterhin.
+- **README**: neuer Abschnitt „Für wen ist Tuxdex?“ (Umsteiger von Windows, GUI-Fans) und eine **Roadmap** mit Zielen – Lernsoftware für Arch-Befehle, fertige ISOs mit einfachem Installer, eigenes Sicherheits-Werkzeug statt ClamAV, Modul-Markt.
+
+## 1.1.3
+Reifegrad sichtbar.
+
+- Tuxdex zeigt seinen Reifegrad jetzt an der Version: **1.1.3-alpha** (Statusleiste, Updater, Einstellungen, GitHub-Release, README). Die Versionsnummer selbst bleibt ohne Zusatz, damit Updates und pacman richtig vergleichen.
+- Update-Kanal „Vollversion“ heißt jetzt **„Stabil“** – passt besser zu einer Alpha. Beta bleibt Beta.
+
+## 1.1.2
+Englischer Changelog.
+
+- **Updater**: Ist Englisch eingestellt, erscheint die Liste der Änderungen jetzt auf Englisch (`CHANGELOG.en.md`) statt als halb übersetzte Mischung.
+- GitHub-Releases enthalten die Notizen auf Deutsch und Englisch.
+- „Installiert: … (Vollversion)“ im Updater wird ebenfalls übersetzt.
+
+## 1.1.1
+Fehlerbehebungen.
+
+- **Checkliste lud nicht mehr**, nachdem „Auf 500 MB / 1 Monat“ beim System-Protokoll benutzt wurde: Bei restriktiver umask legte Tuxdex den Ordner `/etc/systemd/journald.conf.d` ohne Leserecht an, und die Checkliste brach mit „Keine Berechtigung“ ab. Nicht lesbare Konfig-Ordner werden jetzt übersprungen, und Tuxdex legt Ordner und Dateien immer lesbar an (755/644), auch bei Speicherabbildern und I/O-Scheduler. Wer den Fehler schon hat: den Knopf einfach noch einmal drücken, dann werden die Rechte repariert.
+- **Sprachwechsel**: Die Rückfrage nach dem Neustart ist nicht mehr halb Deutsch, halb Englisch.
+
+## 1.1.0
+Sicherheit, Englisch und ein eigenes pacman-Repository.
+
+**Sicherheit**
+- **Alpha-Hinweis**: Vor der ersten Aktion mit root-Rechten erscheint einmal ein Hinweis („Alpha-Phase, Nutzung auf eigenes Risiko“). Erst nach Haken und „Akzeptieren“ führt Tuxdex root-Befehle aus – ohne Zustimmung wird jede root-Aktion abgebrochen, auch intern. Dazu ein „ALPHA“-Abzeichen in der Kopfleiste und ein Hinweis im Passwort-Fenster.
+- **Sicherheits-Review aller root-Aktionen:**
+  - Swapfile anlegen überschreibt keine vorhandenen Dateien mehr (vorher hätte ein Tippfehler im Pfad eine beliebige Datei als root mit Nullen überschrieben). Gesperrt sind Systemordner (/etc, /usr, /boot …), Verknüpfungen und Pfade mit „..“; eine vorhandene Datei muss nachweislich ein Swapfile sein. Auf btrfs wird das Swapfile korrekt mit `btrfs filesystem mkswapfile` angelegt.
+  - Swap entfernen löscht nur noch die fstab-Zeile, deren erstes Feld genau der Pfad ist (vorher jede Zeile, die den Text enthielt), und legt vorher `/etc/fstab.tuxdex.bak` an.
+  - Formatieren: Die letzte Prüfung vor `mkfs` erkennt jetzt auch eingehängte Partitionen, geöffnete LUKS-Container, LVM und aktiven Swap unterhalb des gewählten Geräts.
+  - Quarantäne: Wiederhergestellte Systemdateien bekommen ihren ursprünglichen Besitzer und ihre Rechte zurück (nie mit setuid-Bits); das Ziel darf nicht existieren.
+  - Hilfsdateien liegen nicht mehr in einem vorhersagbaren Ordner in /tmp, sondern in /run/user/<uid> bzw. ~/.cache.
+  - Datenträger-Bezeichnungen dürfen nicht mit „-“ beginnen (wäre sonst als Befehlsoption gelesen worden).
+- Sicherheitslücken bitte per Mail melden – siehe `SECURITY.md`.
+
+**Englisch**
+- Tuxdex gibt es jetzt auch auf Englisch. Standard ist die Systemsprache; umstellen unter Einstellungen → Sprache · Language (wirkt nach einem Neustart). Befehlsausgaben bleiben, wie sie sind.
+- Englisches README (`README.en.md`) mit Umschalter oben in beiden READMEs.
+
+**Installation & Projekt**
+- **Eigenes pacman-Repository**: Jedes Release enthält das fertige Paket und eine Repo-Datenbank. Mit `[tuxdex]` in `/etc/pacman.conf` installiert und aktualisiert sich Tuxdex über `pacman -Syu` – ohne AUR (Anleitung im README).
+- Issue-Vorlagen für Fehlerberichte und Ideen (deutsch/englisch).
+- Neue Screenshots (deutsch und englisch), erzeugt mit Beispieldaten über `tools/screenshots.py`.
+- Der Updater zeigt beim Aktualisieren nur echte neue Versionen, keine Vorabversionen aus dem Changelog.
+
+## 1.0.0
+Erstes offizielles Release. Die Versionszählung beginnt neu – die Einträge darunter sind die Vorabversionen bis 1.6.0-beta.12.
+
+- **11 Module** in einem Fenster: Updates, Software, Flatpak (Rechte per Schalter), Datenträger, Speicher, Backup, Swap, Taskmanager, Antivirus (ClamAV), Sicherheit, Benutzer.
+- **Backup**: Snapshots, Spiegel oder Archive auf mehrere Ziele gleichzeitig, eigene Namen mit Datum, Zeitplan, Wiederherstellen, Paketliste im Backup.
+- **Taskmanager**: Prozesse nach Programm gruppiert, Leistungs-Kacheln mit Details per Klick (CPU, RAM, Datenträger, Grafik, Netzwerk, Akku, Lüfter), Autostart und Bootzeit.
+- **Sicherheit**: Sicherheits-Check, Checkliste für Wartung, Datenschutz & Performance, DNS-Leak-Test, offene Ports, Mullvad VPN, Firewall.
+- Durchgehend im Tuxdex-Design, auch in allen Pop-ups; eigene Farbpalette unabhängig vom Desktop-Theme.
+- Hinweis für Installationen vor 1.0.0: Weil die Zählung neu beginnt, bietet der eingebaute Updater 1.0.0 nicht von selbst an. Einmal neu installieren (siehe README → Installation); danach funktionieren Updates wieder normal. Das PKGBUILD setzt `epoch=1`, damit pacman 1.0.0 nicht als Downgrade ansieht.
+
+## Vorabversionen (vor 1.0.0)
+
+Entwicklungsstände mit der alten Zählung, zusammengefasst in 1.0.0.
+
+### Vorabversion 1.6.0-beta.12
+- Speicher → Typische Platzfresser & Aufräumen: **(i) neben jedem Eintrag** – beim Drüberfahren oder per Klick steht, was dort liegt, welcher Befehl beim Knopf läuft (z. B. `paccache -rk2`, `pacman -Rns`, `journalctl --vacuum-size=200M`) und was erhalten bleibt. Bei „nur Anzeige“ steht, wie man selbst aufräumt.
+
+### Vorabversion 1.6.0-beta.11
+- Dialoge unter KDE: Texte stehen nicht mehr auf dunkleren Kästen. Tuxdex setzt jetzt eine eigene Farbpalette, statt die Fensterfarben des Desktop-Themes (Breeze) zu übernehmen – gilt auch für Menüs, Tooltips und Auswahlfarben.
+
+### Vorabversion 1.6.0-beta.10
+- Sicherheit: neue **Checkliste für Wartung, Datenschutz & Performance** – prüft automatisch und bietet, wo sinnvoll, einen Knopf zum Beheben:
+  - **Pakete & Updates**: Paketsignaturen (SigLevel), Alter der Mirrorliste (reflector), Fehler/Warnungen beim letzten Update in pacman.log, Neustart nach Kernel-Update.
+  - **Zugriff**: sudo-Regeln mit NOPASSWD, riskante Gruppen (docker, disk …), Bildschirmsperre (KDE/GNOME), AppArmor, usbguard.
+  - **Datenschutz**: Größe des System-Protokolls (auf 500 MB / 1 Monat begrenzen), Core Dumps abschalten, Passwörter/Tokens im Shell-Verlauf (nur gezählt), Telemetrie in VS Code.
+  - **Kernel**: ASLR; der Kernel-Schutz setzt jetzt auch `dmesg_restrict` und `kptr_restrict`.
+  - **Backup**: Alter des letzten Backups, ob /etc und Home gesichert werden, Paketliste, Btrfs-Snapshots.
+  - **Performance**: TRIM-Timer, I/O-Scheduler je Laufwerkstyp, Swap/Swappiness, CPU-Regler, /tmp als tmpfs.
+  - **Laufende Wartung**: Fehler im System-Protokoll seit dem Start, fehlgeschlagene Dienste, NTP, Reste alter Kernel-Module, verwaiste Pakete und Paket-Cache.
+- Backup: speichert vor jedem Lauf die **Paketliste** (`~/.config/tuxdex/pakete.txt`, AUR getrennt) – Neuinstallation mit `pacman -S --needed - < pakete.txt`.
+
+### Vorabversion 1.6.0-beta.9
+- Backup: **Eigener Name für Sicherungen** mit Datum – z. B. `Laptop_yyyy-mm-dd` → `Laptop_2026-09-27`. Platzhalter `yyyy mm dd HH MM SS`, Text davor oder danach frei wählbar; Vorschau direkt unter dem Feld. Gilt für Snapshots und Archive, auch für geplante Backups. Doppelte Namen bekommen `_2`, `_3` …
+- Sortieren und Aufräumen alter Versionen nach dem echten Sicherungszeitpunkt, auch bei frei gewählten Namen.
+- Anleitung in der README unter „Backups benennen“.
+
+### Vorabversion 1.6.0-beta.8
+- Mullvad: Kontonummer ist jetzt **komplett verdeckt**; das Auge daneben blendet sie ein und wieder aus.
+- Backup → Fortschritt: Statusfeld je Ziel passt sich dem Text an (war fest 120 px breit); Tempo lesbar als „16.45 MB/s“.
+
+### Vorabversion 1.6.0-beta.7
+- Taskmanager → Leistung: **Kacheln anklicken für Details** (live, alle 2 s; erneut klicken oder „Schließen“ blendet aus):
+  - **Prozessor**: Geschwindigkeit, Temperatur, Betriebszeit, Prozesse/Threads/Handles, Last; Modell, Basis- und Maximaltakt, Sockel, Kerne, virtuelle Prozessoren, Virtualisierung (KVM / AMD-V / VT-x), virtuelle Maschine, L1/L2/L3-Cache, CPUfreq-Treiber und -Regler, Energiemodus, Boost.
+  - **Arbeitsspeicher**: in Verwendung, verfügbar, zugesichert, im Cache, Swap, zram komprimiert/Ersparnis; Takt (MT/s), belegte Steckplätze, Formfaktor, Typ (z. B. LPDDR5).
+  - **Datenträger** (Auswahl je Laufwerk): Lese-/Schreibtempo, aktive Zeit, Antwortzeit, Summen seit Start, Temperatur; Modell, Kapazität, formatiert, Systemdatenträger, Typ, WWN, Seriennummer, Partitionen mit Belegung.
+  - **Grafik** (Auswahl je Karte): Auslastung, Takt, Leistungsaufnahme, VRAM, Speichertakt, Video kodieren/dekodieren (NVIDIA), Temperatur, Lüfter; Treiber, OpenGL-/Vulkan-Version, PCIe-Geschwindigkeit, PCI-Adresse.
+  - **Netzwerk** (je Schnittstelle), **Akku** (Zyklen, Zustand, Spannung, Ladegrenze), **Swap** (Geräte, Priorität, Swappiness) und **System & Lüfter** (Drehzahlen aller Lüfter, Temperaturen, Kernel, Startzeit).
+- Alles ohne root; Werte, die das System nicht meldet, stehen als „—“.
+
+### Vorabversion 1.6.0-beta.6
+- **Pop-ups überarbeitet**: kein schwarz hinterlegter Text mehr in Hinweis-, Warn- und Rückfrage-Fenstern (trat unter KDE auf).
+- Flache Symbole in den Tuxdex-Farben statt der Symbole des System-Themes; Buttons in allen Pop-ups im Tuxdex-Stil (Hauptaktion farbig, Abbrechen links, Aktion rechts), mehr Innenabstand.
+- Verschlüsseltes Backup wiederherstellen: Passwort-Abfrage im Tuxdex-Stil und auf Deutsch statt des englischen Standardfensters.
+
+### Vorabversion 1.6.0-beta.5
+- Taskmanager → **Autostart**:
+  - Autostart-Programme per Schalter an/aus, eigene Einträge entfernen, installierte Programme hinzufügen. System-Einträge bleiben unangetastet – Tuxdex legt nur eine eigene Einstellung in `~/.config/autostart` an.
+  - Hintergrunddienste des Benutzers (`systemd --user`) an/aus.
+  - **Bootzeit**: Dauer des letzten Starts, aufgeteilt in Firmware, Bootloader, Kernel, Initramfs und Dienste, dazu die langsamsten Dienste. Bekannte Bremsen wie `NetworkManager-wait-online` lassen sich per Knopf deaktivieren.
+
+### Vorabversion 1.6.0-beta.4
+- Taskmanager: **Prozesse nach Programm gruppiert** – jedes Programm ist ein aufklappbarer Ordner mit Summe für CPU, Arbeitsspeicher und Datenträger (z. B. „Spotify (3)“). „Alle beenden“ / „Alle erzwingen“ beendet alle Prozesse eines Ordners auf einmal, auch Priorität gilt für alle. Aufgeklappte Ordner bleiben beim Aktualisieren offen; abschaltbar über „Nach Programm gruppieren“.
+
+### Vorabversion 1.6.0-beta.3
+- **Weniger RAM**: Tabs werden erst beim ersten Öffnen gebaut und nach 5 Minuten ohne Nutzung wieder abgebaut (nie während ein Scan, Backup oder Befehl läuft). Freigegebener Speicher geht ans System zurück. Start: ~83 statt ~118 MB.
+- **Keine verwaisten Scans mehr**: Beim Schließen oder Neustart beendet Tuxdex alle gestarteten Hintergrundprozesse (vorher Rückfrage, wenn noch etwas läuft). Läuft beim Start noch ein Virenscan oder Backup aus einer früheren Sitzung, bietet Tuxdex an, ihn zu beenden.
+- Taskmanager: root-Prozesse, die Tuxdex gestartet hat, heißen jetzt z. B. „clamscan · gestartet von Tuxdex“ – ihr Speicher wird nicht mehr Tuxdex selbst zugerechnet.
+- Software-Liste: Tooltips nur noch in der Beschreibungsspalte (weniger Speicher bei vielen Paketen).
+
+### Vorabversion 1.6.0-beta.2
+- Vollversion/Beta als Umschalter mit Versionsanzeige (aus 1.5.6).
+
+### Vorabversion 1.6.0-beta.1
+- **Neues Modul „Backup“**:
+  - Mehrere Ziele gleichzeitig (USB-Platten, interne Laufwerke, Ordner) – jedes mit eigenem Fortschritt, Tempo und Restzeit.
+  - **Snapshots**: jede Sicherung eine eigene Version, unveränderte Dateien kosten keinen Platz (Hardlinks, wie Time Machine).
+  - **Spiegel**: 1:1-Kopie, überträgt nur Änderungen.
+  - **Archiv**: komprimiert mit zstd, xz oder gzip (3 Stärken), optional mit Passwort (AES-256). Wird einmal gepackt und parallel auf alle Ziele geschrieben, mit Prüfsumme und Prüfung nach dem Schreiben. Auf FAT32 automatisch in 4-GB-Teile geteilt.
+  - Ausnahmen (z. B. `~/.cache`), Versionen behalten (3–50), root-Modus für Systemordner.
+  - Vorhandene Backups je Ziel anzeigen, öffnen, löschen und wiederherstellen – in einen Ordner oder an den Originalort.
+  - Zeitplan täglich/wöchentlich per systemd-Timer (`tuxdex --backup`), läuft auch ohne Fenster und holt verpasste Termine nach.
+- Taskmanager → System: **Versionsstand** von Grafiktreiber (NVIDIA/Mesa/Vulkan), CPU-Microcode, Mainboard/BIOS (mit Alter), Kernel und Firmware (fwupd) – inkl. „Update da“ und „Neustart nötig“.
+- Sicherheit: **Leak-Test & VPN-Erkennung** – DNS-Leak-Test, welche DNS-Server Webseiten sehen, ob die IP als VPN (mit Anbieter), Proxy, Tor oder Rechenzentrum erkannt wird, und ob sie auf Sperrlisten steht.
+- Sicherheits-Check zeigt einen eingestellten **Proxy** (Umgebungsvariablen, GNOME, KDE).
+- Sicherheits-Check zeigt den aktuellen **DNS-Server**: Anbieter (z. B. Router, Cloudflare, Mullvad), Verbindung und ob die Anfragen verschlüsselt (DNS-over-TLS) oder durch den VPN-Tunnel laufen.
+- Sicherheits-Check: **Bekannte Sicherheitslücken** über `arch-audit` (optional) – zeigt, welche Pakete ein Update mit Fix haben.
+- Mullvad verbunden, aber Kill-Switch aus: Hinweis mit Knopf „Kill-Switch an“.
+- Virenscan: Hochrechnung ohne die Ladezeit der Signaturen, dazu voraussichtliches Ende (Uhrzeit) und Gesamtdauer.
+- Speicher → „Größen ermitteln“: misst parallel, zeigt jeden Wert sofort und einen Status wie beim Virenscan (läuft/fertig, was gerade gemessen wird, Fortschritt). Ordner, die länger als 2 Minuten brauchen, werden als „zu viele Dateien“ markiert statt alles zu blockieren.
+
+### Vorabversion 1.5.6
+- Einstellungen → Aktualisierung: Vollversion/Beta als Umschalter statt Aufklappmenü. Daneben steht, welche Version es jeweils gibt und welche installiert ist.
+
+### Vorabversion 1.5.5
+- Einstellungen → Aktualisierung: Auswahl **Vollversion** oder **Beta** – Beta-Versionen bekommen neue Funktionen früher. Zurück zur Vollversion geht jederzeit.
+
+### Vorabversion 1.5.4
+- Sicherheits-Check prüft zusätzlich:
+  - **CPU-Microcode** (`intel-ucode`/`amd-ucode`) – fehlt er, per Klick installieren.
+  - **Swap-Verschlüsselung** – warnt, wenn Swap unverschlüsselt auf der Platte liegt (zram und Swap auf LUKS gelten als sicher).
+  - **Kernel-Schutz** – sperrt per Klick kexec und SysRq (`/etc/sysctl.d/90-tuxdex-hardening.conf`), ohne Nachteile im Alltag.
+
+### Vorabversion 1.5.3
+- Aktualisierung startet erst nach der Admin-Anmeldung (sudo-Passwort). Ohne Anmeldung wird nichts heruntergeladen oder verändert – gilt für GitHub, Datei und Ordner.
+- Neuer Fortschrittsbalken mit Schritt-Anzeige: Dateien laden (x/n), Paket bauen, prüfen, installieren, fertig. Bei Fehlern zeigt er, an welcher Stelle es hakt.
+
+### Vorabversion 1.5.2
+- VPN-Erkennung korrigiert: Eine pausierte oder gestoppte Verbindung (z. B. `tailscale down`) gilt nicht mehr als „verbunden“, auch wenn die Schnittstelle noch existiert.
+- Tailscale wird über seinen Status erkannt: ohne Exit-Node als „Tailscale an“ (Internet läuft direkt), mit Exit-Node als aktives VPN.
+- Andere VPNs (WireGuard, OpenVPN …) zählen nur mit Adresse; Split-Tunnel wird erkannt und angezeigt.
+- Der VPN-Status im Tab „Sicherheit“ aktualisiert sich alle 10 Sekunden.
+
+### Vorabversion 1.5.1
+- Beim Start sucht Tuxdex automatisch nach **System-Updates** (pacman, AUR, Flatpak). Die Anzahl erscheint am Tab „Updates“ und unten rechts – rot, wenn wichtige Updates dabei sind; ein Klick öffnet den Tab.
+- Einstellungen → System-Updates: automatische Prüfung beim Start an/aus. Installiert wird weiterhin nur auf Klick.
+
+### Vorabversion 1.5.0
+- Beim Start sucht Tuxdex automatisch nach Updates und bietet eine neue Version in einem Fenster an – mit den Neuerungen und „Jetzt aktualisieren“ / „Später“.
+- Einstellungen → Aktualisierung: automatische Prüfung beim Start an/aus, Update-Fenster an/aus (sonst nur Hinweis unten rechts).
+- ClamAV und Mullvad VPN sind rein optional: Tuxdex bietet keine Installation und keine Links mehr an. Fehlen sie, zeigt der Bereich nur einen neutralen Hinweis.
+
+### Vorabversion 1.4.2
+- Updater erkennt neue Versionen sofort: Tuxdex fragt den neuesten Commit direkt ab, statt die bis zu 5 Minuten zwischengespeicherten Dateien von raw.githubusercontent.com zu lesen.
+- Update über GitHub lädt die Paketdateien gezielt vom neuesten Commit (robuster als das Archiv).
+- Neuerungen im Updater zeigen `Code` und Sonderzeichen korrekt an.
+
+### Vorabversion 1.4.1
+- Update-Quelle ist fest auf github.com/PyloGER/Tuxdex eingestellt – der Updater findet neue Versionen jetzt ohne Einrichtung.
+- Einstellungen: Autor PyloGER, Unternehmen Voxellab, Kontakt contact@voxellab.de, Link zur Projektseite, Hinweis „AI made – mit Claude“.
+- Pfade im Home-Ordner werden als `~/…` angezeigt – ohne Benutzernamen.
+
+### Vorabversion 1.4.0
+- **Updater** in den Einstellungen: nach Updates auf GitHub suchen (auch automatisch beim Start), Neuerungen anzeigen, per Klick aktualisieren und neu starten.
+- Lokal aktualisieren aus einem Archiv (tuxdex-X.Y.Z.tar.gz) oder einem Ordner mit PKGBUILD – Git-Klone werden vorher mit `git pull` aktualisiert.
+- Hinweis „Version X verfügbar“ unten rechts in der Statusleiste.
+
+### Vorabversion 1.3.0
+- Neuer Tab **Flatpak**: Rechte jeder App per Schalter einstellen (wie Flatseal) – Netzwerk, Dateien, Geräte, Ton/Bildschirm, Umgebungsvariablen, Portal-Freigaben, globale Regeln; riskante Rechte markiert.
+- **Software**: Auswahl per Kästchen (kein Strg mehr), Icons, Version, Größe, Quelle/Ort, Installationsdatum, Details mit Abhängigkeiten.
+- **ClamAV**: Live-Fortschritt mit Dateien, Datenmenge, Tempo und Restzeit; Status „läuft / arbeitet / hängt?“.
+- **Updates**: AUR steht in den Quellen jetzt unten.
+
+### Vorabversion 1.2.0
+- Neuer Name: **Tuxdex** (vorher „Arch Linux Manager“ / `arch-manager`). Das Paket ersetzt die alte Version automatisch, gespeicherte Daten und die Quarantäne werden übernommen.
+- Offene Ports lassen sich im Tab *Sicherheit* per Knopf sperren oder freigeben (ufw, firewalld).
+- Einstellungen (Zahnrad unten links) mit Infos zu Projekt, Autor und Technik.
+- ClamAV: sichtbarer Fortschritt beim Laden der Signaturen, Fehler des Download-Servers werden sofort gemeldet.
+
+### Vorabversion 1.0.1
+- ClamAV-Signaturen werden bei deutscher Systemsprache korrekt erkannt.
+
+### Vorabversion 1.0.0
+- Erste Version als installierbares Paket: Updates, Software, Datenträger, Speicher, Swap, Taskmanager, Antivirus, Sicherheit (Mullvad VPN, Firewall), Benutzer.

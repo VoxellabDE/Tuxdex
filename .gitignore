@@ -1,0 +1,25 @@
+# --- makepkg: Build-Ordner und fertige Pakete ---
+/src/
+/pkg/
+*.pkg.tar
+*.pkg.tar.*
+*.src.tar.*
+*.tar.gz
+*.log
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Editoren & Betriebssysteme ---
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store

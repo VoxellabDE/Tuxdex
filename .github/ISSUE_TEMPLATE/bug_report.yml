@@ -1,0 +1,79 @@
+name: Fehler melden / Bug report
+description: Etwas funktioniert nicht wie erwartet / Something doesn't work as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Danke fürs Melden! Bitte keine Passwörter, Seriennummern, Konto- oder IP-Adressen posten.
+        Thanks for reporting! Please don't post passwords, serial numbers, account numbers or IP addresses.
+  - type: input
+    id: version
+    attributes:
+      label: Tuxdex-Version / Tuxdex version
+      description: Einstellungen (Zahnrad unten links) → Über / Settings → About
+      placeholder: z. B. 1.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Installiert als / Installed as
+      options:
+        - Paket (pacman / PKGBUILD)
+        - Skript (python3 tuxdex.py)
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: System
+      description: Distribution, Desktop (KDE/GNOME/…), X11 oder Wayland
+      placeholder: Arch Linux, KDE Plasma 6, Wayland
+    validations:
+      required: true
+  - type: dropdown
+    id: module
+    attributes:
+      label: Modul / Module
+      options:
+        - Updates
+        - Software
+        - Flatpak
+        - Datenträger / Disks
+        - Speicher / Storage
+        - Backup
+        - Swap
+        - Taskmanager
+        - Antivirus
+        - Sicherheit / Security
+        - Benutzer / Users
+        - Einstellungen / Settings
+        - Anderes / Other
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: Was ist passiert? / What happened?
+      description: Und was hättest du erwartet? / And what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Schritte zum Nachstellen / Steps to reproduce
+      placeholder: |
+        1. Tab „Backup“ öffnen
+        2. …
+  - type: textarea
+    id: output
+    attributes:
+      label: Ausgabe / Output
+      description: Text aus dem Feld „Ausgabe“ und ggf. ~/tuxdex_error.log / Text from the "Output" box and ~/tuxdex_error.log
+      render: text
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: Optional – hier hineinziehen / Optional – drag them here

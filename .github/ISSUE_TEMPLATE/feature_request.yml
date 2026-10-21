@@ -1,0 +1,20 @@
+name: Idee / Feature request
+description: Vorschlag für eine neue Funktion / Suggest a new feature
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: Was fehlt dir? / What's missing?
+      description: Beschreibe das Problem oder die Situation / Describe the problem or situation
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Wie könnte Tuxdex das lösen? / How could Tuxdex solve it?
+  - type: input
+    id: module
+    attributes:
+      label: Modul / Module
+      placeholder: z. B. Taskmanager
