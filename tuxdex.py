@@ -13819,6 +13819,11 @@ class UpdatePanel(QWidget):
         self.b_check.setEnabled(True)
         if err:
             self.badge.set("danger", "Prüfen fehlgeschlagen")
+            if silent and getattr(self, "_start_retries", 0) < 4:
+                # direkt nach dem Anmelden ist das Netzwerk oft noch nicht da – später noch einmal versuchen,
+                # sonst käme das Update-Fenster nie
+                self._start_retries = getattr(self, "_start_retries", 0) + 1
+                QTimer.singleShot(20000, lambda: self.check(silent=True))
             if not silent:
                 self.changes.setText(f"GitHub nicht erreichbar oder Repository falsch: {err}")
                 self.changes.show()
