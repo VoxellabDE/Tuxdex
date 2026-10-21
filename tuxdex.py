@@ -376,6 +376,8 @@ COLORS = {
     "danger_h": "#f58d86",
     "on_danger": "#2a0906",
     "info": "#5aa6f0",
+    "info_h": "#7dbcf6",
+    "on_info": "#07182b",
 }
 
 # Modul-Kennfarben
@@ -610,6 +612,8 @@ QPushButton[variant="primary"] { background: $accent; color: $on_accent; }
 QPushButton[variant="primary"]:hover { background: $accent_h; }
 QPushButton[variant="danger"] { background: $danger; color: $on_danger; }
 QPushButton[variant="danger"]:hover { background: $danger_h; }
+QPushButton[variant="launch"] { background: $info; color: $on_info; }
+QPushButton[variant="launch"]:hover { background: $info_h; }
 QPushButton:disabled, QPushButton[variant="primary"]:disabled, QPushButton[variant="danger"]:disabled {
     background: transparent; color: $line_strong; border: 1px solid $line; padding: 6px 15px;
 }
@@ -1027,6 +1031,9 @@ def orphaned_jobs():
     return res
 
 
+PCT_RE = re.compile(r"(\d{1,3})%")
+
+
 class ProcessRun:
     """Startet einen Prozess und streamt die Ausgabe ins LogView.
 
@@ -1035,9 +1042,11 @@ class ProcessRun:
     Wartet der Prozess auf eine Eingabe, erscheint ein Dialog; die Antwort
     wird an den Prozess geschickt."""
 
-    def __init__(self, cmd, log, needs_sudo=False, on_done=None, interactive=False, on_line=None, cwd=None):
+    def __init__(self, cmd, log, needs_sudo=False, on_done=None, interactive=False, on_line=None, cwd=None,
+                 on_percent=None):
         self.log = log
         self.cwd = cwd
+        self.on_percent = on_percent   # optional: zuletzt gemeldete Prozentzahl (GUI-Thread)
         self.on_done = on_done
         self.on_line = on_line   # optional: pro vollständiger Zeile (GUI-Thread)
         self.proc = None
@@ -1114,6 +1123,10 @@ class ProcessRun:
                 if self.log is not None:
                     ui(lambda t=text: self.log.write_raw(t))
                 clean = ANSI_RE.sub("", text).replace("\r\n", "\n")
+                if self.on_percent:
+                    pct = PCT_RE.findall(clean)
+                    if pct:
+                        ui(lambda v=min(100, int(pct[-1])): self.on_percent(v))
                 if self.on_line:
                     self._linebuf = getattr(self, "_linebuf", "") + clean
                     *full, self._linebuf = self._linebuf.split("\n")
@@ -1149,14 +1162,14 @@ class ProcessRun:
 
 
 def run_streaming(cmd, log, needs_sudo=False, on_done=None, clear_first=True, interactive=False, on_line=None,
-                  cwd=None):
+                  cwd=None, on_percent=None):
     """Führt cmd aus und streamt die Ausgabe live in das LogView - alles
     innerhalb des Programmfensters, kein externes Terminal. Gibt ein
     ProcessRun-Objekt zurück (u. a. zum Abbrechen)."""
     if clear_first:
         log.set_text("")
     return ProcessRun(cmd, log, needs_sudo=needs_sudo, on_done=on_done, interactive=interactive,
-                      on_line=on_line, cwd=cwd)
+                      on_line=on_line, cwd=cwd, on_percent=on_percent)
 
 
 class SequenceRun:
@@ -1185,7 +1198,7 @@ class SequenceRun:
 
         self.current = run_streaming(step["cmd"], self.log, needs_sudo=step["needs_sudo"], on_done=done,
                                      clear_first=False, interactive=step.get("interactive", False),
-                                     cwd=step.get("cwd"))
+                                     cwd=step.get("cwd"), on_percent=step.get("on_percent"))
 
     def cancel(self):
         self.cancelled = True
@@ -4163,6 +4176,54 @@ def install_text(src):
     return f"Installieren ({SRC_LABEL.get(src, src)})"
 
 
+def busy_text(pct):
+    """Knopftext während der Installation, z. B. „Wird installiert … 42 %“"""
+    return f"{tr('Wird installiert …')} {pct}%"
+
+
+def monotone(cb):
+    """pacman und Flatpak melden pro Paket 0–100 %. Daraus wird eine Anzeige, die nie zurückspringt und erst
+    mit dem Abschluss 100 % erreicht."""
+    top = [0]
+
+    def f(v):
+        top[0] = max(top[0], min(v, 99))
+        cb(top[0])
+    return f
+
+
+_LAUNCH_CACHE = {}
+
+
+def launch_cmd(src, ident):
+    """Befehl, der ein installiertes Programm startet – None, wenn es kein Fenster-Programm ist (nur Konsole)."""
+    if src == "flathub":
+        return ["flatpak", "run", ident]
+    if ident in _LAUNCH_CACHE:
+        return _LAUNCH_CACHE[ident]
+    cmd = None
+    try:
+        out = subprocess.run(["pacman", "-Ql", ident], capture_output=True, text=True, timeout=10).stdout
+        for line in out.splitlines():
+            path = line.split(" ", 1)[-1].strip()
+            if path.startswith("/usr/share/applications/") and path.endswith(".desktop"):
+                txt = _read(path)
+                if "Type=Application" in txt and "NoDisplay=true" not in txt:
+                    cmd = ["gio", "launch", path] if which("gio") else ["gtk-launch", os.path.basename(path)]
+                    break
+    except Exception:
+        pass
+    _LAUNCH_CACHE[ident] = cmd
+    return cmd
+
+
+def start_app(cmd):
+    try:
+        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    except Exception:
+        pass
+
+
 def installed_pacman():
     try:
         return set(subprocess.run(["pacman", "-Qq"], capture_output=True, text=True, timeout=15).stdout.split())
@@ -4198,6 +4259,10 @@ class SetupTab(Page):
         self.app = app
         self.pac = set()
         self.fp = set()
+        self.installing = {}     # (Quelle, Kennung) bzw. ("game", key) -> Prozent, solange installiert wird
+        self.alt_btns = {}
+        self.game_state = {}     # key -> "install" | "launch" | "done"
+        self.game_launch = {}
         self.badge = StatusBadge("off", "Lade …")
         self.lay.addLayout(page_header("Einrichten", self.badge))
         self.lay.addWidget(Label("Was nach einem Umstieg von Windows fehlt – mit einem Klick erledigt.",
@@ -4272,7 +4337,7 @@ class SetupTab(Page):
             n.setMinimumWidth(110)
             r.addWidget(n)
             r.addWidget(Label(desc, "Hint"), 1)
-            b = Button("Installieren", "primary", lambda _=False, k=key: self.install_games([k]))
+            b = Button("Installieren", "primary", lambda _=False, k=key: self._game_click(k))
             b.setMinimumWidth(130)
             r.addWidget(b)
             gp.body.addLayout(r)
@@ -4324,6 +4389,7 @@ class SetupTab(Page):
                 badge.set("warn", f"{len(pkgs) - len(missing)} von {len(pkgs)}")
             else:
                 badge.set("off", "Fehlt")
+            b.setText(install_text("pacman"))
             b.setVisible(bool(missing))
         self.badge.set("ok" if done == len(BASICS) else "info", f"{done} von {len(BASICS)} Basics")
         ids = [p[0] for p in POWER_PROFILES]
@@ -4360,11 +4426,27 @@ class SetupTab(Page):
             if key == "steam":
                 have = "steam" in pac or STEAM_FLATHUB in fp
             b = self.game_rows[key]
-            b.setEnabled(not have)
             if key == "steam" and not ml:
                 src = "flathub"                      # ohne multilib kommt Steam von Flathub
-            b.setText("Installiert" if have else install_text(src))
-            b.setProperty("variant", "ghost" if have else "primary")
+            if ("game", key) in self.installing:
+                if have:
+                    self.installing.pop(("game", key), None)
+                else:
+                    continue                         # läuft gerade – Anzeige nicht zurücksetzen
+            if have:
+                lsrc, lid = (("pacman", "steam") if "steam" in pac else ("flathub", STEAM_FLATHUB)) \
+                    if key == "steam" else (src, ident)
+                cmd = launch_cmd(lsrc, lid)
+                self.game_launch[key] = cmd
+                self.game_state[key] = "launch" if cmd else "done"
+                b.setEnabled(bool(cmd))
+                b.setText("Starten" if cmd else "Installiert")
+                b.setProperty("variant", "launch" if cmd else "ghost")
+            else:
+                self.game_state[key] = "install"
+                b.setEnabled(True)
+                b.setText(install_text(src))
+                b.setProperty("variant", "primary")
             repolish(b)
             if key in GAMES_RECOMMENDED and not have:
                 missing.append(f"{name} ({SRC_LABEL[src]})")
@@ -4406,10 +4488,29 @@ class SetupTab(Page):
         self._run([{"cmd": ["bash", "-c", script], "needs_sudo": True, "label": "multilib einschalten"},
                    {"cmd": ["pacman", "-Syu"], "needs_sudo": True, "interactive": True, "label": "sudo pacman -Syu"}])
 
+    def _game_click(self, key):
+        state = self.game_state.get(key, "install")
+        if ("game", key) in self.installing or state == "done":
+            return
+        if state == "launch":
+            start_app(self.game_launch[key])
+            self.app.set_status("Wird gestartet …")
+        else:
+            self.install_games([key])
+
+    def _set_game_busy(self, keys, pct):
+        for k in keys:
+            self.installing[("game", k)] = pct
+            b = self.game_rows[k]
+            b.setText(busy_text(pct))
+            b.setProperty("variant", "ghost")
+            b.setEnabled(True)
+            repolish(b)
+
     def install_games(self, keys):
-        pac_pkgs, fp_ids = [], []
+        pac_pkgs, fp_ids, run_keys = [], [], []
         for key, name, _, src, ident, needs_ml in GAMES:
-            if key not in keys or not self.game_rows[key].isEnabled():
+            if key not in keys or self.game_state.get(key, "install") != "install":
                 continue
             if key == "steam" and not getattr(self, "multilib", True):
                 fp_ids.append(STEAM_FLATHUB)
@@ -4419,6 +4520,7 @@ class SetupTab(Page):
                 pac_pkgs.append(ident)
             else:
                 fp_ids.append(ident)
+            run_keys.append(key)
         if "gamemode" in pac_pkgs and getattr(self, "multilib", False):
             pac_pkgs.append("lib32-gamemode")
         if not pac_pkgs and not fp_ids:
@@ -4441,10 +4543,15 @@ class SetupTab(Page):
                 return
             steps.append({"cmd": ["flatpak", "install", "-y", "flathub"] + fp_ids, "needs_sudo": True,
                           "interactive": True, "label": "flatpak install flathub " + " ".join(fp_ids)})
-        self._run(steps)
+        self._set_game_busy(run_keys, 0)
+        pct = monotone(lambda v: self._set_game_busy(run_keys, v))
+        for st in steps:
+            st["on_percent"] = pct
+        self._run(steps, [("game", k) for k in run_keys])
 
     def render_alternatives(self, *_):
         clear_layout(self.alt_box)
+        self.alt_btns = {}
         hits = find_alternatives(self.search.text())
         if not hits:
             self.alt_box.addWidget(Label("Dazu kenne ich noch keinen Ersatz. Im Tab „Software“ kannst du "
@@ -4476,20 +4583,32 @@ class SetupTab(Page):
                 ["xdg-open", ident], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
         if src == "tuxdex":
             return Button("Öffnen", "ghost", lambda: self.app.select([m[0] for m in MODULES].index(ident)))
+        key = (src, ident)
         have = ident in (self.pac if src == "pacman" else self.fp)
+        if key in self.installing:
+            b = Button(busy_text(self.installing[key]), "ghost")
+            self.alt_btns.setdefault(key, []).append(b)
+            return b
         if have:
+            cmd = launch_cmd(src, ident)
+            if cmd:
+                return Button("Starten", "launch", lambda: (start_app(cmd), self.app.set_status("Wird gestartet …")))
             b = Button("Installiert", "ghost")
             b.setEnabled(False)
             return b
         b = Button(install_text(src), "primary", lambda: self.install_alt(name, src, ident))
+        self.alt_btns.setdefault(key, []).append(b)
         if src == "flathub" and not which("flatpak"):
             b.setEnabled(False)
             b.setToolTip("Flatpak fehlt – im Tab „Flatpak“ einrichten.")
         return b
 
     # --- Aktionen --------------------------------------------------------
-    def _run(self, steps):
+    def _run(self, steps, busy=()):
         def all_done():
+            for k in busy:
+                self.installing.pop(k, None)
+            _LAUNCH_CACHE.clear()
             self.refresh()
             self.app.set_status("Fertig.")
         run_sequence(steps, self.log, on_all_done=all_done)
@@ -4504,12 +4623,30 @@ class SetupTab(Page):
             return
         steps = [{"cmd": ["pacman", "-S", "--needed", "--"] + missing, "needs_sudo": True, "interactive": True,
                   "label": "sudo pacman -S " + " ".join(missing)}]
+        btn = self.basic_rows[key][1]
+
+        def busy(v):
+            btn.setText(busy_text(v))
+        busy(0)
+        steps[0]["on_percent"] = monotone(busy)
         if key == "power":
             steps.append({"cmd": ["systemctl", "enable", "--now", "power-profiles-daemon"], "needs_sudo": True,
                           "label": "systemctl enable --now power-profiles-daemon"})
         self._run(steps)
 
+    def _set_alt_busy(self, key, pct):
+        self.installing[key] = pct
+        for b in self.alt_btns.get(key, []):
+            try:
+                b.setText(busy_text(pct))
+                b.setProperty("variant", "ghost")
+                repolish(b)
+            except RuntimeError:       # Knopf wurde beim Neuzeichnen schon entsorgt
+                pass
+
     def install_alt(self, name, src, ident):
+        if (src, ident) in self.installing:
+            return
         where = "aus den Arch-Paketquellen (pacman)" if src == "pacman" else "als Flatpak von Flathub"
         if not ask_confirm(self, name, f"{name} {where} installieren?", "Installieren"):
             return
@@ -4521,7 +4658,10 @@ class SetupTab(Page):
         else:
             step = {"cmd": ["flatpak", "install", "-y", "flathub", ident], "needs_sudo": True, "interactive": True,
                     "label": f"flatpak install flathub {ident}"}
-        self._run([step])
+        key = (src, ident)
+        self._set_alt_busy(key, 0)
+        step["on_percent"] = monotone(lambda v: self._set_alt_busy(key, v))
+        self._run([step], [key])
 
     def set_power(self, idx):
         prof = POWER_PROFILES[idx][0]
@@ -15859,6 +15999,8 @@ EN = {
     'stark': 'strong',
     'Start fehlgeschlagen: {}': 'Start failed: {}',
     'Starten': 'Start',
+    'Wird installiert …': 'Installing …',
+    'Wird gestartet …': 'Starting …',
     'startet': 'starting',
     'Startet …': 'Starting …',
     'Startet … Signaturen werden geladen': 'Starting … loading signatures',
