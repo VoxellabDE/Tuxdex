@@ -431,7 +431,7 @@ def module_enabled(key, settings=None):
 FONTS = {"sans": "Sans Serif", "mono": "Monospace"}
 
 APP_ID = "tuxdex"
-APP_VERSION = "1.5.7"
+APP_VERSION = "1.5.8"
 APP_STAGE = "alpha"        # Reifegrad – wird nur angezeigt, die Versionsnummer selbst bleibt ohne Zusatz
 
 
@@ -2499,6 +2499,58 @@ SOFT_CATALOG = [
 ]
 
 
+# Gleiche Programme aus der jeweils anderen Quelle – wer z. B. OBS per Flatpak installiert hat, soll es hier
+# trotzdem als installiert sehen.
+CATALOG_ALTS = {
+    "Discord": [("flathub", "com.discordapp.Discord")], "Signal": [("flathub", "org.signal.Signal")],
+    "Thunderbird": [("flathub", "org.mozilla.Thunderbird")], "Obsidian": [("flathub", "md.obsidian.Obsidian")],
+    "KeePassXC": [("flathub", "org.keepassxc.KeePassXC")], "Bitwarden": [("flathub", "com.bitwarden.desktop")],
+    "qBittorrent": [("flathub", "org.qbittorrent.qBittorrent")],
+    "FileZilla": [("flathub", "org.filezillaproject.Filezilla")], "OBS Studio": [("flathub", "com.obsproject.Studio")],
+    "Wireshark": [("flathub", "org.wireshark.Wireshark")], "FreeCAD": [("flathub", "org.freecad.FreeCAD")],
+    "KiCad": [("flathub", "org.kicad.kicad")], "GNU Octave": [("flathub", "org.octave.Octave")],
+    "Prism Launcher": [("flathub", "org.prismlauncher.PrismLauncher")],
+    "Visual Studio Code": [("pacman", "code"), ("pacman", "visual-studio-code-bin")],
+    "Brave": [("pacman", "brave-bin")], "Spotify": [("pacman", "spotify")],
+    "LocalSend": [("pacman", "localsend-bin")], "Cryptomator": [("pacman", "cryptomator")],
+    "Super Productivity": [("pacman", "superproductivity-bin")], "PeaZip": [("pacman", "peazip-qt-bin")],
+}
+
+
+def _norm_name(t):
+    return re.sub(r"[^a-z0-9]", "", t.lower())
+
+
+def installed_flatpak_names():
+    """{normalisierter Anzeigename: Anwendungs-ID} aller installierten Flatpak-Apps (System und Benutzer)."""
+    if not which("flatpak"):
+        return {}
+    try:
+        out = subprocess.run(["flatpak", "list", "--app", "--columns=application,name"],
+                             capture_output=True, text=True, timeout=15).stdout
+    except Exception:
+        return {}
+    res = {}
+    for line in out.splitlines():
+        c = line.split("\t")
+        if len(c) >= 2 and c[0].strip():
+            res[_norm_name(c[1])] = c[0].strip()
+    return res
+
+
+def catalog_found(name, src, ident, pac, fp, fpnames):
+    """(Quelle, Kennung), unter der das Programm installiert ist – oder None. Prüft die eigene Quelle, die gleiche App
+    aus der anderen Quelle und zuletzt den Anzeigenamen der Flatpak-Apps."""
+    for s_, i_ in [(src, ident)] + CATALOG_ALTS.get(name, []):
+        if i_ in (pac if s_ == "pacman" else fp):
+            return s_, i_
+    n = _norm_name(name)
+    for fname, fid in fpnames.items():
+        if fname == n or (len(n) >= 5 and len(fname) >= 5 and (n in fname or fname in n)):
+            return "flathub", fid
+    return None
+
+
 class CatalogPanel(Panel):
     """„Beliebte Programme“: nach Kategorie sortiert, mit Quelle am Knopf, Fortschritt in % und danach „Starten“."""
 
@@ -2506,6 +2558,7 @@ class CatalogPanel(Panel):
         super().__init__("Beliebte Programme")
         self.tab = tab
         self.pac, self.fp = set(), set()
+        self.fpnames = {}
         self.installing = {}        # (Quelle, Kennung) -> Prozent
         self.btns = {}
         self.body.addWidget(Label("Direkt installieren – gleich unter dem Namen steht, woher das Programm kommt "
@@ -2531,13 +2584,13 @@ class CatalogPanel(Panel):
 
     def refresh(self):
         def worker():
-            pac, fp = installed_pacman(), installed_flatpaks()
+            pac, fp, names = installed_pacman(), installed_flatpaks(), installed_flatpak_names()
             _LAUNCH_CACHE.clear()
-            ui(lambda: self._apply(pac, fp))
+            ui(lambda: self._apply(pac, fp, names))
         threading.Thread(target=worker, daemon=True).start()
 
-    def _apply(self, pac, fp):
-        self.pac, self.fp = pac, fp
+    def _apply(self, pac, fp, names):
+        self.pac, self.fp, self.fpnames = pac, fp, names
         self.render()
 
     def render(self):
@@ -2576,13 +2629,13 @@ class CatalogPanel(Panel):
 
     def _button(self, name, src, ident):
         key = (src, ident)
-        have = ident in (self.pac if src == "pacman" else self.fp)
+        found = catalog_found(name, src, ident, self.pac, self.fp, self.fpnames)
         if key in self.installing:
             b = Button(busy_text(self.installing[key]), "ghost")
             self.btns.setdefault(key, []).append(b)
             return b
-        if have:
-            cmd = launch_cmd(src, ident)
+        if found:
+            cmd = launch_cmd(*found)
             if cmd:
                 return Button("Starten", "launch", lambda: (start_app(cmd), self.tab.app.set_status("Wird gestartet …")))
             b = Button("Installiert", "ghost")

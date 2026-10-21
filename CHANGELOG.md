@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.8
+Fehlerbehebung (Beta).
+
+- **Beliebte Programme**: Per Flatpak installierte Programme werden jetzt auch dann als installiert erkannt (mit „Starten“-Knopf), wenn der Katalog sie aus den Arch-Paketquellen anbietet – und umgekehrt. Zusätzlich wird über den Namen der Flatpak-App verglichen, falls die Kennung abweicht (z. B. fre:ac).
+
 ## 1.5.7
 Programme und USB-Sticks (Beta).
 

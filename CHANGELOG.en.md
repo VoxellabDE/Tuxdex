@@ -2,6 +2,11 @@
 
 English version of [CHANGELOG.md](CHANGELOG.md). Entries before 1.0.0 are only available in German.
 
+## 1.5.8
+Bug fix (beta).
+
+- **Popular programs**: programs installed via Flatpak are now also recognised as installed (with a "Start" button) when the catalog offers them from the Arch repositories – and the other way round. If the ID differs (e.g. fre:ac), the name of the Flatpak app is compared as well.
+
 ## 1.5.7
 Programs and USB sticks (beta).
 
