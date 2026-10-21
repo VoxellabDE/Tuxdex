@@ -35,7 +35,7 @@ cat <<MSG
 
   Das passiert:
     1. Das Tuxdex-Repository wird in $CONF eingetragen (vorher Sicherung als $CONF.tuxdex.bak)
-    2. Dein System wird aktualisiert und Tuxdex installiert:  pacman -Syu tuxdex
+    2. Tuxdex wird heruntergeladen und installiert (ohne System-Update):  pacman -U
   Entfernen später:  sudo pacman -R tuxdex
 
 MSG
@@ -46,7 +46,7 @@ cat <<MSG
 
   What happens:
     1. The Tuxdex repository is added to $CONF (backup saved as $CONF.tuxdex.bak first)
-    2. Your system is updated and Tuxdex is installed:  pacman -Syu tuxdex
+    2. Tuxdex is downloaded and installed (no system update):  pacman -U
   Remove later:  sudo pacman -R tuxdex
 
 MSG
@@ -79,8 +79,7 @@ else
     fi
 fi
 
-# 2. Installieren (immer zusammen mit einem System-Update, nie nur -Sy)
-say "$(t "Updating the system and installing Tuxdex" "System aktualisieren und Tuxdex installieren")"
+# 2. Installieren
 PACCONF=""
 # Kaputtes IPv6 (typisch: "bad address") automatisch umgehen: pacman lädt dann per IPv4
 if command -v curl >/dev/null && ! curl -6 -fsI --max-time 6 https://github.com >/dev/null 2>&1 \
@@ -88,17 +87,27 @@ if command -v curl >/dev/null && ! curl -6 -fsI --max-time 6 https://github.com 
     say "$(t "IPv6 does not work here – downloading via IPv4 instead" "IPv6 funktioniert hier nicht – Download läuft über IPv4")"
     PACCONF="$(mktemp)"
     sed 's#^\[options\]#[options]\nXferCommand = /usr/bin/curl -4 -L -C - -f -o %o %u#' "$CONF" > "$PACCONF"
-    trap 'rm -f "$PACCONF"' EXIT
 fi
 # CachyOS: Spiegelliste vorher erneuern, falls möglich (vermeidet "Datenbanken konnten nicht synchronisiert werden")
 if command -v cachyos-rate-mirrors >/dev/null && [ "$DRY" -eq 0 ]; then
     say "$(t "Refreshing mirrors" "Spiegelserver werden erneuert")"
     $SUDO cachyos-rate-mirrors || true
 fi
+# Kein System-Update vorab: Paket direkt aus dem Release laden und mit pacman -U installieren.
+# (So brauchen wir keine Paketlisten zu synchronisieren, auch nicht bei ausgefallenen Spiegeln.)
+say "$(t "Downloading the Tuxdex package" "Tuxdex-Paket wird heruntergeladen")"
+API="https://api.github.com/repos/VoxellabDE/Tuxdex/releases/latest"
+PKG_URL="$(curl -4 -fsSL "$API" | grep -o '"browser_download_url": *"[^"]*\.pkg\.tar\.zst"' | head -n1 | sed 's/.*"\(https[^"]*\)"$/\1/')" || true
+[ -n "$PKG_URL" ] || die "$(t "Could not find the package. Check your internet connection and try again." "Das Paket wurde nicht gefunden. Internetverbindung prüfen und erneut versuchen.")"
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP" "${PACCONF:-}"' EXIT
+PKG="$TMP/tuxdex.pkg.tar.zst"
+curl -4 -fL --retry 3 -o "$PKG" "$PKG_URL" || die "$(t "Download failed." "Download fehlgeschlagen.")"
+say "$(t "Installing Tuxdex" "Tuxdex wird installiert")"
 if [ -n "$PACCONF" ]; then
-    run $SUDO pacman --config "$PACCONF" -Syu --needed tuxdex
+    run $SUDO pacman --config "$PACCONF" -U --needed "$PKG"
 else
-    run $SUDO pacman -Syu --needed tuxdex
+    run $SUDO pacman -U --needed "$PKG"
 fi
 
 say "$(t "Done! Start Tuxdex from the application menu or with:  tuxdex" "Fertig! Starte Tuxdex im Anwendungsmenü oder mit:  tuxdex")"
