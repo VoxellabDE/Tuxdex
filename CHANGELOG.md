@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.17.1
+Tab-Leiste (Beta).
+
+- **Pfeile ‹ ›** springen genau **einen Tab** weiter, mit kurzer Animation. Die Schrittweite richtet sich nach der tatsächlichen Breite der Tabs (Sprache, Schriftgröße), statt einer festen Pixelzahl.
+
 ## 1.5.17
 Standard-Apps (Beta).
 

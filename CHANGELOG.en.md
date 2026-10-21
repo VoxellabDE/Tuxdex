@@ -2,6 +2,11 @@
 
 English version of [CHANGELOG.md](CHANGELOG.md). Entries before 1.0.0 are only available in German.
 
+## 1.5.17.1
+Tab bar (beta).
+
+- **Arrows ‹ ›** jump exactly **one tab** at a time, with a short animation. The step follows the actual width of the tabs (language, font size) instead of a fixed pixel count.
+
 ## 1.5.17
 Default apps (beta).
 

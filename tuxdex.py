@@ -104,7 +104,7 @@ def _show_fatal_error(title, message):
 
 
 try:
-    from PySide6.QtCore import QObject, Qt, Signal, Slot, QTimer, QSize, QRectF, QEvent
+    from PySide6.QtCore import QObject, Qt, Signal, Slot, QTimer, QSize, QRectF, QEvent, QPropertyAnimation
     from PySide6.QtGui import (QColor, QFont, QFontDatabase, QPainter, QPainterPath, QPen, QTextCharFormat,
                                QTextCursor, QIcon, QPixmap, QPalette)
     from PySide6.QtWidgets import (
@@ -440,7 +440,7 @@ def module_enabled(key, settings=None):
 FONTS = {"sans": "Sans Serif", "mono": "Monospace"}
 
 APP_ID = "tuxdex"
-APP_VERSION = "1.5.17"
+APP_VERSION = "1.5.17.1"
 APP_STAGE = ""             # früher „alpha“ – das Namensschild kommt jetzt vom Kanal (Stabil ohne Zusatz, Beta mit „-beta“)
 
 
@@ -16085,8 +16085,8 @@ class MainWindow(QWidget):
         outer.setSpacing(2)
         # Passen nicht alle Tabs ins Fenster, bleiben sie in voller Breite lesbar und die Leiste lässt sich
         # scrollen (Mausrad oder ‹ ›) – statt die Namen abzuschneiden.
-        self.tab_left = Button("‹", "icon", lambda: self._scroll_tabs(-260))
-        self.tab_right = Button("›", "icon", lambda: self._scroll_tabs(260))
+        self.tab_left = Button("‹", "icon", lambda: self._step_tabs(-1))
+        self.tab_right = Button("›", "icon", lambda: self._step_tabs(1))
         for b in (self.tab_left, self.tab_right):
             b.setFixedWidth(28)
             b.hide()
@@ -16431,6 +16431,24 @@ class MainWindow(QWidget):
     def _scroll_tabs(self, dx):
         sb = self.tab_scroll.horizontalScrollBar()
         sb.setValue(sb.value() + dx)
+
+    def _step_tabs(self, direction):
+        """Pfeil: genau einen Tab weiter – die Schrittweite folgt der Breite der Tabs (Sprache, Schriftgröße)."""
+        sb = self.tab_scroll.horizontalScrollBar()
+        # Scrollwert, bei dem der jeweilige Tab am linken Rand steht (innerer Rand 8 px abgezogen)
+        edges = sorted(max(0, t.geometry().x() - 8) for t in self.tabs if t.isVisible())
+        cur = sb.value()
+        if direction > 0:
+            target = next((x for x in edges if x > cur + 1), sb.maximum())
+        else:
+            target = next((x for x in reversed(edges) if x < cur - 1), 0)
+        target = max(0, min(sb.maximum(), target))
+        anim = QPropertyAnimation(sb, b"value", self)
+        anim.setDuration(160)
+        anim.setStartValue(cur)
+        anim.setEndValue(target)
+        anim.start(QPropertyAnimation.DeleteWhenStopped)
+        self._tab_anim = anim
 
     def _update_tab_arrows(self):
         sb = self.tab_scroll.horizontalScrollBar()
