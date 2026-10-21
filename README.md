@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.5.17.2-2fb3a3">
+  <img alt="Version" src="https://img.shields.io/badge/version-1.6.0--beta-2fb3a3">
   <img alt="Lizenz" src="https://img.shields.io/badge/lizenz-MIT-2fb3a3">
   <img alt="Für Arch Linux" src="https://img.shields.io/badge/f%C3%BCr-Arch%20Linux-1793d1">
   <img alt="Python" src="https://img.shields.io/badge/python-3.11%2B-3776ab">
@@ -62,6 +62,9 @@ Tuxdex ist ein **Baukasten**: Unter **Einstellungen → Module** wählst du selb
 | **Flatpak** | Rechte jeder Flatpak-App per Schalter – Netzwerk, Dateien & Ordner, Geräte, Ton, Bildschirm, Umgebungsvariablen, Portal-Freigaben · Regeln für alle Apps · riskante Rechte sind markiert, Änderungen hervorgehoben · Flathub einrichten, Apps starten, aktualisieren, deinstallieren |
 | **Datenträger** | Laufwerke und Partitionen als Baum · Einhängen, Aushängen, **dauerhaft einhängen** (fstab per UUID, mit Sicherung), Umbenennen, Prüfen, **Formatieren** (ext4, btrfs, xfs, exFAT, FAT32, NTFS), sicher entfernen · erkennt neue USB-Sticks automatisch · System-Partitionen sind geschützt |
 | **Flash-Stick** | Bootfähige Sticks „flashen“: **Arch Linux** und **Home Assistant OS** (PC, Raspberry Pi, Green) mit Download und Prüfsumme – oder **eigene Abbild-Datei** (.iso, .img, .img.xz). Es werden nur Wechseldatenträger angeboten, nie die Systemplatte; danach Prüfung des Sticks |
+| **Treiber** | Erkennt **Grafikkarte** (NVIDIA, AMD, Intel), **WLAN**, **Bluetooth** und **Drucker** und richtet die passenden Treiber mit einem Klick ein (pacman) – mit Hinweisen für Hybrid-Laptops, Realtek, Broadcom und HP |
+| **Diagnose** | **Fehlersuche in Klartext**: „Internet geht nicht“, „Kein Ton“, Bluetooth, Grafik, langsamer Start, Speicher voll, Updates schlagen fehl, Drucker – mit verständlicher Erklärung und Knopf zur Behebung · **Gerätemanager** mit Treiber je Gerät |
+| **Windows-Daten** | Findet NTFS-/Windows-Laufwerke, hängt sie **nur lesend** ein und übernimmt **Dokumente, Bilder, Videos, Musik, Downloads und Desktop** (vorhandene Dateien werden nie überschrieben) · erkennt Dual-Boot |
 | **Speicher** | Belegung je Festplatte · **Tortendiagramm**: Betriebssystem, Anwendungen, Systemdaten, Fotos & Videos, eigene Dateien · „Was belegt den Platz?“ mit Drill-down in Ordner · Aufräumen: Paket-Cache, verwaiste Pakete, Journal, Papierkorb, Flatpak |
 | **Backup** | Snapshots (versioniert, platzsparend), Spiegel oder komprimierte Archive (zstd/xz/gzip, optional mit Passwort) · **mehrere Ziele gleichzeitig** · Prüfung nach dem Schreiben · eigene Namen mit Datum ([so geht’s](#backups-benennen)) · alte Versionen automatisch aufräumen · wiederherstellen · Zeitplan täglich/wöchentlich |
 | **Wiederherstellung** | System-Snapshots mit snapper (btrfs) oder Timeshift · **Snapshot vor jedem Update** · Liste, erstellen, löschen · **auf einen Stand zurücksetzen** per Klick |
@@ -76,15 +79,15 @@ Tuxdex ist ein **Baukasten**: Unter **Einstellungen → Module** wählst du selb
 Ziele und Planung – was schon da ist und was als Nächstes kommt.
 
 **Geplant**
-- [ ] **Treiber-Assistent**: NVIDIA, WLAN, Drucker und Bluetooth erkennen und mit einem Klick einrichten.
-- [ ] **Windows-Daten**: NTFS-Partition einbinden, Dual-Boot erkennen, Dateien aus „C:\Users“ übernehmen.
-- [ ] **Fehlerdiagnose in Klartext**: „Warum ist mein WLAN weg?“ statt Logs, dazu ein Gerätemanager.
 - [ ] **Interaktive Lernsoftware** für Arch Linux, verbunden mit Tuxdex: Befehle Schritt für Schritt lernen – zu jeder Aktion in Tuxdex den passenden Befehl sehen, verstehen und selbst ausprobieren.
 - [ ] **Fertige, geprüfte ISOs**: Arch Linux mit KDE Plasma und Tuxdex, schon eingerichtet – mit einem Installer, der viel einfacher ist als die heutige Arch-Installation.
 - [ ] **Eigenes Sicherheits-Werkzeug für Desktop-Nutzer** als Ersatz für ClamAV.
 - [ ] **Modul-Markt**: weitere Module, die man sich nach Bedarf dazuholt.
 
 **Erledigt**
+- [x] **Treiber-Assistent**: Grafik, WLAN, Bluetooth und Drucker erkennen und per Klick einrichten (1.6.0)
+- [x] **Fehlerdiagnose in Klartext** mit Gerätemanager (1.6.0)
+- [x] **Windows-Daten**: Laufwerk lesend einhängen, Dateien übernehmen, Dual-Boot erkennen (1.6.0)
 - [x] **Spiele-Setup**: Steam, GameMode, MangoHud, Lutris, Heroic, Bottles, Wine – mit Anti-Cheat-Hinweis (1.3.0)
 - [x] **Standard-Apps festlegen** (Browser, E-Mail, PDF, Bilder, Videos, Musik, Text) (1.3.0)
 - [x] **CachyOS-Unterstützung**: CachyOS-Kernel werden erkannt (1.3.0)

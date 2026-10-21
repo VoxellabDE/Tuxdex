@@ -2,6 +2,16 @@
 
 English version of [CHANGELOG.md](CHANGELOG.md). Entries before 1.0.0 are only available in German.
 
+## 1.6.0
+Drivers, diagnosis and Windows data (beta).
+
+Three new modules from the roadmap:
+
+- **Drivers**: detects graphics card, Wi-Fi, Bluetooth and printers and sets up missing drivers with one click (pacman). NVIDIA with advice depending on the card generation (open driver from Turing, legacy hint for older ones), kernel-matching packages (also DKMS and CachyOS), hybrid laptops (`prime-run`); AMD and Intel with Vulkan and video acceleration; Wi-Fi with hints for Broadcom, Realtek and Intel firmware and unblocking airplane mode; Bluetooth (bluez, service, block); printers (CUPS, Avahi, HP).
+- **Diagnosis**: troubleshooting in plain language for "Internet / Wi-Fi doesn't work", "No sound", "Bluetooth doesn't work", "Screen / graphics", "System starts slowly", "Storage is full", "Updates fail" and "Printer doesn't print". Every finding explains understandably what's going on and offers a fix button where possible. Plus a **device manager** with the driver for each device (yellow: no driver loaded).
+- **Windows data**: finds NTFS/Windows drives, mounts them read-only (with clear hints for fast startup/hibernation and BitLocker) and takes over documents, pictures, videos, music, downloads and desktop – into a folder of its own or straight into your folders. Existing files are never overwritten. Detects dual boot and points to os-prober.
+- The tab bar and lists now remove old rows immediately (no overlapping when redrawing quickly).
+
 ## 1.5.17.2
 Login dialog (beta).
 

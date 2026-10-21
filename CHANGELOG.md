@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.6.0
+Treiber, Diagnose und Windows-Daten (Beta).
+
+Drei neue Module aus der Roadmap:
+
+- **Treiber**: Erkennt Grafikkarte, WLAN, Bluetooth und Drucker und richtet fehlende Treiber mit einem Klick ein (pacman). NVIDIA mit Hinweis je nach Kartengeneration (open-Treiber ab Turing, Legacy-Hinweis für ältere), Kernel-passende Pakete (auch DKMS und CachyOS), Hybrid-Laptops (`prime-run`); AMD und Intel mit Vulkan und Videobeschleunigung; WLAN mit Hinweisen zu Broadcom, Realtek und Intel-Firmware und Entsperren des Flugmodus; Bluetooth (bluez, Dienst, Sperre); Drucker (CUPS, Avahi, HP).
+- **Diagnose**: Fehlersuche in Klartext für „Internet / WLAN geht nicht“, „Kein Ton“, „Bluetooth geht nicht“, „Bildschirm / Grafik“, „System startet langsam“, „Speicher ist voll“, „Updates schlagen fehl“ und „Drucker druckt nicht“. Jeder Befund erklärt verständlich, was los ist, und bietet wo möglich einen Knopf zur Behebung. Dazu ein **Gerätemanager** mit Treiber je Gerät (gelb: kein Treiber geladen).
+- **Windows-Daten**: Findet NTFS-/Windows-Laufwerke, hängt sie nur lesend ein (mit klaren Hinweisen bei Schnellstart/Ruhezustand und BitLocker) und übernimmt Dokumente, Bilder, Videos, Musik, Downloads und Desktop – in einen eigenen Ordner oder direkt in deine Ordner. Vorhandene Dateien werden nie überschrieben. Erkennt Dual-Boot und weist auf os-prober hin.
+- Die Tab-Leiste und Listen räumen alte Zeilen jetzt sofort ab (kein Überlappen beim schnellen Neuzeichnen).
+
 ## 1.5.17.2
 Anmelde-Dialog (Beta).
 

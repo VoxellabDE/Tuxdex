@@ -393,10 +393,13 @@ COLORS = {
 MODULES = [
     ("update", "Updates", "#2fb3a3"),
     ("setup", "Einrichten", "#f7a072"),
+    ("drivers", "Treiber", "#ee99a0"),
+    ("diagnose", "Diagnose", "#a6da95"),
     ("software", "Software", "#5aa6f0"),
     ("flatpak", "Flatpak", "#8fa8ff"),
     ("disks", "Datenträger", "#d9b95c"),
     ("flash", "Flash-Stick", "#ffb86b"),
+    ("windows", "Windows-Daten", "#8aadf4"),
     ("storage", "Speicher", "#56c2d6"),
     ("backup", "Backup", "#e9c46a"),
     ("restore", "Wiederherstellung", "#7fd1b9"),
@@ -412,6 +415,9 @@ MODULES = [
 MODULE_INFO = {
     "update": "System-, AUR- und Flatpak-Updates mit Hinweisen vor riskanten Updates.",
     "setup": "Basics wie Schriften und Codecs mit einem Klick, dazu Ersatz für Windows-Programme.",
+    "drivers": "Grafikkarte, WLAN, Bluetooth und Drucker erkennen und die passenden Treiber mit einem Klick einrichten.",
+    "diagnose": "Fehlersuche in Klartext (Internet, Ton, Bluetooth, Grafik, Start …) plus Gerätemanager.",
+    "windows": "Windows-Laufwerk lesend einhängen und Dokumente, Bilder, Videos … zu dir übernehmen.",
     "software": "Programme suchen, installieren und entfernen (pacman und AUR).",
     "flatpak": "Flatpak-Apps verwalten und ihre Rechte per Schalter einstellen.",
     "disks": "USB-Sticks und Festplatten einhängen, formatieren und prüfen.",
@@ -440,7 +446,7 @@ def module_enabled(key, settings=None):
 FONTS = {"sans": "Sans Serif", "mono": "Monospace"}
 
 APP_ID = "tuxdex"
-APP_VERSION = "1.5.17.2"
+APP_VERSION = "1.6.0"
 APP_STAGE = ""             # früher „alpha“ – das Namensschild kommt jetzt vom Kanal (Stabil ohne Zusatz, Beta mit „-beta“)
 
 
@@ -5241,6 +5247,1334 @@ class SetupTab(Page):
 
 
 # --------------------------------------------------------------------------
+# Hardware-Erkennung (gemeinsam für Treiber-Assistent, Diagnose und Gerätemanager)
+# --------------------------------------------------------------------------
+
+PCI_VENDORS = {"10de": "NVIDIA", "1002": "AMD", "1022": "AMD", "8086": "Intel", "14e4": "Broadcom", "10ec": "Realtek",
+               "168c": "Qualcomm Atheros", "17cb": "Qualcomm", "14c3": "MediaTek", "1814": "Ralink/MediaTek"}
+GPU_CLASSES = ("0300", "0302", "0380")
+
+
+def parse_lspci(text):
+    """[{slot, cls, class_id, name, vendor, device, driver, modules}] aus `lspci -nnk`."""
+    devs, cur = [], None
+    for line in text.splitlines():
+        if line and not line[0].isspace():
+            m = re.match(r"^(\S+) (.+?) \[([0-9a-f]{4})\]: (.*)$", line)
+            if not m:
+                cur = None
+                continue
+            rest = m.group(4)
+            ids = list(re.finditer(r"\[([0-9a-f]{4}):([0-9a-f]{4})\]", rest))
+            if not ids:
+                cur = None
+                continue
+            last = ids[-1]
+            cur = {"slot": m.group(1), "cls": m.group(2), "class_id": m.group(3),
+                   "name": rest[:last.start()].strip(), "vendor": last.group(1), "device": last.group(2),
+                   "driver": "", "modules": []}
+            devs.append(cur)
+        elif cur is not None:
+            s = line.strip()
+            if s.startswith("Kernel driver in use:"):
+                cur["driver"] = s.split(":", 1)[1].strip()
+            elif s.startswith("Kernel modules:"):
+                cur["modules"] = [x.strip() for x in s.split(":", 1)[1].split(",") if x.strip()]
+    return devs
+
+
+def parse_lsusb(text):
+    """[(vid:pid, Name)] aus `lsusb`."""
+    return [(m.group(1), m.group(2).strip()) for m in re.finditer(r"ID ([0-9a-f]{4}:[0-9a-f]{4})[ \t]*(.*)", text)]
+
+
+def rfkill_state():
+    """{Name: (soft_blockiert, hart_blockiert)} je Funkgerät (wlan, bluetooth …) aus `rfkill -J`."""
+    res = {}
+    try:
+        data = json.loads(_cmd_out(["rfkill", "-J"]) or "{}")
+    except ValueError:
+        return res
+    for items in data.values():
+        for d in items:
+            res[d.get("type", "?")] = (d.get("soft") == "blocked", d.get("hard") == "blocked")
+    return res
+
+
+def hardware_facts():
+    """Einmal alles einlesen, was Treiber-Assistent und Diagnose brauchen."""
+    pci = parse_lspci(_cmd_out(["lspci", "-nnk"], 10))
+    usb = parse_lsusb(_cmd_out(["lsusb"], 10))
+    wifi_if = [n for n in (os.listdir("/sys/class/net") if os.path.isdir("/sys/class/net") else [])
+               if os.path.isdir(f"/sys/class/net/{n}/wireless")]
+    bt_if = [n for n in (os.listdir("/sys/class/bluetooth") if os.path.isdir("/sys/class/bluetooth") else [])
+             if n.startswith("hci")]
+    return {"pci": pci, "usb": usb, "wifi_if": wifi_if, "bt_if": bt_if, "rfkill": rfkill_state(),
+            "pac": installed_pacman(), "kernel": running_kernel_pkg() or "linux"}
+
+
+WIFI_USB_RE = re.compile(r"wireless|wlan|wi-?fi|802\.11|wifi", re.I)
+PRINTER_USB_RE = re.compile(r"printer|laserjet|deskjet|officejet|inkjet|pixma|ecotank|workforce|brother (hl|dcp|mfc)", re.I)
+
+
+def wifi_chips(f):
+    """Gefundene WLAN-Chips: [(Name, Hersteller-ID, Treiber)] – PCI-Netzwerkkarten und USB-Adapter."""
+    out = []
+    for d in f["pci"]:
+        if d["cls"].lower().startswith("network controller") or (d["cls"].lower().startswith("ethernet") and
+                                                                  re.search(r"wireless|wi-?fi|wlan", d["name"], re.I)):
+            out.append((d["name"], d["vendor"], d["driver"]))
+    for vid, name in f["usb"]:
+        if WIFI_USB_RE.search(name):
+            out.append((name, vid.split(":")[0], ""))
+    return out
+
+
+def gpu_advice(gpu, pac, kernel, has_igpu):
+    """(Ton, Kurztext, Erklärung, Pakete zum Installieren oder None, Hinweis) für eine Grafikkarte."""
+    vendor, driver = gpu["vendor"], gpu["driver"]
+    vname = PCI_VENDORS.get(vendor, "")
+    name = gpu["name"] if (not vname or vname.split()[0].lower() in gpu["name"].lower()) else f"{vname} {gpu['name']}"
+    if vendor == "10de":
+        have = [p for p in ("nvidia", "nvidia-open", "nvidia-dkms", "nvidia-open-dkms", "nvidia-lts") if p in pac]
+        if driver == "nvidia" or have:
+            note = ""
+            if has_igpu:
+                note = " Hybrid-Laptop (Intel/AMD + NVIDIA): Für „Programm mit der NVIDIA-Karte starten“ hilft " \
+                       "`prime-run` aus dem Paket nvidia-prime."
+            return ("ok", "Treiber aktiv", f"{name}: Der NVIDIA-Treiber ist installiert und aktiv.{note}", None, "")
+        turing = int(gpu["device"], 16) >= 0x1e00
+        if not turing:
+            return ("info", "Open-Source-Treiber",
+                    f"{name}: Diese ältere NVIDIA-Karte läuft mit dem freien Treiber „nouveau“ ohne Zusatz. Der "
+                    "aktuelle NVIDIA-Treiber unterstützt sie nicht mehr; ein Legacy-Treiber (z. B. "
+                    "nvidia-580xx-dkms) liegt im AUR.", None, "")
+        pk = ["nvidia-open", "nvidia-utils", "nvidia-settings"] if kernel == "linux" else \
+            ["nvidia-open-dkms", f"{kernel}-headers", "nvidia-utils", "nvidia-settings"]
+        return ("warn", "Treiber fehlt",
+                f"{name}: Aktiv ist der freie Treiber „{driver or 'keiner'}“. Für Spiele, Videoschnitt und CUDA "
+                "brauchst du den NVIDIA-Treiber. Danach ist ein Neustart nötig.", pk, "")
+    if vendor in ("1002", "1022"):
+        pk = [p for p in ("mesa", "vulkan-radeon", "libva-mesa-driver") if p not in pac]
+        if driver == "amdgpu" and not pk:
+            return ("ok", "Treiber aktiv", f"{name}: Der AMD-Treiber (amdgpu) mit Vulkan läuft.", None, "")
+        if driver in ("amdgpu", "radeon") and pk:
+            return ("warn", "Pakete fehlen", f"{name}: Treiber läuft, aber für Spiele und Videobeschleunigung "
+                    f"fehlt: {', '.join(pk)}.", pk, "")
+        return ("warn", "Kein Treiber", f"{name}: Es ist kein Grafiktreiber aktiv.", ["mesa", "vulkan-radeon",
+                                                                                      "libva-mesa-driver"], "")
+    if vendor == "8086":
+        pk = [p for p in ("mesa", "vulkan-intel", "intel-media-driver") if p not in pac]
+        if driver in ("i915", "xe") and not pk:
+            return ("ok", "Treiber aktiv", f"{name}: Der Intel-Treiber ({driver}) mit Vulkan läuft.", None, "")
+        if driver in ("i915", "xe") and pk:
+            return ("warn", "Pakete fehlen", f"{name}: Treiber läuft, für Spiele und Videobeschleunigung fehlt: "
+                    f"{', '.join(pk)}.", pk, "")
+        return ("warn", "Kein Treiber", f"{name}: Es ist kein Grafiktreiber aktiv.", ["mesa", "vulkan-intel",
+                                                                                      "intel-media-driver"], "")
+    return ("info", "Erkannt", f"{name}: Treiber: {driver or 'keiner'}.", None, "")
+
+
+def wifi_advice(f):
+    """(Ton, Kurztext, Erklärung, Pakete oder None, Zusatzaktion) für WLAN."""
+    chips, pac = wifi_chips(f), f["pac"]
+    rf = f["rfkill"].get("wlan", (False, False))
+    if not chips and not f["wifi_if"]:
+        return ("off", "Kein WLAN", "Es wurde kein WLAN-Adapter gefunden (z. B. Desktop ohne WLAN-Karte). Ein "
+                "USB-WLAN-Stick wird nach dem Einstecken erkannt.", None, "")
+    if rf[1]:
+        return ("danger", "Hardware-Schalter", "WLAN ist per Schalter/Funktionstaste am Gerät abgeschaltet "
+                "(Flugmodus-Taste). Schalte es dort wieder ein.", None, "")
+    if rf[0]:
+        return ("warn", "Blockiert", "WLAN ist per Software blockiert (Flugmodus).", None, "unblock wlan")
+    if f["wifi_if"]:
+        drv = next((c[2] for c in chips if c[2]), "")
+        return ("ok", "Läuft", f"WLAN-Adapter {', '.join(f['wifi_if'])} ist da"
+                + (f" (Treiber {drv})" if drv else "") + ".", None, "")
+    name, vendor, _ = chips[0]
+    if vendor == "14e4":
+        return ("warn", "Treiber fehlt", f"{name}: Broadcom-Chips brauchen meist einen Zusatztreiber.",
+                ["broadcom-wl-dkms", f"{f['kernel']}-headers"], "")
+    if vendor == "8086":
+        return ("warn", "Firmware fehlt?", f"{name}: Intel-WLAN braucht die Firmware aus linux-firmware"
+                + (" (ist installiert – dann hilft meist ein Neustart nach einem Kernel-Update)."
+                   if "linux-firmware" in pac else "."), None if "linux-firmware" in pac else ["linux-firmware"], "")
+    if vendor in ("10ec", "0bda"):
+        return ("warn", "Treiber fehlt", f"{name}: Für viele Realtek-WLAN-Chips fehlt im Kernel der Treiber. "
+                "Meist hilft ein Paket aus dem AUR (z. B. rtw89-dkms oder rtl88xxau-dkms) – im Tab „Software“ "
+                "installierbar.", None, "")
+    return ("warn", "Kein Adapter aktiv", f"{name}: Der Chip wurde erkannt, aber es gibt keine WLAN-Verbindung "
+            "dazu – vermutlich fehlen Treiber oder Firmware.", ["linux-firmware"] if "linux-firmware" not in pac
+            else None, "")
+
+
+def bluetooth_advice(f):
+    pac, usb = f["pac"], f["usb"]
+    has_hw = bool(f["bt_if"]) or any("bluetooth" in n.lower() for _v, n in usb) or any(
+        "bluetooth" in d["name"].lower() for d in f["pci"])
+    if not has_hw:
+        return ("off", "Kein Bluetooth", "Es wurde kein Bluetooth-Adapter gefunden.", None, "")
+    missing = [p for p in ("bluez", "bluez-utils") if p not in pac]
+    if missing:
+        return ("warn", "Pakete fehlen", f"Bluetooth-Hardware ist da, aber es fehlt: {', '.join(missing)}.",
+                missing, "enable bluetooth")
+    rf = f["rfkill"].get("bluetooth", (False, False))
+    if rf[1]:
+        return ("danger", "Hardware-Schalter", "Bluetooth ist per Schalter am Gerät abgeschaltet.", None, "")
+    if rf[0]:
+        return ("warn", "Blockiert", "Bluetooth ist per Software blockiert (Flugmodus).", None, "unblock bluetooth")
+    if not svc_active("bluetooth"):
+        return ("warn", "Dienst aus", "Der Bluetooth-Dienst läuft nicht.", None, "enable bluetooth")
+    return ("ok", "Läuft", "Bluetooth ist bereit" + (f" (Adapter {', '.join(f['bt_if'])})." if f["bt_if"] else "."),
+            None, "")
+
+
+def printer_advice(f):
+    pac, usb = f["pac"], f["usb"]
+    usb_printers = [n for _v, n in usb if PRINTER_USB_RE.search(n)]
+    if "cups" not in pac:
+        return ("warn", "Nicht eingerichtet", "Das Drucksystem CUPS ist nicht installiert."
+                + (f" Erkannter Drucker: {usb_printers[0]}." if usb_printers else ""),
+                ["cups", "cups-filters", "ghostscript", "system-config-printer", "avahi", "nss-mdns"],
+                "enable cups")
+    extra = []
+    if any("hp" in n.lower() for n in usb_printers) and "hplip" not in pac:
+        extra.append("hplip")
+    if extra:
+        return ("warn", "Treiber fehlt", f"CUPS ist da, für den HP-Drucker fehlt: {', '.join(extra)}.", extra, "")
+    if not (svc_active("cups") or svc_active("cups.socket")):
+        return ("warn", "Dienst aus", "CUPS ist installiert, läuft aber nicht.", None, "enable cups")
+    return ("ok", "Bereit", "Das Drucksystem läuft" + (f"; erkannt: {usb_printers[0]}." if usb_printers else ".")
+            + " Drucker fügst du über „system-config-printer“ oder http://localhost:631 hinzu.", None, "")
+
+
+EXTRA_STEPS = {
+    "unblock wlan": (["rfkill", "unblock", "wlan"], "WLAN entsperren"),
+    "unblock bluetooth": (["rfkill", "unblock", "bluetooth"], "Bluetooth entsperren"),
+    "enable bluetooth": (["systemctl", "enable", "--now", "bluetooth.service"], "Bluetooth-Dienst starten"),
+    "enable cups": (["systemctl", "enable", "--now", "cups.socket", "avahi-daemon.service"],
+                    "Drucksystem starten"),
+}
+
+
+class DriversTab(Page):
+    def __init__(self, app):
+        super().__init__()
+        self.app = app
+        self.busy = False
+        self.badge = StatusBadge("off", "Prüfe …")
+        self.lay.addLayout(page_header("Treiber", self.badge, Button("↻", "icon", self.refresh,
+                                                                     "Hardware neu einlesen")))
+        self.lay.addWidget(Label("Tuxdex erkennt deine Hardware und richtet die passenden Treiber mit einem Klick "
+                                 "ein – Grafikkarte, WLAN, Bluetooth und Drucker. Installiert wird aus den "
+                                 "Arch-Paketquellen (pacman).", "Hint", wrap=True))
+        self.panels = {}
+        for key, title in (("gpu", "Grafikkarte"), ("wifi", "WLAN"), ("bt", "Bluetooth"), ("print", "Drucker")):
+            p = Panel(title)
+            box = QVBoxLayout()
+            box.setSpacing(4)
+            p.body.addLayout(box)
+            self.panels[key] = box
+            self.lay.addWidget(p)
+        out = Panel("Ausgabe")
+        self.log = LogView(130)
+        out.body.addWidget(self.log)
+        self.lay.addWidget(out)
+        self.refresh()
+
+    def refresh(self):
+        self.badge.set("info", "Prüfe …")
+
+        def worker():
+            f = hardware_facts()
+            ui(lambda: self._render(f))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _row(self, key, title, tone, short, detail, pkgs, extra):
+        row = CheckRow(title)
+        action, cb = None, None
+        if pkgs:
+            action = install_text("pacman")
+            cb = lambda p=pkgs, e=extra: self.install(p, e)
+        elif extra and extra in EXTRA_STEPS:
+            action = EXTRA_STEPS[extra][1]
+            cb = lambda e=extra: self.install([], e)
+        row.set(tone, short, detail, action, cb)
+        self.panels[key].addWidget(row)
+        return tone
+
+    def _render(self, f):
+        for box in self.panels.values():
+            clear_layout(box)
+        tones = []
+        gpus = [d for d in f["pci"] if d["class_id"] in GPU_CLASSES]
+        has_igpu = any(g["vendor"] in ("8086", "1002", "1022") for g in gpus) and any(g["vendor"] == "10de" for g in gpus)
+        if not gpus:
+            tones.append(self._row("gpu", "Grafik", "off", "Nicht erkannt",
+                                   "Es wurde keine Grafikkarte erkannt (lspci fehlt? Paket pciutils).", None, ""))
+        for g in gpus:
+            tone, short, detail, pk, _n = gpu_advice(g, f["pac"], f["kernel"], has_igpu)
+            tones.append(self._row("gpu", g["name"][:60], tone, short, detail, pk, ""))
+        tone, short, detail, pk, extra = wifi_advice(f)
+        tones.append(self._row("wifi", "WLAN-Adapter", tone, short, detail, pk, extra))
+        tone, short, detail, pk, extra = bluetooth_advice(f)
+        tones.append(self._row("bt", "Bluetooth-Adapter", tone, short, detail, pk, extra))
+        tone, short, detail, pk, extra = printer_advice(f)
+        tones.append(self._row("print", "Drucksystem", tone, short, detail, pk, extra))
+        bad = sum(1 for t in tones if t in ("warn", "danger"))
+        self.badge.set("ok" if not bad else "warn", "Alles eingerichtet" if not bad else f"{bad} brauchen Aufmerksamkeit")
+
+    def install(self, pkgs, extra=""):
+        if self.busy:
+            return
+        text = "\n".join(([f"pacman: {', '.join(pkgs)}"] if pkgs else [])
+                         + ([EXTRA_STEPS[extra][1]] if extra in EXTRA_STEPS else []))
+        if not ask_confirm(self, "Treiber einrichten", f"Ausführen?\n\n{text}", "Ausführen"):
+            return
+        if not self.app.priv.ensure(self):
+            return
+        steps = []
+        if pkgs:
+            steps.append({"cmd": ["pacman", "-S", "--needed", "--"] + pkgs, "needs_sudo": True, "interactive": True,
+                          "label": "sudo pacman -S " + " ".join(pkgs)})
+        if extra in EXTRA_STEPS:
+            cmd, _lbl = EXTRA_STEPS[extra]
+            steps.append({"cmd": cmd, "needs_sudo": True, "label": "sudo " + " ".join(cmd)})
+        self.busy = True
+
+        def done():
+            self.busy = False
+            self.log.append_text("\nFertig. Nach Treiber-Installationen (Grafik, WLAN) ist oft ein Neustart nötig.\n")
+            self.refresh()
+        run_sequence(steps, self.log, on_all_done=done)
+
+
+
+# --------------------------------------------------------------------------
+# Modul: Diagnose (Fehlersuche in Klartext) und Gerätemanager
+# --------------------------------------------------------------------------
+
+def finding(tone, short, title, detail, fix=None):
+    """Ein Befund: Ton (ok/warn/danger/info), Kurztext, Titel, Erklärung, optional Behebung (Beschriftung, Schritte)."""
+    return {"tone": tone, "short": short, "title": title, "detail": detail, "fix": fix}
+
+
+def sudo_step(cmd, label=None):
+    return {"cmd": cmd, "needs_sudo": True, "label": label or "sudo " + " ".join(cmd)}
+
+
+def user_step(cmd, label=None):
+    return {"cmd": cmd, "needs_sudo": False, "label": label or " ".join(cmd)}
+
+
+def pacman_step(pkgs):
+    return {"cmd": ["pacman", "-S", "--needed", "--"] + pkgs, "needs_sudo": True, "interactive": True,
+            "label": "sudo pacman -S " + " ".join(pkgs)}
+
+
+def tcp_ok(host, port=443, timeout=3):
+    import socket
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def dns_ok(name="archlinux.org"):
+    import socket
+    old = socket.getdefaulttimeout()
+    try:
+        socket.setdefaulttimeout(4)
+        socket.gethostbyname(name)
+        return True
+    except OSError:
+        return False
+    finally:
+        socket.setdefaulttimeout(old)
+
+
+def user_svc_active(name):
+    return _cmd_out(["systemctl", "--user", "is-active", name]).strip() == "active"
+
+
+def journal_lines(pattern, extra=("-b",), limit=4, priority="-p4"):
+    """Letzte passende Zeilen aus dem Systemprotokoll (leer, wenn nicht lesbar)."""
+    out = _cmd_out(["journalctl", "--no-pager", "-q", "-n", "400", priority] + list(extra), 8)
+    hits = [re.sub(r"^\S+ \d+ [\d:]+ \S+ ", "", l)[:160] for l in out.splitlines() if re.search(pattern, l, re.I)]
+    return hits[-limit:]
+
+
+def diag_network():
+    f = []
+    ifs = []
+    try:
+        for d in json.loads(_cmd_out(["ip", "-j", "link"]) or "[]"):
+            n = d.get("ifname", "")
+            if n != "lo" and not re.match(r"(docker|veth|virbr|br-|tun|tap)", n):
+                ifs.append((n, "UP" in (d.get("flags") or []) and d.get("operstate") in ("UP", "UNKNOWN")))
+    except ValueError:
+        pass
+    hw = hardware_facts()
+    rf = hw["rfkill"].get("wlan", (False, False))
+    if not ifs:
+        f.append(finding("danger", "Keine Netzwerkkarte", "Netzwerk-Adapter",
+                         "Das System sieht keinen Netzwerk-Adapter. Bei WLAN fehlt vermutlich ein Treiber oder die "
+                         "Firmware – im Tab „Treiber“ lässt sich das einrichten."))
+    else:
+        up = [n for n, u in ifs if u]
+        f.append(finding("ok" if up else "warn", "Verbunden" if up else "Nicht verbunden", "Netzwerk-Adapter",
+                         f"Gefunden: {', '.join(n for n, _ in ifs)}. "
+                         + (f"Aktiv: {', '.join(up)}." if up else "Keiner ist gerade verbunden.")))
+    if rf[1]:
+        f.append(finding("danger", "Hardware-Schalter", "WLAN-Schalter",
+                         "WLAN ist per Schalter oder Funktionstaste (Flugmodus) am Gerät ausgeschaltet. Schalte es dort "
+                         "wieder ein."))
+    elif rf[0]:
+        f.append(finding("warn", "Blockiert", "Flugmodus",
+                         "WLAN ist per Software blockiert (Flugmodus).",
+                         ("WLAN entsperren", [sudo_step(["rfkill", "unblock", "wlan"])])))
+    nm = svc_active("NetworkManager")
+    nd = svc_active("systemd-networkd")
+    iw = svc_active("iwd")
+    if not (nm or nd or iw):
+        fix = None
+        if which("nmcli") or os.path.exists("/usr/lib/systemd/system/NetworkManager.service"):
+            fix = ("Netzwerkdienst starten", [sudo_step(["systemctl", "enable", "--now", "NetworkManager"])])
+        f.append(finding("danger", "Dienst aus", "Netzwerkdienst",
+                         "Es läuft kein Netzwerkdienst (NetworkManager, systemd-networkd oder iwd) – ohne ihn gibt es "
+                         "keine Verbindung.", fix))
+    else:
+        f.append(finding("ok", "Läuft", "Netzwerkdienst",
+                         "Aktiv: " + ", ".join(n for n, a in (("NetworkManager", nm), ("systemd-networkd", nd),
+                                                              ("iwd", iw)) if a) + "."))
+    ips = _cmd_out(["ip", "-4", "-o", "addr", "show", "scope", "global"])
+    route = _cmd_out(["ip", "route", "show", "default"]).strip()
+    if any(u for _n, u in ifs):
+        if not ips.strip():
+            f.append(finding("warn", "Keine Adresse", "IP-Adresse",
+                             "Die Verbindung steht, aber der Rechner hat keine IP-Adresse bekommen (DHCP). Ein Neustart "
+                             "des Routers oder erneutes Verbinden hilft oft."))
+        elif not route:
+            f.append(finding("warn", "Kein Ausgang", "Weg ins Internet",
+                             "Es gibt eine IP-Adresse, aber keine Standardroute zum Router."))
+        else:
+            f.append(finding("ok", "OK", "IP-Adresse und Route", "Adresse und Weg zum Router sind da."))
+    net = tcp_ok("1.1.1.1")
+    dns = dns_ok()
+    if net and dns:
+        f.append(finding("ok", "Internet geht", "Internet und Namensauflösung", "Das Internet ist erreichbar."))
+    elif net and not dns:
+        f.append(finding("warn", "DNS-Problem", "Namensauflösung",
+                         "Das Internet ist erreichbar, aber Namen wie archlinux.org lassen sich nicht auflösen. Das ist "
+                         "ein DNS-Problem: Router-DNS prüfen oder in den Netzwerk-Einstellungen 1.1.1.1 als DNS "
+                         "eintragen."))
+    elif any(u for _n, u in ifs):
+        f.append(finding("danger", "Kein Internet", "Internet",
+                         "Trotz Verbindung zum Netzwerk kommt kein Verkehr ins Internet. Prüfe den Router und ob "
+                         "andere Geräte online sind."))
+    bad = journal_lines(r"(firmware.*(fail|error|not found|missing)|iwlwifi.*(error|fail)|brcm.*(fail|error)|"
+                        r"rtw.*(fail|error)|ath\d+k.*(fail|error))")
+    if bad:
+        f.append(finding("warn", "Treiber-Meldungen", "WLAN-Treiber im Systemprotokoll",
+                         "Der Kernel meldet Probleme mit der WLAN-Hardware – meist fehlt Firmware (Paket "
+                         "linux-firmware):\n" + "\n".join(bad)))
+    return f
+
+
+def diag_audio():
+    f = []
+    hw = hardware_facts()
+    pac = hw["pac"]
+    miss = [p for p in ("pipewire", "pipewire-pulse", "wireplumber") if p not in pac]
+    has_pulse = "pulseaudio" in pac
+    if miss and not has_pulse:
+        f.append(finding("danger", "Pakete fehlen", "Audio-System",
+                         f"Es fehlt: {', '.join(miss)}. Ohne Audio-System gibt es keinen Ton.",
+                         (install_text("pacman"), [pacman_step(miss)])))
+    else:
+        running = [n for n in ("pipewire", "pipewire-pulse", "wireplumber", "pulseaudio") if user_svc_active(n)]
+        if running:
+            f.append(finding("ok", "Läuft", "Audio-Dienst", "Aktiv: " + ", ".join(running) + "."))
+        else:
+            f.append(finding("danger", "Dienst aus", "Audio-Dienst",
+                             "Der Audio-Dienst (PipeWire) läuft in deiner Sitzung nicht.",
+                             ("Audio-Dienst starten", [user_step(["systemctl", "--user", "enable", "--now",
+                                                                  "pipewire", "pipewire-pulse", "wireplumber"])])))
+    cards = _cmd_out(["aplay", "-l"])
+    audio_pci = [d for d in hw["pci"] if d["class_id"] in ("0403", "0401")]
+    if "no soundcards" in cards.lower() or (not cards.strip() and audio_pci):
+        if any(d["vendor"] == "8086" for d in audio_pci) and "sof-firmware" not in pac:
+            f.append(finding("danger", "Firmware fehlt", "Soundkarte",
+                             "Es wird keine Soundkarte gefunden. Neuere Intel-Laptops brauchen dafür die Firmware "
+                             "sof-firmware.", (install_text("pacman"), [pacman_step(["sof-firmware", "alsa-ucm-conf"])])))
+        else:
+            f.append(finding("danger", "Keine Soundkarte", "Soundkarte",
+                             "Das System findet keine Soundkarte. Ein Neustart nach Kernel-Updates oder die Firmware "
+                             "(linux-firmware, sof-firmware) kann helfen."))
+    elif cards.strip():
+        n = len(re.findall(r"^card \d+", cards, re.M))
+        f.append(finding("ok", "Erkannt", "Soundkarte", f"{n} Audiogerät(e) erkannt."))
+    vol = _cmd_out(["wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@"]).strip()
+    if vol:
+        m = re.search(r"Volume:\s*([\d.]+)", vol)
+        level = float(m.group(1)) if m else None
+        if "[MUTED]" in vol:
+            f.append(finding("warn", "Stumm", "Lautstärke", "Die Ausgabe ist stummgeschaltet.",
+                             ("Stummschaltung aufheben", [user_step(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "0"])])))
+        elif level is not None and level < 0.05:
+            f.append(finding("warn", "Zu leise", "Lautstärke", "Die Lautstärke steht auf fast null.",
+                             ("Auf 50 % stellen", [user_step(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "0.5"])])))
+        else:
+            f.append(finding("ok", "OK", "Lautstärke", f"Lautstärke {int((level or 0) * 100)} %, nicht stumm."))
+    status = _cmd_out(["wpctl", "status"])
+    if status and re.search(r"Sinks:.*?\n\s*(?:│\s*)?[*\s]*\d+\.\s*Dummy Output", status, re.S) and \
+            not re.search(r"\d+\.\s*(?!Dummy)[A-Za-z].*\[vol:", status):
+        f.append(finding("danger", "Nur Dummy-Ausgang", "Ausgabegerät",
+                         "PipeWire kennt nur einen „Dummy“-Ausgang – die Soundkarte wurde nicht eingebunden."))
+    return f
+
+
+def diag_bluetooth():
+    f = []
+    hw = hardware_facts()
+    tone, short, detail, pk, extra = bluetooth_advice(hw)
+    fix = None
+    if pk:
+        fix = (install_text("pacman"), [pacman_step(pk)] + ([sudo_step(EXTRA_STEPS[extra][0])] if extra in EXTRA_STEPS
+                                                          else []))
+    elif extra in EXTRA_STEPS:
+        fix = (EXTRA_STEPS[extra][1], [sudo_step(EXTRA_STEPS[extra][0])])
+    f.append(finding(tone, short, "Bluetooth-Adapter und Dienst", detail, fix))
+    if tone == "ok" and which("bluetoothctl"):
+        show = _cmd_out(["bluetoothctl", "show"])
+        if re.search(r"Powered:\s*no", show):
+            f.append(finding("warn", "Ausgeschaltet", "Adapter",
+                             "Der Bluetooth-Adapter ist ausgeschaltet.",
+                             ("Einschalten", [user_step(["bluetoothctl", "power", "on"])])))
+        elif show.strip():
+            f.append(finding("ok", "Eingeschaltet", "Adapter", "Der Adapter ist an und bereit zum Koppeln."))
+    return f
+
+
+def diag_graphics():
+    f = []
+    hw = hardware_facts()
+    gpus = [d for d in hw["pci"] if d["class_id"] in GPU_CLASSES]
+    has_igpu = any(g["vendor"] in ("8086", "1002", "1022") for g in gpus) and any(g["vendor"] == "10de" for g in gpus)
+    for g in gpus:
+        tone, short, detail, pk, _n = gpu_advice(g, hw["pac"], hw["kernel"], has_igpu)
+        f.append(finding(tone, short, g["name"][:70], detail, (install_text("pacman"), [pacman_step(pk)]) if pk else None))
+    if not gpus:
+        f.append(finding("info", "Nicht erkannt", "Grafikkarte", "Es wurde keine Grafikkarte erkannt (Paket pciutils)."))
+    sess = os.environ.get("XDG_SESSION_TYPE", "")
+    if sess:
+        f.append(finding("info", sess.capitalize(), "Sitzungstyp",
+                         "Du nutzt " + ("Wayland." if sess == "wayland" else "X11 (älteres Grafiksystem)." if
+                                        sess == "x11" else sess + ".")))
+    if any(g["driver"] == "nvidia" for g in gpus) and sess == "wayland" \
+            and "nvidia-drm.modeset=1" not in _read("/proc/cmdline") and "nvidia_drm" not in _read("/proc/modules"):
+        f.append(finding("warn", "Modeset fehlt", "NVIDIA unter Wayland",
+                         "Mit dem NVIDIA-Treiber braucht Wayland den Kernel-Parameter nvidia-drm.modeset=1, sonst "
+                         "flackert oder hängt die Oberfläche."))
+    bad = journal_lines(r"(gpu hang|amdgpu.*(error|fail|timeout)|nvidia.*(error|fail|xid)|i915.*(error|hang)|drm.*error)",
+                        limit=3)
+    if bad:
+        f.append(finding("warn", "Grafik-Fehler", "Meldungen im Systemprotokoll",
+                         "Der Kernel meldet Probleme mit der Grafik:\n" + "\n".join(bad)))
+    return f
+
+
+def diag_boot():
+    f = []
+    total = _cmd_out(["systemd-analyze", "time"], 10).strip()
+    m = re.search(r"=\s*([\d.]+)(min|s)(?:\s*([\d.]+)s)?", total)
+    if total:
+        secs = None
+        t = re.search(r"=\s*(?:(\d+)min\s*)?([\d.]+)s", total)
+        if t:
+            secs = int(t.group(1) or 0) * 60 + float(t.group(2))
+        tone = "ok" if secs is None or secs < 40 else "warn" if secs < 90 else "danger"
+        f.append(finding(tone, f"{secs:.0f} s" if secs else "—", "Startdauer", total.splitlines()[0]
+                         + (" – das ist langsam." if tone != "ok" else "")))
+    blame = [l.strip() for l in _cmd_out(["systemd-analyze", "blame", "--no-pager"], 10).splitlines()[:6] if l.strip()]
+    if blame:
+        wait = [b for b in blame if "wait-online" in b]
+        f.append(finding("info", "Top 6", "Was am längsten dauert", "\n".join(blame)))
+        for b in wait:
+            unit = b.split()[-1]
+            f.append(finding("warn", "Meist unnötig", unit,
+                             "Dieser Dienst wartet beim Start aufs Netzwerk – auf Desktops bremst das meist nur.",
+                             ("Ausschalten", [sudo_step(["systemctl", "disable", unit])])))
+    failed = [l.split()[1] if l.strip().startswith("●") else l.split()[0]
+              for l in _cmd_out(["systemctl", "--failed", "--no-legend", "--plain"], 8).splitlines() if l.strip()]
+    if failed:
+        f.append(finding("warn", f"{len(failed)} fehlgeschlagen", "Fehlgeschlagene Dienste",
+                         "Diese Dienste konnten nicht starten: " + ", ".join(failed[:8]) + ". Mit „journalctl -u "
+                         "<Dienst>“ siehst du die Ursache."))
+    else:
+        f.append(finding("ok", "Keine", "Fehlgeschlagene Dienste", "Alle Dienste sind sauber gestartet."))
+    return f
+
+
+def diag_disk():
+    f = []
+    for mp in ("/", "/home", "/var"):
+        if mp != "/" and (not os.path.ismount(mp)):
+            continue
+        try:
+            st = os.statvfs(mp)
+        except OSError:
+            continue
+        total, free = st.f_blocks * st.f_frsize, st.f_bavail * st.f_frsize
+        pct = 100 - int(free * 100 / total) if total else 0
+        tone = "ok" if pct < 80 else "warn" if pct < 92 else "danger"
+        f.append(finding(tone, f"{pct} % voll", f"Speicherplatz {mp}",
+                         f"{fmt_bytes(free)} von {fmt_bytes(total)} frei."
+                         + (" Bald ist kein Platz mehr – das kann Updates und Programme blockieren." if tone != "ok"
+                            else "")))
+        if st.f_files and st.f_ffree is not None and st.f_files > 0:
+            ipct = 100 - int(st.f_ffree * 100 / st.f_files)
+            if ipct > 90:
+                f.append(finding("danger", f"{ipct} % Inodes", f"Dateianzahl {mp}",
+                                 "Es gibt zu viele kleine Dateien – das Dateisystem kann keine neuen mehr anlegen."))
+    cache = "/var/cache/pacman/pkg"
+    if os.path.isdir(cache):
+        size = sum(os.path.getsize(os.path.join(cache, x)) for x in os.listdir(cache) if os.path.isfile(os.path.join(cache, x)))
+        if size > 3 << 30:
+            fix = (("Cache aufräumen (3 Versionen behalten)", [sudo_step(["paccache", "-rk3"])])
+                   if which("paccache") else None)
+            f.append(finding("warn", fmt_bytes(size), "Paket-Cache",
+                             "Alte heruntergeladene Pakete belegen viel Platz." + ("" if fix else
+                                                                                   " Mit dem Paket pacman-contrib "
+                                                                                   "(paccache) lässt er sich aufräumen."),
+                             fix))
+    jd = _cmd_out(["journalctl", "--disk-usage"]).strip()
+    m = re.search(r"([\d.]+)([KMGT])", jd)
+    if m and m.group(2) in ("G", "T") and float(m.group(1)) >= 1.5:
+        f.append(finding("warn", f"{m.group(1)}{m.group(2)}", "System-Protokoll", "Das Systemprotokoll ist sehr groß.",
+                         ("Auf 500 MB kürzen", [sudo_step(["journalctl", "--vacuum-size=500M"])])))
+    if not f:
+        f.append(finding("info", "Keine Daten", "Speicher", "Die Belegung ließ sich nicht lesen."))
+    return f
+
+
+def diag_updates():
+    f = []
+    lock = "/var/lib/pacman/db.lck"
+    running = _cmd_out(["pgrep", "-x", "pacman|paru|yay"]) or _cmd_out(["pgrep", "-x", "pacman"]) \
+        or _cmd_out(["pgrep", "-x", "paru"])
+    if os.path.exists(lock):
+        if running.strip():
+            f.append(finding("info", "Läuft gerade", "Paketdatenbank", "Gerade läuft ein anderer pacman-Vorgang. "
+                                                                         "Warte, bis er fertig ist."))
+        else:
+            f.append(finding("danger", "Gesperrt", "Paketdatenbank",
+                             "Die Datenbank ist gesperrt (db.lck), obwohl kein pacman läuft – meist Überbleibsel eines "
+                             "abgebrochenen Updates.", ("Sperre entfernen", [sudo_step(["rm", "-f", lock])])))
+    else:
+        f.append(finding("ok", "Frei", "Paketdatenbank", "Die Paketdatenbank ist nicht gesperrt."))
+    if not tcp_ok("archlinux.org"):
+        f.append(finding("danger", "Nicht erreichbar", "Verbindung",
+                         "archlinux.org ist nicht erreichbar. Prüfe zuerst die Internetverbindung (Diagnose „Internet“)."))
+    mirrors = [l.split("=", 1)[1].strip() for l in _read("/etc/pacman.d/mirrorlist").splitlines()
+               if l.strip().startswith("Server") and "=" in l]
+    if mirrors:
+        host = re.sub(r"^https?://([^/]+).*", r"\1", mirrors[0])
+        if tcp_ok(host, 443 if mirrors[0].startswith("https") else 80, 5):
+            f.append(finding("ok", "Antwortet", "Erster Spiegelserver", f"{host} ist erreichbar."))
+        else:
+            f.append(finding("warn", "Antwortet nicht", "Erster Spiegelserver",
+                             f"{host} antwortet nicht. Ein schnellerer Spiegel lässt sich mit dem Paket reflector "
+                             "auswählen."))
+    try:
+        st = os.statvfs("/")
+        free = st.f_bavail * st.f_frsize
+        if free < 1 << 30:
+            f.append(finding("danger", fmt_bytes(free) + " frei", "Platz auf /",
+                             "Zu wenig freier Platz – Updates brauchen mehrere Hundert MB. Diagnose „Speicher voll“ hilft."))
+    except OSError:
+        pass
+    ntp = _cmd_out(["timedatectl", "show", "-p", "NTPSynchronized", "--value"]).strip()
+    if ntp == "no":
+        f.append(finding("warn", "Nicht synchron", "Uhrzeit",
+                         "Die Uhr ist nicht mit dem Internet abgeglichen. Falsche Zeit führt zu Zertifikats- und "
+                         "Signaturfehlern bei Updates.", ("Zeitabgleich einschalten",
+                                                          [sudo_step(["timedatectl", "set-ntp", "true"])])))
+    return f
+
+
+def diag_printer():
+    f = []
+    hw = hardware_facts()
+    tone, short, detail, pk, extra = printer_advice(hw)
+    fix = None
+    if pk:
+        fix = (install_text("pacman"), [pacman_step(pk)] + ([sudo_step(EXTRA_STEPS[extra][0])] if extra in EXTRA_STEPS
+                                                          else []))
+    elif extra in EXTRA_STEPS:
+        fix = (EXTRA_STEPS[extra][1], [sudo_step(EXTRA_STEPS[extra][0])])
+    f.append(finding(tone, short, "Drucksystem", detail, fix))
+    if tone == "ok":
+        pr = _cmd_out(["lpstat", "-p", "-d"]).strip()
+        if not re.search(r"^printer ", pr, re.M):
+            f.append(finding("warn", "Kein Drucker", "Eingerichtete Drucker",
+                             "Es ist noch kein Drucker eingerichtet. Öffne „system-config-printer“ oder "
+                             "http://localhost:631 und füge ihn hinzu."))
+        else:
+            disabled = re.findall(r"^printer (\S+) disabled", pr, re.M)
+            if disabled:
+                f.append(finding("warn", "Angehalten", "Drucker " + disabled[0],
+                                 "Der Drucker wurde vom System angehalten (oft nach einem Fehler).",
+                                 ("Wieder einschalten", [sudo_step(["cupsenable", disabled[0]])])))
+            else:
+                f.append(finding("ok", "Bereit", "Eingerichtete Drucker",
+                                 ", ".join(re.findall(r"^printer (\S+)", pr, re.M)) + "."))
+        jobs = _cmd_out(["lpstat", "-o"]).strip()
+        if jobs:
+            f.append(finding("warn", f"{len(jobs.splitlines())} Aufträge", "Warteschlange",
+                             "Es hängen Druckaufträge in der Warteschlange – ein klemmender Auftrag blockiert oft alle "
+                             "anderen.", ("Warteschlange leeren", [sudo_step(["cancel", "-a"])])))
+    return f
+
+
+DIAG_SCENARIOS = [
+    ("network", "Internet / WLAN geht nicht", diag_network),
+    ("audio", "Kein Ton", diag_audio),
+    ("bluetooth", "Bluetooth geht nicht", diag_bluetooth),
+    ("graphics", "Bildschirm / Grafik-Probleme", diag_graphics),
+    ("boot", "System startet langsam", diag_boot),
+    ("disk", "Speicher ist voll", diag_disk),
+    ("updates", "Updates schlagen fehl", diag_updates),
+    ("printer", "Drucker druckt nicht", diag_printer),
+]
+# Klassen im Gerätemanager, bei denen ein fehlender Treiber ein echtes Problem ist
+DEVICE_KEY_CLASSES = ("03", "02", "04", "01", "0c03", "0d")
+DEVICE_HIDE_CLASSES = ("0600", "0601", "0604", "0605", "0680", "0c05", "0c80", "1180", "0807", "0805")
+
+
+def device_list(show_all=False):
+    """[(Name, Art, Treiber, Ton)] – PCI-Geräte mit Kernel-Treiber, danach USB-Geräte (ohne Hubs)."""
+    rows = []
+    for d in parse_lspci(_cmd_out(["lspci", "-nnk"], 10)):
+        if not show_all and d["class_id"] in DEVICE_HIDE_CLASSES:
+            continue
+        key = d["class_id"].startswith(DEVICE_KEY_CLASSES)
+        tone = "ok" if d["driver"] else ("warn" if key else "off")
+        rows.append((d["name"], d["cls"], d["driver"] or "kein Treiber geladen", tone))
+    for vid, name in parse_lsusb(_cmd_out(["lsusb"], 10)):
+        if vid.startswith("1d6b"):
+            continue
+        rows.append((name or vid, "USB", "—", "off"))
+    return rows
+
+
+class DiagnoseTab(Page):
+    def __init__(self, app):
+        super().__init__()
+        self.app = app
+        self.running = False
+        self.last = None
+        self.badge = StatusBadge("off", "Bereit")
+        self.lay.addLayout(page_header("Diagnose", self.badge))
+        self.lay.addWidget(Label("Wähle, was nicht funktioniert. Tuxdex prüft die üblichen Ursachen und erklärt in "
+                                 "einfachen Worten, was los ist – wo es geht, mit einem Knopf zur Behebung.",
+                                 "Hint", wrap=True))
+        sc = Panel("Was funktioniert nicht?")
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(8)
+        grid.setVerticalSpacing(8)
+        self.sc_btns = {}
+        for i, (key, text, _fn) in enumerate(DIAG_SCENARIOS):
+            b = Button(text, "ghost", lambda _=False, k=key: self.run(k))
+            b.setMinimumHeight(40)
+            grid.addWidget(b, i // 2, i % 2)
+            self.sc_btns[key] = b
+        sc.body.addLayout(grid)
+        self.lay.addWidget(sc)
+
+        self.res = Panel("Ergebnis")
+        self.res_box = QVBoxLayout()
+        self.res_box.setSpacing(4)
+        self.res.body.addLayout(self.res_box)
+        self.res_hint = Label("Noch keine Prüfung gestartet.", "Muted")
+        self.res_box.addWidget(self.res_hint)
+        self.lay.addWidget(self.res)
+
+        dev = Panel("Gerätemanager")
+        top = QHBoxLayout()
+        self.cb_all = QCheckBox("Auch Brücken und Systemchips zeigen")
+        self.cb_all.toggled.connect(lambda _=False: self.load_devices())
+        top.addWidget(self.cb_all)
+        top.addStretch(1)
+        top.addWidget(Button("↻", "icon", self.load_devices, "Neu einlesen"))
+        dev.body.addLayout(top)
+        self.dev_table = QTableWidget(0, 3)
+        self.dev_table.setHorizontalHeaderLabels(["GERÄT", "ART", "TREIBER"])
+        self.dev_table.verticalHeader().setVisible(False)
+        self.dev_table.setShowGrid(False)
+        self.dev_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.dev_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.dev_table.verticalHeader().setDefaultSectionSize(30)
+        hh = self.dev_table.horizontalHeader()
+        hh.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        hh.setStretchLastSection(True)
+        self.dev_table.setColumnWidth(0, 440)
+        self.dev_table.setColumnWidth(1, 270)
+        self.dev_table.setMinimumHeight(300)
+        dev.body.addWidget(self.dev_table)
+        dev.body.addWidget(Label("Gelb markiert: Für dieses Gerät ist kein Treiber geladen – bei Grafik, Netzwerk und "
+                                 "Audio ist das meist ein Problem; bei Chips und Brücken ist es oft normal.",
+                                 "Hint", wrap=True))
+        self.lay.addWidget(dev)
+
+        out = Panel("Ausgabe")
+        self.log = LogView(120)
+        out.body.addWidget(self.log)
+        self.lay.addWidget(out)
+        self.load_devices()
+
+    # ---- Gerätemanager ------------------------------------------------------
+    def load_devices(self):
+        show_all = self.cb_all.isChecked()
+
+        def worker():
+            rows = device_list(show_all)
+            ui(lambda: self._fill_devices(rows))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _fill_devices(self, rows):
+        self.dev_table.setRowCount(len(rows))
+        for r, (name, kind, drv, tone) in enumerate(rows):
+            for c, v in enumerate((name, kind, drv)):
+                it = QTableWidgetItem(v)
+                if tone == "warn":
+                    it.setForeground(QColor(COLORS["warn"]))
+                elif tone == "off" and c == 2:
+                    it.setForeground(QColor(COLORS["muted"]))
+                self.dev_table.setItem(r, c, it)
+
+    # ---- Diagnose -----------------------------------------------------------
+    def run(self, key):
+        if self.running:
+            return
+        fn = next(f for k, _t, f in DIAG_SCENARIOS if k == key)
+        title = next(t for k, t, _f in DIAG_SCENARIOS if k == key)
+        self.running = True
+        self.last = key
+        self.badge.set("info", "Prüfe …")
+        clear_layout(self.res_box)
+        self.res_box.addWidget(Label(f"Prüfe: {title} …", "Muted"))
+        for b in self.sc_btns.values():
+            b.setEnabled(False)
+
+        def worker():
+            try:
+                res = fn()
+            except Exception as e:
+                res = [finding("danger", "Fehler", "Die Prüfung ist fehlgeschlagen", str(e))]
+            ui(lambda: self._show(title, res))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _show(self, title, res):
+        self.running = False
+        for b in self.sc_btns.values():
+            b.setEnabled(True)
+        clear_layout(self.res_box)
+        for fd in res:
+            row = CheckRow(fd["title"])
+            row.badge.setFixedWidth(150)
+            action = cb = None
+            if fd["fix"]:
+                action = fd["fix"][0]
+                cb = lambda steps=fd["fix"][1], lbl=fd["fix"][0]: self.fix(lbl, steps)
+            row.set(fd["tone"], fd["short"], fd["detail"], action, cb)
+            row.detail.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            self.res_box.addWidget(row)
+        bad = [f for f in res if f["tone"] in ("warn", "danger")]
+        if bad:
+            self.badge.set("danger" if any(f["tone"] == "danger" for f in bad) else "warn",
+                           f"{len(bad)} Auffälligkeit(en)")
+        else:
+            self.badge.set("ok", "Nichts Auffälliges")
+            self.res_box.addWidget(Label("Hier wurde nichts Auffälliges gefunden. Hilft das nicht, schau im Tab "
+                                         "„Sicherheit“ → Checkliste nach oder beschreibe das Problem in einem Issue.",
+                                         "Hint", wrap=True))
+
+    def fix(self, label, steps):
+        text = "\n".join(s["label"] for s in steps)
+        if not ask_confirm(self, label, f"Ausführen?\n\n{text}", "Ausführen"):
+            return
+        if any(s["needs_sudo"] for s in steps) and not self.app.priv.ensure(self):
+            return
+        self.log.set_text("")
+
+        def done():
+            self.log.append_text("\nFertig – die Prüfung läuft noch einmal.\n")
+            if self.last:
+                self.run(self.last)
+        run_sequence(steps, self.log, on_all_done=done)
+
+
+
+# --------------------------------------------------------------------------
+# Modul: Windows-Daten (Windows-Laufwerk lesend einhängen und eigene Dateien übernehmen)
+# --------------------------------------------------------------------------
+
+WIN_SKIP_USERS = {"public", "default", "default user", "all users", "defaultuser0", "desktop.ini"}
+# (Schlüssel, Windows-Ordnernamen, Anzeigename, XDG-Name für „in meine Ordner“, Standardordner)
+WIN_FOLDERS = [
+    ("desktop", ("Desktop",), "Desktop", "DESKTOP", "Desktop"),
+    ("documents", ("Documents", "Dokumente", "Eigene Dateien"), "Dokumente", "DOCUMENTS", "Documents"),
+    ("pictures", ("Pictures", "Bilder", "Eigene Bilder"), "Bilder", "PICTURES", "Pictures"),
+    ("videos", ("Videos", "Eigene Videos"), "Videos", "VIDEOS", "Videos"),
+    ("music", ("Music", "Musik", "Eigene Musik"), "Musik", "MUSIC", "Music"),
+    ("downloads", ("Downloads",), "Downloads", "DOWNLOAD", "Downloads"),
+]
+WIN_EXCLUDES = ["desktop.ini", "Thumbs.db", "$RECYCLE.BIN", "System Volume Information", "*.tmp", "~$*"]
+MS_BASIC_DATA = "ebd0a0a2-b9e5-4433-87c0-68b6b72699c7"
+
+
+def windows_partitions():
+    """NTFS- und BitLocker-Partitionen: [{path, size, label, fstype, mounts, uuid, partlabel, hint}]"""
+    try:
+        data = json.loads(subprocess.run(
+            ["lsblk", "-J", "-b", "-o", "PATH,SIZE,TYPE,FSTYPE,LABEL,PARTLABEL,PARTTYPE,UUID,MOUNTPOINTS,RM"],
+            capture_output=True, text=True, timeout=10).stdout or "{}")
+    except Exception:
+        return []
+    res, stack = [], list(data.get("blockdevices", []))
+    while stack:
+        n = stack.pop(0)
+        stack += n.get("children") or []
+        fs = (n.get("fstype") or "")
+        if n.get("type") not in ("part", "loop") or fs.lower() not in ("ntfs", "ntfs3", "bitlocker"):
+            continue
+        try:
+            size = int(n.get("size") or 0)
+        except (TypeError, ValueError):
+            size = 0
+        label = n.get("label") or n.get("partlabel") or ""
+        res.append({"path": n["path"], "size": size, "label": label, "fstype": fs, "uuid": n.get("uuid") or "",
+                    "mounts": [m for m in (n.get("mountpoints") or []) if m],
+                    "hint": bool(re.search(r"windows|win", label, re.I)) or size > 40 << 30})
+    return sorted(res, key=lambda d: d["path"])
+
+
+def efi_windows():
+    """True, wenn ein Windows-Bootmanager gefunden wird (EFI-Ordner oder Bootmenü-Eintrag)."""
+    for d in ("/boot/efi/EFI/Microsoft", "/efi/EFI/Microsoft", "/boot/EFI/Microsoft"):
+        if os.path.isdir(d):
+            return True
+    return "windows boot manager" in _cmd_out(["efibootmgr"]).lower()
+
+
+def is_windows_root(mnt):
+    return os.path.isdir(os.path.join(mnt, "Windows", "System32")) or os.path.isdir(os.path.join(mnt, "WINDOWS", "system32"))
+
+
+def mount_error_text(err):
+    low = err.lower()
+    if "hibernat" in low or "fast restart" in low or "unclean" in low or "dirty" in low or "inconsistent" in low:
+        return ("Windows wurde nicht sauber heruntergefahren (Schnellstart oder Ruhezustand). Starte Windows einmal "
+                "neu (nicht „Herunterfahren“) oder schalte den Schnellstart aus, dann klappt das Einhängen.")
+    if "bitlocker" in low:
+        return "Das Laufwerk ist mit BitLocker verschlüsselt und lässt sich hier nicht lesen."
+    if "not authorized" in low or "permission" in low:
+        return "Keine Berechtigung zum Einhängen – melde dich in Tuxdex mit dem sudo-Passwort an und versuche es erneut."
+    return err.strip().splitlines()[-1] if err.strip() else "Das Einhängen ist fehlgeschlagen."
+
+
+def mount_windows(dev, sudo_ok):
+    """Hängt dev nur lesend ein. Rückgabe (ok, Einhängepunkt oder Fehlertext)."""
+    err = ""
+    if which("udisksctl"):
+        try:
+            r = subprocess.run(["udisksctl", "mount", "-b", dev, "-o", "ro"], capture_output=True, text=True,
+                               timeout=60)
+            m = re.search(r"at (\S.*?)\.?\s*$", r.stdout.strip())
+            if r.returncode == 0 and m:
+                return True, m.group(1).strip()
+            if r.returncode == 0:
+                return False, "Eingehängt, aber der Ordner ließ sich nicht ermitteln."
+            if "already mounted" in (r.stderr + r.stdout).lower():
+                mp = _cmd_out(["findmnt", "-n", "-o", "TARGET", "--source", dev]).strip().splitlines()
+                if mp:
+                    return True, mp[0]
+            err = r.stderr or r.stdout
+        except Exception as e:
+            err = str(e)
+    if not sudo_ok:
+        return False, mount_error_text(err)
+    user = os.environ.get("USER") or "user"
+    mnt = f"/run/media/{user}/tuxdex-windows-{os.path.basename(dev)}"
+    for cmd in (["mkdir", "-p", mnt],
+                ["mount", "-t", "ntfs3", "-o", f"ro,uid={os.getuid()},gid={os.getgid()},nosuid,nodev", dev, mnt]):
+        rc, _o, e = sudo_run(cmd)
+        if rc != 0:
+            return False, mount_error_text(e)
+    return True, mnt
+
+
+def unmount_windows(dev, mnt, sudo_ok):
+    if which("udisksctl"):
+        r = subprocess.run(["udisksctl", "unmount", "-b", dev], capture_output=True, text=True, timeout=60)
+        if r.returncode == 0:
+            return True, ""
+    if sudo_ok:
+        rc, _o, e = sudo_run(["umount", "--", mnt])
+        if rc == 0:
+            return True, ""
+        return False, e.strip()
+    return False, "Aushängen nicht möglich."
+
+
+def windows_profiles(mnt):
+    """[{user, path, folders: [(Schlüssel, Pfad, Anzeigename)], onedrive}] – die Benutzerordner unter <mnt>/Users."""
+    users = os.path.join(mnt, "Users")
+    if not os.path.isdir(users):
+        users = os.path.join(mnt, "users")
+    res = []
+    try:
+        names = sorted(os.listdir(users))
+    except OSError:
+        return res
+    for n in names:
+        p = os.path.join(users, n)
+        if n.lower() in WIN_SKIP_USERS or not os.path.isdir(p):
+            continue
+        folders = []
+        try:
+            entries = {e.lower(): e for e in os.listdir(p)}
+        except OSError:
+            continue
+        for key, names_, label, _xdg, _dflt in WIN_FOLDERS:
+            for cand in names_:
+                if cand.lower() in entries and os.path.isdir(os.path.join(p, entries[cand.lower()])):
+                    folders.append((key, os.path.join(p, entries[cand.lower()]), label))
+                    break
+        if folders:
+            res.append({"user": n, "path": p, "folders": folders,
+                        "onedrive": any(e.startswith("onedrive") for e in entries)})
+    return res
+
+
+def xdg_dir(name, default):
+    d = _cmd_out(["xdg-user-dir", name]).strip()
+    return d if d and d != os.path.expanduser("~") else os.path.join(os.path.expanduser("~"), default)
+
+
+def copy_folder(src, dest, on_progress, cancel):
+    """Kopiert src nach dest (nur Neues – vorhandene Dateien werden nie überschrieben). Rückgabe (rc, Fehlerzeilen)."""
+    os.makedirs(dest, exist_ok=True)
+    cmd = ["rsync", "-rt", "--no-perms", "--ignore-existing", "--info=progress2", "--no-inc-recursive",
+           "--partial"] + [f"--exclude={e}" for e in WIN_EXCLUDES] + [src.rstrip("/") + "/", dest.rstrip("/") + "/"]
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env={**os.environ, "LC_ALL": "C"})
+    errs = []
+    threading.Thread(target=lambda: errs.extend(p.stderr.read().decode(errors="replace").splitlines()),
+                     daemon=True).start()
+    buf = b""
+    while True:
+        if cancel.is_set():
+            p.terminate()
+            break
+        ch = p.stdout.read1(4096) if hasattr(p.stdout, "read1") else p.stdout.read(4096)
+        if not ch:
+            break
+        buf += ch
+        *lines, buf = re.split(rb"[\r\n]", buf)
+        for ln in lines:
+            m = BackupJob.RSYNC_RE.match(ln.decode(errors="replace"))
+            if m:
+                on_progress(int(m.group(2)), m.group(3))
+    rc = p.wait()
+    time.sleep(0.1)
+    return rc, errs
+
+
+class WindowsTab(Page):
+    def __init__(self, app):
+        super().__init__()
+        self.app = app
+        self.mounted = {}           # Gerät -> Einhängepunkt (von Tuxdex eingehängt)
+        self.profiles = []
+        self.checks = {}            # (Benutzer, Schlüssel) -> QCheckBox
+        self.running = False
+        self.cancel_ev = None
+
+        self.badge = StatusBadge("off", "Prüfe …")
+        self.lay.addLayout(page_header("Windows-Daten", self.badge, Button("↻", "icon", self.refresh, "Neu einlesen")))
+        self.lay.addWidget(Label("Hol deine Dateien von einer früheren Windows-Installation: Tuxdex findet das "
+                                 "Windows-Laufwerk, hängt es nur lesend ein (es wird nichts verändert) und kopiert "
+                                 "Dokumente, Bilder, Videos, Musik, Downloads und Desktop auf Wunsch zu dir.",
+                                 "Hint", wrap=True))
+
+        self.det = Panel("Windows erkennen")
+        self.det_box = QVBoxLayout()
+        self.det.body.addLayout(self.det_box)
+        self.lay.addWidget(self.det)
+
+        self.drv = Panel("Windows-Laufwerke")
+        self.drv_box = QVBoxLayout()
+        self.drv_box.setSpacing(4)
+        self.drv.body.addLayout(self.drv_box)
+        self.lay.addWidget(self.drv)
+
+        self.files = Panel("Deine Dateien übernehmen")
+        self.files_box = QVBoxLayout()
+        self.files_box.setSpacing(6)
+        self.files.body.addLayout(self.files_box)
+        self.files_note = Label("Hänge zuerst ein Windows-Laufwerk ein.", "Muted", wrap=True)
+        self.files_box.addWidget(self.files_note)
+        self.dest_cb = QComboBox()
+        self.dest_cb.setMinimumHeight(38)
+        self.dest_cb.addItem("In einen eigenen Ordner (~/Windows-Import/Benutzer/…) – am übersichtlichsten", "own")
+        self.dest_cb.addItem("In meine Ordner einsortieren (Dokumente, Bilder, Videos …)", "mine")
+        self.files.body.addLayout(Field("Wohin kopieren?", self.dest_cb))
+        brow = QHBoxLayout()
+        self.b_copy = Button("Kopieren starten", "primary", self.start_copy)
+        self.b_cancel = Button("Abbrechen", "danger", self.cancel)
+        self.b_cancel.hide()
+        brow.addWidget(self.b_copy)
+        brow.addWidget(self.b_cancel)
+        brow.addStretch(1)
+        self.files.body.addLayout(brow)
+        self.bar = ProgressBar()
+        self.bar.hide()
+        self.files.body.addWidget(self.bar)
+        self.status = Label("", "Hint", wrap=True)
+        self.files.body.addWidget(self.status)
+        self.files.body.addWidget(Label("Vorhandene Dateien bei dir werden nie überschrieben. Dateien in OneDrive "
+                                        "liegen manchmal nur als Platzhalter vor und sind dann nicht auf der Platte.",
+                                        "Hint", wrap=True))
+        self.lay.addWidget(self.files)
+
+        out = Panel("Ausgabe")
+        self.log = LogView(120)
+        out.body.addWidget(self.log)
+        self.lay.addWidget(out)
+        self.refresh()
+
+    # ---- Erkennen -----------------------------------------------------------
+    def refresh(self):
+        def worker():
+            parts, efi = windows_partitions(), efi_windows()
+            grub = bool(which("grub-mkconfig"))
+            prober = bool(which("os-prober"))
+            ui(lambda: self._render(parts, efi, grub, prober))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _render(self, parts, efi, grub, prober):
+        clear_layout(self.det_box)
+        clear_layout(self.drv_box)
+        row = CheckRow("Windows-Bootmanager")
+        if efi:
+            row.set("info", "Gefunden", "Windows ist als Startoption eingetragen (Dual-Boot oder noch installiert).")
+        else:
+            row.set("off", "Nicht gefunden", "Kein Windows-Bootmanager gefunden – Windows ist nicht (mehr) als "
+                                             "Startoption eingetragen.")
+        self.det_box.addWidget(row)
+        if efi and grub and not prober:
+            r2 = CheckRow("GRUB und Windows")
+            r2.set("info", "Tipp", "Damit GRUB Windows im Startmenü zeigt, braucht es das Paket os-prober "
+                                    "(danach grub-mkconfig ausführen).", install_text("pacman"),
+                   lambda: self._install_pkgs(["os-prober"]))
+            self.det_box.addWidget(r2)
+        if not parts:
+            self.drv_box.addWidget(Label("Es wurde keine NTFS-Partition gefunden. Steck die Platte an oder klicke "
+                                         "auf ↻.", "Muted", wrap=True))
+            self.badge.set("off", "Kein Windows-Laufwerk")
+            return
+        self.badge.set("ok", f"{len(parts)} Laufwerk(e)")
+        for d in parts:
+            title = f"{d['label'] or 'Ohne Namen'} · {fmt_bytes(d['size'])} · {d['path']}"
+            r = CheckRow(title)
+            mnt = d["mounts"][0] if d["mounts"] else self.mounted.get(d["path"])
+            if d["fstype"].lower() == "bitlocker":
+                r.set("danger", "BitLocker", "Das Laufwerk ist mit BitLocker verschlüsselt. Entschlüssle es unter "
+                                             "Windows (oder mit dislocker), bevor du Dateien holst.")
+            elif mnt:
+                win = is_windows_root(mnt)
+                r.set("ok", "Eingehängt", f"{short_path(mnt)}" + (" · Windows-Systemlaufwerk" if win else ""),
+                      "Daten zeigen", lambda dv=d["path"], m=mnt: self._load_profiles(dv, m))
+            else:
+                r.set("info", "Nicht eingehängt", "Wird nur lesend eingehängt." + (" Sieht nach Windows aus." if d["hint"]
+                                                                                else ""),
+                      "Lesend einhängen", lambda dv=d["path"]: self.mount(dv))
+            self.drv_box.addWidget(r)
+            if mnt and d["fstype"].lower() != "bitlocker" and d["path"] in self.mounted:
+                u = CheckRow("")
+                u.badge.hide()
+                u.detail.setText("")
+                u.set("off", "", "", "Aushängen", lambda dv=d["path"], m=mnt: self.unmount(dv, m))
+                self.drv_box.addWidget(u)
+
+    def _install_pkgs(self, pkgs):
+        if not ask_confirm(self, "Installieren", f"pacman: {', '.join(pkgs)}", install_text("pacman")):
+            return
+        if not self.app.priv.ensure(self):
+            return
+        run_sequence([{"cmd": ["pacman", "-S", "--needed", "--"] + pkgs, "needs_sudo": True, "interactive": True,
+                       "label": "sudo pacman -S " + " ".join(pkgs)}], self.log, on_all_done=self.refresh)
+
+    # ---- Einhängen ------------------------------------------------------------
+    def mount(self, dev):
+        self.badge.set("info", "Hänge ein …")
+        sudo_ok = self.app.priv.is_authenticated_nonblocking()
+
+        def worker():
+            ok, res = mount_windows(dev, sudo_ok)
+            ui(lambda: self._mounted(dev, ok, res))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _mounted(self, dev, ok, res):
+        if not ok:
+            if "sudo-Passwort" in res and self.app.priv.ensure(self):
+                self.mount(dev)
+                return
+            self.log.set_text("")
+            self.log.append_text(f"error: {res}\n")
+            show_warning(self, "Einhängen", res)
+            self.refresh()
+            return
+        self.mounted[dev] = res
+        self.log.set_text(f"$ {dev} → {res} (nur lesen)\n")
+        self.refresh()
+        self._load_profiles(dev, res)
+
+    def unmount(self, dev, mnt):
+        sudo_ok = self.app.priv.is_authenticated_nonblocking()
+
+        def worker():
+            ok, err = unmount_windows(dev, mnt, sudo_ok)
+            ui(lambda: (self.mounted.pop(dev, None) if ok else None, self.refresh() if ok else
+                        show_warning(self, "Aushängen", err or "Aushängen fehlgeschlagen.")))
+        threading.Thread(target=worker, daemon=True).start()
+
+    # ---- Benutzerordner ---------------------------------------------------------
+    def _load_profiles(self, dev, mnt):
+        self.files_note.setText(f"Suche Benutzerordner in {short_path(mnt)} …")
+
+        def worker():
+            profs = windows_profiles(mnt)
+            sizes = {}
+            for p in profs:
+                for key, path, _lbl in p["folders"]:
+                    sizes[path] = dir_size(path)[0]
+            ui(lambda: self._show_profiles(profs, sizes, mnt))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _show_profiles(self, profs, sizes, mnt):
+        self.profiles = profs
+        clear_layout(self.files_box)
+        self.checks = {}
+        if not profs:
+            self.files_note = Label("Hier wurden keine Windows-Benutzerordner gefunden (Ordner „Users“). Falls es das "
+                                    "Systemlaufwerk ist, wähle das Laufwerk mit dem Ordner „Windows“.", "Muted",
+                                    wrap=True)
+            self.files_box.addWidget(self.files_note)
+            return
+        for p in profs:
+            head = Label(f"Benutzer „{p['user']}“", "PanelTitle")
+            self.files_box.addWidget(head)
+            for key, path, label in p["folders"]:
+                sz = sizes.get(path)
+                cb = QCheckBox(f"{label}  ·  {fmt_bytes(sz) if sz is not None else '—'}")
+                cb.setChecked(key in ("documents", "pictures", "desktop"))
+                self.files_box.addWidget(cb)
+                self.checks[(p["user"], key, path)] = cb
+            if p["onedrive"]:
+                self.files_box.addWidget(Label("Dieser Benutzer hat OneDrive – Dateien dort können reine "
+                                               "Cloud-Platzhalter sein.", "Hint", wrap=True))
+
+    # ---- Kopieren ---------------------------------------------------------------
+    def start_copy(self):
+        if self.running:
+            return
+        picks = [(u, k, path) for (u, k, path), cb in self.checks.items() if cb.isChecked()]
+        if not picks:
+            show_info(self, "Dateien übernehmen", "Bitte mindestens einen Ordner ankreuzen.")
+            return
+        mine = self.dest_cb.currentData() == "mine"
+        jobs = []
+        for u, k, path in picks:
+            if mine:
+                _k, _n, label, xdg, dflt = next(f for f in WIN_FOLDERS if f[0] == k)
+                dest = xdg_dir(xdg, dflt)
+            else:
+                label = next(f[2] for f in WIN_FOLDERS if f[0] == k)
+                dest = os.path.join(os.path.expanduser("~"), "Windows-Import", u, label)
+            jobs.append((path, dest, f"{u} → {label}"))
+        total = sum((dir_size(p)[0] or 0) for p, _d, _l in jobs)
+        try:
+            st = os.statvfs(os.path.expanduser("~"))
+            free = st.f_bavail * st.f_frsize
+        except OSError:
+            free = None
+        if free is not None and total > free:
+            show_warning(self, "Zu wenig Platz", f"Die Auswahl ist {fmt_bytes(total)} groß, bei dir sind nur "
+                                                 f"{fmt_bytes(free)} frei.")
+            return
+        if not ask_confirm(self, "Dateien übernehmen", "Kopieren (" + fmt_bytes(total) + "):\n\n"
+                           + "\n".join(f"{l} → {short_path(d)}" for _p, d, l in jobs)
+                           + "\n\nVorhandene Dateien werden nicht überschrieben.", "Kopieren"):
+            return
+        self.running = True
+        self.cancel_ev = threading.Event()
+        self.b_copy.hide()
+        self.b_cancel.show()
+        self.bar.show()
+        self.log.set_text("")
+        cancel = self.cancel_ev
+
+        def log(t):
+            ui(lambda: self.log.append_text(t))
+
+        def worker():
+            problems = 0
+            for i, (src, dest, label) in enumerate(jobs, 1):
+                if cancel.is_set():
+                    break
+                ui(lambda l=label, i=i: self._phase(f"({i}/{len(jobs)}) {l} …", None))
+                log(f"$ rsync {short_path(src)} → {short_path(dest)}\n")
+                rc, errs = copy_folder(src, dest, lambda pct, spd, l=label, i=i: ui(
+                    lambda: self._phase(f"({i}/{len(jobs)}) {l} · {spd}", pct)), cancel)
+                if rc not in (0, 23, 24):
+                    problems += 1
+                for e in errs[:8]:
+                    log(e + "\n")
+                if rc in (23, 24):
+                    problems += 1
+                    log("Einige Dateien ließen sich nicht lesen (siehe oben).\n")
+            ui(lambda: self._finished(problems, cancel.is_set()))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _phase(self, text, pct):
+        self.status.setText(text)
+        self.bar.set(pct, "" if pct is None else f"{pct} %")
+
+    def cancel(self):
+        if self.cancel_ev:
+            self.cancel_ev.set()
+
+    def _finished(self, problems, cancelled):
+        self.running = False
+        self.b_cancel.hide()
+        self.b_copy.show()
+        if cancelled:
+            self.status.setText("Abgebrochen – bereits kopierte Dateien bleiben erhalten.")
+            self.bar.hide()
+        elif problems:
+            self.status.setText("Fertig, aber einige Dateien ließen sich nicht übernehmen – Details im Ausgabefeld.")
+            self.bar.set(100, "100 %")
+        else:
+            self.status.setText("Fertig – alle ausgewählten Dateien sind bei dir.")
+            self.bar.set(100, "100 %")
+        self.log.append_text("\n[Fertig]\n")
+
+
+
+# --------------------------------------------------------------------------
 # Modul: USB-Stick (Abbilder auf einen Stick schreiben)
 # --------------------------------------------------------------------------
 
@@ -7959,6 +9293,7 @@ def clear_layout(lay):
     while lay.count():
         it = lay.takeAt(0)
         if it.widget():
+            it.widget().hide()               # sofort unsichtbar – deleteLater räumt erst später auf
             it.widget().deleteLater()
         elif it.layout():
             clear_layout(it.layout())
@@ -15937,6 +17272,9 @@ class SettingsPage(Page):
         mods.setVerticalSpacing(6)
         desc = {
             "update": "Updates prüfen und einspielen (pacman, AUR, Flatpak), Major-Updates erkennen",
+            "drivers": "Grafikkarte, WLAN, Bluetooth und Drucker erkennen und per Klick einrichten",
+            "diagnose": "Fehlersuche in Klartext (Internet, Ton, Bluetooth, Grafik, Start …) plus Gerätemanager",
+            "windows": "Windows-Laufwerk lesend einhängen und eigene Dateien übernehmen",
             "software": "Pakete mit Icons, Größe, Version und Datum – per Kästchen auswählen und entfernen",
             "flatpak": "Flatpak-Apps und ihre Rechte (Dateien, Geräte, Netzwerk …) wie mit Flatseal",
             "disks": "Laufwerke einhängen, umbenennen, prüfen, formatieren, sicher entfernen",
@@ -16170,7 +17508,7 @@ class MainWindow(QWidget):
         # Tabs werden erst beim ersten Öffnen gebaut (spart RAM und Startzeit);
         # bis dahin steht ein leerer Platzhalter im Stack, damit die Indizes stimmen.
         self.page_classes = {
-            "update": UpdaterTab, "software": SoftwareTab, "flatpak": FlatpakTab, "swap": SwapTab, "restore": RestoreTab, "setup": SetupTab,
+            "update": UpdaterTab, "software": SoftwareTab, "flatpak": FlatpakTab, "swap": SwapTab, "restore": RestoreTab, "setup": SetupTab, "drivers": DriversTab, "diagnose": DiagnoseTab, "windows": WindowsTab,
             "disks": DisksTab, "flash": FlashTab, "storage": StorageTab, "backup": BackupTab, "tasks": TaskTab, "antivirus": AntivirusTab,
             "security": SecurityTab, "users": UsersTab,
         }
@@ -17543,6 +18881,247 @@ EN = {
     'makepkg (Paket pacman, Gruppe base-devel) wird benötigt.': 'makepkg (package pacman, group base-devel) is required.',
     'makepkg fehlt': 'makepkg missing',
     'Bauwerkzeuge fehlen': 'Build tools missing',
+    'Ausführen?\n\n{}': 'Run?\n\n{}',
+    'Windows-Daten': 'Windows data',
+    'Grafikkarte': 'Graphics card',
+    'WLAN': 'Wi-Fi',
+    'Drucker': 'Printer',
+    'Hardware neu einlesen': 'Re-read hardware',
+    'Tuxdex erkennt deine Hardware und richtet die passenden Treiber mit einem Klick ein – Grafikkarte, WLAN, Bluetooth und Drucker. Installiert wird aus den Arch-Paketquellen (pacman).': 'Tuxdex detects your hardware and sets up the matching drivers with one click – graphics card, Wi-Fi, Bluetooth and printer. Installed from the Arch repositories (pacman).',
+    'Treiber einrichten': 'Set up drivers',
+    'WLAN-Adapter': 'Wi-Fi adapter',
+    'Bluetooth-Adapter': 'Bluetooth adapter',
+    'Drucksystem': 'Printing system',
+    'Es wurde keine Grafikkarte erkannt (lspci fehlt? Paket pciutils).': 'No graphics card was detected (lspci missing? package pciutils).',
+    'Es wurde keine Grafikkarte erkannt (Paket pciutils).': 'No graphics card was detected (package pciutils).',
+    'Treiber aktiv': 'Driver active',
+    'Treiber fehlt': 'Driver missing',
+    'Pakete fehlen': 'Packages missing',
+    'Kein Treiber': 'No driver',
+    'Open-Source-Treiber': 'Open-source driver',
+    '{}: Der NVIDIA-Treiber ist installiert und aktiv.{}': '{}: The NVIDIA driver is installed and active.{}',
+    ' Hybrid-Laptop (Intel/AMD + NVIDIA): Für „Programm mit der NVIDIA-Karte starten“ hilft `prime-run` aus dem Paket nvidia-prime.': ' Hybrid laptop (Intel/AMD + NVIDIA): to run a program on the NVIDIA card, `prime-run` from the package nvidia-prime helps.',
+    '{}: Aktiv ist der freie Treiber „{}“. Für Spiele, Videoschnitt und CUDA brauchst du den NVIDIA-Treiber. Danach ist ein Neustart nötig.': '{}: The free driver "{}" is active. For games, video editing and CUDA you need the NVIDIA driver. A restart is needed afterwards.',
+    '{}: Diese ältere NVIDIA-Karte läuft mit dem freien Treiber „nouveau“ ohne Zusatz. Der aktuelle NVIDIA-Treiber unterstützt sie nicht mehr; ein Legacy-Treiber (z. B. nvidia-580xx-dkms) liegt im AUR.': '{}: This older NVIDIA card runs with the free driver "nouveau" without anything extra. The current NVIDIA driver no longer supports it; a legacy driver (e.g. nvidia-580xx-dkms) is in the AUR.',
+    '{}: Der AMD-Treiber (amdgpu) mit Vulkan läuft.': '{}: The AMD driver (amdgpu) with Vulkan is running.',
+    '{}: Treiber läuft, aber für Spiele und Videobeschleunigung fehlt: {}.': '{}: Driver is running, but for games and video acceleration this is missing: {}.',
+    '{}: Treiber läuft, für Spiele und Videobeschleunigung fehlt: {}.': '{}: Driver is running, for games and video acceleration this is missing: {}.',
+    '{}: Es ist kein Grafiktreiber aktiv.': '{}: No graphics driver is active.',
+    '{}: Der Intel-Treiber ({}) mit Vulkan läuft.': '{}: The Intel driver ({}) with Vulkan is running.',
+    'Kein WLAN': 'No Wi-Fi',
+    'Es wurde kein WLAN-Adapter gefunden (z. B. Desktop ohne WLAN-Karte). Ein USB-WLAN-Stick wird nach dem Einstecken erkannt.': 'No Wi-Fi adapter was found (e.g. desktop without a Wi-Fi card). A USB Wi-Fi stick is detected once plugged in.',
+    'Hardware-Schalter': 'Hardware switch',
+    'WLAN ist per Schalter/Funktionstaste am Gerät abgeschaltet (Flugmodus-Taste). Schalte es dort wieder ein.': 'Wi-Fi is turned off by a switch/function key on the device (airplane-mode key). Turn it back on there.',
+    'WLAN ist per Software blockiert (Flugmodus).': 'Wi-Fi is blocked by software (airplane mode).',
+    'Firmware fehlt?': 'Firmware missing?',
+    '{}: Intel-WLAN braucht die Firmware aus linux-firmware': '{}: Intel Wi-Fi needs the firmware from linux-firmware',
+    ' (ist installiert – dann hilft meist ein Neustart nach einem Kernel-Update).': ' (it is installed – then a restart after a kernel update usually helps).',
+    '{}: Für viele Realtek-WLAN-Chips fehlt im Kernel der Treiber. Meist hilft ein Paket aus dem AUR (z. B. rtw89-dkms oder rtl88xxau-dkms) – im Tab „Software“ installierbar.': '{}: Many Realtek Wi-Fi chips lack a driver in the kernel. A package from the AUR usually helps (e.g. rtw89-dkms or rtl88xxau-dkms) – installable in the "Software" tab.',
+    'Kein Adapter aktiv': 'No adapter active',
+    '{}: Der Chip wurde erkannt, aber es gibt keine WLAN-Verbindung dazu – vermutlich fehlen Treiber oder Firmware.': "{}: The chip was detected, but there's no Wi-Fi connection for it – probably a driver or firmware is missing.",
+    '{}: Broadcom-Chips brauchen meist einen Zusatztreiber.': '{}: Broadcom chips usually need an extra driver.',
+    'WLAN-Adapter {} ist da': 'Wi-Fi adapter {} is there',
+    ' ist da': ' is there',
+    'Kein Bluetooth': 'No Bluetooth',
+    'Es wurde kein Bluetooth-Adapter gefunden.': 'No Bluetooth adapter was found.',
+    'Bluetooth-Hardware ist da, aber es fehlt: {}.': 'Bluetooth hardware is there, but this is missing: {}.',
+    'Bluetooth ist per Schalter am Gerät abgeschaltet.': 'Bluetooth is turned off by a switch on the device.',
+    'Bluetooth ist per Software blockiert (Flugmodus).': 'Bluetooth is blocked by software (airplane mode).',
+    'Der Bluetooth-Dienst läuft nicht.': "The Bluetooth service isn't running.",
+    'Bluetooth ist bereit': 'Bluetooth is ready',
+    'Das Drucksystem CUPS ist nicht installiert.': "The printing system CUPS isn't installed.",
+    'CUPS ist da, für den HP-Drucker fehlt: {}.': 'CUPS is there, for the HP printer this is missing: {}.',
+    'CUPS ist installiert, läuft aber nicht.': 'CUPS is installed but not running.',
+    'Das Drucksystem läuft': 'The printing system is running',
+    ' Drucker fügst du über „system-config-printer“ oder http://localhost:631 hinzu.': ' Add printers via "system-config-printer" or http://localhost:631.',
+    'WLAN entsperren': 'Unblock Wi-Fi',
+    'Bluetooth entsperren': 'Unblock Bluetooth',
+    'Bluetooth-Dienst starten': 'Start Bluetooth service',
+    'Drucksystem starten': 'Start printing system',
+    '\nFertig. Nach Treiber-Installationen (Grafik, WLAN) ist oft ein Neustart nötig.\n': '\nDone. After driver installations (graphics, Wi-Fi) a restart is often needed.\n',
+    'Alles eingerichtet': 'All set up',
+    '{} brauchen Aufmerksamkeit': '{} need attention',
+    'Was funktioniert nicht?': "What isn't working?",
+    'Ergebnis': 'Result',
+    'Noch keine Prüfung gestartet.': 'No check started yet.',
+    'Internet / WLAN geht nicht': "Internet / Wi-Fi doesn't work",
+    'Kein Ton': 'No sound',
+    'Bluetooth geht nicht': "Bluetooth doesn't work",
+    'Bildschirm / Grafik-Probleme': 'Screen / graphics problems',
+    'System startet langsam': 'System starts slowly',
+    'Speicher ist voll': 'Storage is full',
+    'Updates schlagen fehl': 'Updates fail',
+    'Drucker druckt nicht': "Printer doesn't print",
+    'Gerätemanager': 'Device manager',
+    'Auch Brücken und Systemchips zeigen': 'Also show bridges and system chips',
+    'GERÄT': 'DEVICE',
+    'ART': 'TYPE',
+    'TREIBER': 'DRIVER',
+    'kein Treiber geladen': 'no driver loaded',
+    'Wähle, was nicht funktioniert. Tuxdex prüft die üblichen Ursachen und erklärt in einfachen Worten, was los ist – wo es geht, mit einem Knopf zur Behebung.': "Choose what isn't working. Tuxdex checks the usual causes and explains in plain words what's going on – with a fix button where possible.",
+    'Gelb markiert: Für dieses Gerät ist kein Treiber geladen – bei Grafik, Netzwerk und Audio ist das meist ein Problem; bei Chips und Brücken ist es oft normal.': "Marked yellow: no driver is loaded for this device – for graphics, network and audio that's usually a problem; for chips and bridges it's often normal.",
+    'Prüfe: {} …': 'Checking: {} …',
+    '{} Auffälligkeit(en)': '{} finding(s)',
+    'Nichts Auffälliges': 'Nothing unusual',
+    'Hier wurde nichts Auffälliges gefunden. Hilft das nicht, schau im Tab „Sicherheit“ → Checkliste nach oder beschreibe das Problem in einem Issue.': 'Nothing unusual was found here. If that doesn\'t help, look in the "Security" tab → checklist or describe the problem in an issue.',
+    '\nFertig – die Prüfung läuft noch einmal.\n': '\nDone – the check runs once more.\n',
+    'Die Prüfung ist fehlgeschlagen': 'The check failed',
+    'Keine Netzwerkkarte': 'No network card',
+    'Netzwerk-Adapter': 'Network adapter',
+    'Das System sieht keinen Netzwerk-Adapter. Bei WLAN fehlt vermutlich ein Treiber oder die Firmware – im Tab „Treiber“ lässt sich das einrichten.': 'The system sees no network adapter. For Wi-Fi a driver or firmware is probably missing – you can set that up in the "Drivers" tab.',
+    'Nicht verbunden': 'Not connected',
+    'Keiner ist gerade verbunden.': 'None is connected right now.',
+    'WLAN-Schalter': 'Wi-Fi switch',
+    'WLAN ist per Schalter oder Funktionstaste (Flugmodus) am Gerät ausgeschaltet. Schalte es dort wieder ein.': 'Wi-Fi is turned off by a switch or function key (airplane mode) on the device. Turn it back on there.',
+    'Flugmodus': 'Airplane mode',
+    'Netzwerkdienst': 'Network service',
+    'Netzwerkdienst starten': 'Start network service',
+    'Es läuft kein Netzwerkdienst (NetworkManager, systemd-networkd oder iwd) – ohne ihn gibt es keine Verbindung.': "No network service is running (NetworkManager, systemd-networkd or iwd) – without one there's no connection.",
+    'Keine Adresse': 'No address',
+    'Die Verbindung steht, aber der Rechner hat keine IP-Adresse bekommen (DHCP). Ein Neustart des Routers oder erneutes Verbinden hilft oft.': 'The connection is up, but the computer got no IP address (DHCP). Restarting the router or reconnecting often helps.',
+    'Kein Ausgang': 'No way out',
+    'Weg ins Internet': 'Way to the internet',
+    'Es gibt eine IP-Adresse, aber keine Standardroute zum Router.': 'There is an IP address, but no default route to the router.',
+    'IP-Adresse und Route': 'IP address and route',
+    'Adresse und Weg zum Router sind da.': 'Address and route to the router are there.',
+    'Internet geht': 'Internet works',
+    'Internet und Namensauflösung': 'Internet and name resolution',
+    'Das Internet ist erreichbar.': 'The internet is reachable.',
+    'DNS-Problem': 'DNS problem',
+    'Namensauflösung': 'Name resolution',
+    'Das Internet ist erreichbar, aber Namen wie archlinux.org lassen sich nicht auflösen. Das ist ein DNS-Problem: Router-DNS prüfen oder in den Netzwerk-Einstellungen 1.1.1.1 als DNS eintragen.': "The internet is reachable, but names like archlinux.org can't be resolved. That's a DNS problem: check the router's DNS or enter 1.1.1.1 as DNS in the network settings.",
+    'Kein Internet': 'No internet',
+    'Internet': 'Internet',
+    'Trotz Verbindung zum Netzwerk kommt kein Verkehr ins Internet. Prüfe den Router und ob andere Geräte online sind.': 'Despite a network connection no traffic reaches the internet. Check the router and whether other devices are online.',
+    'Treiber-Meldungen': 'Driver messages',
+    'WLAN-Treiber im Systemprotokoll': 'Wi-Fi driver in the system log',
+    'Audio-System': 'Audio system',
+    'Audio-Dienst': 'Audio service',
+    'Der Audio-Dienst (PipeWire) läuft in deiner Sitzung nicht.': "The audio service (PipeWire) isn't running in your session.",
+    'Audio-Dienst starten': 'Start audio service',
+    'Soundkarte': 'Sound card',
+    'Keine Soundkarte': 'No sound card',
+    'Firmware fehlt': 'Firmware missing',
+    'Es wird keine Soundkarte gefunden. Neuere Intel-Laptops brauchen dafür die Firmware sof-firmware.': 'No sound card is found. Newer Intel laptops need the firmware sof-firmware for that.',
+    'Das System findet keine Soundkarte. Ein Neustart nach Kernel-Updates oder die Firmware (linux-firmware, sof-firmware) kann helfen.': 'The system finds no sound card. A restart after kernel updates or the firmware (linux-firmware, sof-firmware) can help.',
+    '{} Audiogerät(e) erkannt.': '{} audio device(s) detected.',
+    'Lautstärke': 'Volume',
+    'Stumm': 'Muted',
+    'Die Ausgabe ist stummgeschaltet.': 'The output is muted.',
+    'Stummschaltung aufheben': 'Unmute',
+    'Zu leise': 'Too quiet',
+    'Die Lautstärke steht auf fast null.': 'The volume is almost zero.',
+    'Auf 50 % stellen': 'Set to 50 %',
+    'Lautstärke {} %, nicht stumm.': 'Volume {} %, not muted.',
+    'Nur Dummy-Ausgang': 'Dummy output only',
+    'Ausgabegerät': 'Output device',
+    'PipeWire kennt nur einen „Dummy“-Ausgang – die Soundkarte wurde nicht eingebunden.': 'PipeWire only knows a "dummy" output – the sound card wasn\'t integrated.',
+    'Bluetooth-Adapter und Dienst': 'Bluetooth adapter and service',
+    'Ausgeschaltet': 'Switched off',
+    'Adapter': 'Adapter',
+    'Der Bluetooth-Adapter ist ausgeschaltet.': 'The Bluetooth adapter is switched off.',
+    'Eingeschaltet': 'Switched on',
+    'Der Adapter ist an und bereit zum Koppeln.': 'The adapter is on and ready for pairing.',
+    'Sitzungstyp': 'Session type',
+    'Modeset fehlt': 'Modeset missing',
+    'NVIDIA unter Wayland': 'NVIDIA on Wayland',
+    'Mit dem NVIDIA-Treiber braucht Wayland den Kernel-Parameter nvidia-drm.modeset=1, sonst flackert oder hängt die Oberfläche.': 'With the NVIDIA driver Wayland needs the kernel parameter nvidia-drm.modeset=1, otherwise the desktop flickers or hangs.',
+    'Grafik-Fehler': 'Graphics errors',
+    'Meldungen im Systemprotokoll': 'Messages in the system log',
+    'Startdauer': 'Start time',
+    'Was am längsten dauert': 'What takes longest',
+    'Meist unnötig': 'Mostly unnecessary',
+    'Dieser Dienst wartet beim Start aufs Netzwerk – auf Desktops bremst das meist nur.': 'This service waits for the network at startup – on desktops it usually just slows things down.',
+    'Alle Dienste sind sauber gestartet.': 'All services started cleanly.',
+    '{} fehlgeschlagen': '{} failed',
+    'Das Systemprotokoll ist sehr groß.': 'The system log is very large.',
+    'Auf 500 MB kürzen': 'Trim to 500 MB',
+    'System-Protokoll': 'System log',
+    'Cache aufräumen (3 Versionen behalten)': 'Clean up cache (keep 3 versions)',
+    'Paket-Cache': 'Package cache',
+    'Die Belegung ließ sich nicht lesen.': "The usage couldn't be read.",
+    'Keine Daten': 'No data',
+    '{} von {} frei.': '{} of {} free.',
+    '{} % voll': '{} % full',
+    'Paketdatenbank': 'Package database',
+    'Läuft gerade': 'Running right now',
+    'Gerade läuft ein anderer pacman-Vorgang. Warte, bis er fertig ist.': "Another pacman operation is running right now. Wait until it's finished.",
+    'Die Datenbank ist gesperrt (db.lck), obwohl kein pacman läuft – meist Überbleibsel eines abgebrochenen Updates.': 'The database is locked (db.lck) although no pacman is running – usually a leftover of an aborted update.',
+    'Sperre entfernen': 'Remove lock',
+    'Die Paketdatenbank ist nicht gesperrt.': "The package database isn't locked.",
+    'Nicht erreichbar': 'Not reachable',
+    'Verbindung': 'Connection',
+    'archlinux.org ist nicht erreichbar. Prüfe zuerst die Internetverbindung (Diagnose „Internet“).': 'archlinux.org isn\'t reachable. Check the internet connection first (diagnosis "Internet").',
+    'Erster Spiegelserver': 'First mirror server',
+    'Antwortet': 'Responds',
+    'Antwortet nicht': "Doesn't respond",
+    '{} ist erreichbar.': '{} is reachable.',
+    '{} antwortet nicht. Ein schnellerer Spiegel lässt sich mit dem Paket reflector auswählen.': "{} doesn't respond. A faster mirror can be selected with the package reflector.",
+    'Platz auf /': 'Space on /',
+    'Uhrzeit': 'Time',
+    'Zeitabgleich einschalten': 'Turn on time sync',
+    'Die Uhr ist nicht mit dem Internet abgeglichen. Falsche Zeit führt zu Zertifikats- und Signaturfehlern bei Updates.': "The clock isn't synchronised with the internet. A wrong time causes certificate and signature errors during updates.",
+    'Kein Drucker': 'No printer',
+    'Eingerichtete Drucker': 'Configured printers',
+    'Es ist noch kein Drucker eingerichtet. Öffne „system-config-printer“ oder http://localhost:631 und füge ihn hinzu.': 'No printer has been set up yet. Open "system-config-printer" or http://localhost:631 and add it.',
+    'Angehalten': 'Paused',
+    'Der Drucker wurde vom System angehalten (oft nach einem Fehler).': 'The printer was paused by the system (often after an error).',
+    'Wieder einschalten': 'Switch back on',
+    '{} Aufträge': '{} jobs',
+    'Warteschlange': 'Queue',
+    'Warteschlange leeren': 'Clear queue',
+    'Es hängen Druckaufträge in der Warteschlange – ein klemmender Auftrag blockiert oft alle anderen.': 'Print jobs are stuck in the queue – one jammed job often blocks all others.',
+    'Hol deine Dateien von einer früheren Windows-Installation: Tuxdex findet das Windows-Laufwerk, hängt es nur lesend ein (es wird nichts verändert) und kopiert Dokumente, Bilder, Videos, Musik, Downloads und Desktop auf Wunsch zu dir.': 'Get your files from a former Windows installation: Tuxdex finds the Windows drive, mounts it read-only (nothing is changed) and copies documents, pictures, videos, music, downloads and desktop to you on request.',
+    'Windows erkennen': 'Detect Windows',
+    'Windows-Laufwerke': 'Windows drives',
+    'Deine Dateien übernehmen': 'Take over your files',
+    'Hänge zuerst ein Windows-Laufwerk ein.': 'Mount a Windows drive first.',
+    'In einen eigenen Ordner (~/Windows-Import/Benutzer/…) – am übersichtlichsten': 'Into a folder of its own (~/Windows-Import/User/…) – clearest',
+    'In meine Ordner einsortieren (Dokumente, Bilder, Videos …)': 'Sort into my folders (Documents, Pictures, Videos …)',
+    'Wohin kopieren?': 'Copy where?',
+    'Kopieren starten': 'Start copying',
+    'Vorhandene Dateien bei dir werden nie überschrieben. Dateien in OneDrive liegen manchmal nur als Platzhalter vor und sind dann nicht auf der Platte.': "Existing files on your side are never overwritten. Files in OneDrive are sometimes only placeholders and then aren't on the disk.",
+    'Windows-Bootmanager': 'Windows boot manager',
+    'Gefunden': 'Found',
+    'Windows ist als Startoption eingetragen (Dual-Boot oder noch installiert).': 'Windows is registered as a boot option (dual boot or still installed).',
+    'Nicht gefunden': 'Not found',
+    'Kein Windows-Bootmanager gefunden – Windows ist nicht (mehr) als Startoption eingetragen.': "No Windows boot manager found – Windows isn't (any longer) registered as a boot option.",
+    'GRUB und Windows': 'GRUB and Windows',
+    'Tipp': 'Tip',
+    'Damit GRUB Windows im Startmenü zeigt, braucht es das Paket os-prober (danach grub-mkconfig ausführen).': 'For GRUB to show Windows in the boot menu it needs the package os-prober (then run grub-mkconfig).',
+    'Es wurde keine NTFS-Partition gefunden. Steck die Platte an oder klicke auf ↻.': 'No NTFS partition was found. Plug in the disk or click ↻.',
+    'Kein Windows-Laufwerk': 'No Windows drive',
+    'Das Laufwerk ist mit BitLocker verschlüsselt. Entschlüssle es unter Windows (oder mit dislocker), bevor du Dateien holst.': 'The drive is encrypted with BitLocker. Decrypt it under Windows (or with dislocker) before fetching files.',
+    'Eingehängt': 'Mounted',
+    'Nicht eingehängt': 'Not mounted',
+    'Wird nur lesend eingehängt.': 'Will be mounted read-only.',
+    ' Sieht nach Windows aus.': ' Looks like Windows.',
+    'Daten zeigen': 'Show data',
+    'Lesend einhängen': 'Mount read-only',
+    'Hänge ein …': 'Mounting …',
+    'Windows wurde nicht sauber heruntergefahren (Schnellstart oder Ruhezustand). Starte Windows einmal neu (nicht „Herunterfahren“) oder schalte den Schnellstart aus, dann klappt das Einhängen.': 'Windows wasn\'t shut down cleanly (fast startup or hibernation). Restart Windows once (not "Shut down") or turn off fast startup, then mounting works.',
+    'Das Laufwerk ist mit BitLocker verschlüsselt und lässt sich hier nicht lesen.': "The drive is encrypted with BitLocker and can't be read here.",
+    'Keine Berechtigung zum Einhängen – melde dich in Tuxdex mit dem sudo-Passwort an und versuche es erneut.': 'No permission to mount – log in to Tuxdex with the sudo password and try again.',
+    'Das Einhängen ist fehlgeschlagen.': 'Mounting failed.',
+    'Aushängen nicht möglich.': "Unmounting isn't possible.",
+    'Aushängen fehlgeschlagen.': 'Unmounting failed.',
+    'Eingehängt, aber der Ordner ließ sich nicht ermitteln.': "Mounted, but the folder couldn't be determined.",
+    'Hier wurden keine Windows-Benutzerordner gefunden (Ordner „Users“). Falls es das Systemlaufwerk ist, wähle das Laufwerk mit dem Ordner „Windows“.': 'No Windows user folders were found here (folder "Users"). If this is the system drive, choose the drive with the folder "Windows".',
+    'Dieser Benutzer hat OneDrive – Dateien dort können reine Cloud-Platzhalter sein.': 'This user has OneDrive – files there can be pure cloud placeholders.',
+    'Dateien übernehmen': 'Take over files',
+    'Bitte mindestens einen Ordner ankreuzen.': 'Please tick at least one folder.',
+    'Zu wenig Platz': 'Not enough space',
+    'Die Auswahl ist {} groß, bei dir sind nur {} frei.': 'The selection is {} in size, you only have {} free.',
+    'Abgebrochen – bereits kopierte Dateien bleiben erhalten.': 'Cancelled – files already copied are kept.',
+    'Fertig, aber einige Dateien ließen sich nicht übernehmen – Details im Ausgabefeld.': "Done, but some files couldn't be taken over – details in the output field.",
+    'Fertig – alle ausgewählten Dateien sind bei dir.': 'Done – all selected files are with you.',
+    'Einige Dateien ließen sich nicht lesen (siehe oben).\n': "Some files couldn't be read (see above).\n",
+    'Windows-Laufwerk lesend einhängen und Dokumente, Bilder, Videos … zu dir übernehmen.': 'Mount a Windows drive read-only and take over documents, pictures, videos … to you.',
+    'Windows-Laufwerk lesend einhängen und eigene Dateien übernehmen': 'Mount a Windows drive read-only and take over your own files',
+    'Grafikkarte, WLAN, Bluetooth und Drucker erkennen und die passenden Treiber mit einem Klick einrichten.': 'Detect graphics card, Wi-Fi, Bluetooth and printer and set up the matching drivers with one click.',
+    'Grafikkarte, WLAN, Bluetooth und Drucker erkennen und per Klick einrichten': 'Detect graphics card, Wi-Fi, Bluetooth and printer and set up with one click',
+    'Fehlersuche in Klartext (Internet, Ton, Bluetooth, Grafik, Start …) plus Gerätemanager.': 'Troubleshooting in plain language (internet, sound, Bluetooth, graphics, startup …) plus device manager.',
+    'Fehlersuche in Klartext (Internet, Ton, Bluetooth, Grafik, Start …) plus Gerätemanager': 'Troubleshooting in plain language (internet, sound, Bluetooth, graphics, startup …) plus device manager',
     'Standard-App ließ sich nicht setzen.': 'Default app could not be set.',
     'Wirkt sofort – das Fenster wird dabei neu aufgebaut.': 'Takes effect immediately – the window is rebuilt.',
     'Es läuft noch ein Vorgang. Die Sprache wird beim nächsten Start von Tuxdex gewechselt – oder jetzt, wenn der Vorgang fertig ist (Sprache dann noch einmal umschalten).': 'An operation is still running. The language changes at the next start of Tuxdex – or now once the operation has finished (then switch the language again).',
@@ -18103,7 +19682,7 @@ EN = {
     'Tipp: „Automatische Updates aktivieren“ – der Dienst lädt die Signaturen dann selbstständig und täglich.': 'Tip: “Enable automatic updates” – the service then loads the signatures by itself daily.',
     'Ton & Mikrofon': 'Sound & microphone',
     'Tracker blockieren (DNS)': 'Block trackers (DNS)',
-    'Treiber': 'Driver',
+    'Treiber': 'Drivers',
     'Treiber ok': 'Driver ok',
     'Trennen': 'Disconnect',
     'Trennt gemeinsamen Speicher zwischen Apps.': 'Separates shared memory between apps.',

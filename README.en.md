@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.5.17.2-2fb3a3">
+  <img alt="Version" src="https://img.shields.io/badge/version-1.6.0--beta-2fb3a3">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-2fb3a3">
   <img alt="For Arch Linux" src="https://img.shields.io/badge/for-Arch%20Linux-1793d1">
   <img alt="Python" src="https://img.shields.io/badge/python-3.11%2B-3776ab">
@@ -62,6 +62,9 @@ Tuxdex is a **toolkit**: under **Settings → Modules** you choose which tools a
 | **Flatpak** | Permissions of every Flatpak app with switches – network, files & folders, devices, sound, display, environment variables, portal permissions · rules for all apps · risky permissions are marked, changes highlighted · set up Flathub, start, update and uninstall apps |
 | **Drives** | Drives and partitions as a tree · mount, unmount, **mount permanently** (fstab by UUID, with backup), rename, check, **format** (ext4, btrfs, xfs, exFAT, FAT32, NTFS), safely remove · detects new USB sticks automatically · system partitions are protected |
 | **Flash stick** | "Flash" bootable sticks: **Arch Linux** and **Home Assistant OS** (PC, Raspberry Pi, Green) with download and checksum – or an **own image file** (.iso, .img, .img.xz). Only removable drives are offered, never the system disk; the stick is verified afterwards |
+| **Drivers** | Detects **graphics card** (NVIDIA, AMD, Intel), **Wi-Fi**, **Bluetooth** and **printers** and sets up the matching drivers with one click (pacman) – with hints for hybrid laptops, Realtek, Broadcom and HP |
+| **Diagnosis** | **Troubleshooting in plain language**: "No internet", "No sound", Bluetooth, graphics, slow startup, full storage, failing updates, printer – with an understandable explanation and a fix button · **device manager** with the driver for each device |
+| **Windows data** | Finds NTFS/Windows drives, mounts them **read-only** and takes over **documents, pictures, videos, music, downloads and desktop** (existing files are never overwritten) · detects dual boot |
 | **Storage** | Usage per drive · **pie chart**: operating system, applications, system data, photos & videos, personal files · “What is using the space?” with drill-down into folders · cleanup: package cache, orphaned packages, journal, trash, Flatpak |
 | **Backup** | Snapshots (versioned, space-saving), mirror or compressed archives (zstd/xz/gzip, optionally with password) · **several targets at once** · verification after writing · custom names with date ([how it works](#naming-backups)) · old versions cleaned up automatically · restore · daily/weekly schedule |
 | **Restore** | System snapshots with snapper (btrfs) or Timeshift · **snapshot before every update** · list, create, delete · **roll back to a state** with one click |
@@ -76,15 +79,15 @@ Tuxdex is a **toolkit**: under **Settings → Modules** you choose which tools a
 Goals and plans – what's already there and what comes next.
 
 **Planned**
-- [ ] **Driver assistant**: detect NVIDIA, Wi-Fi, printers and Bluetooth and set them up with one click.
-- [ ] **Windows data**: mount NTFS partitions, detect dual boot, bring over files from "C:\Users".
-- [ ] **Troubleshooting in plain language**: "Why is my Wi-Fi gone?" instead of logs, plus a device manager.
 - [ ] **Interactive learning software** for Arch Linux, connected to Tuxdex: learn commands step by step – see the matching command for every action in Tuxdex, understand it and try it yourself.
 - [ ] **Ready-made, tested ISOs**: Arch Linux with KDE Plasma and Tuxdex, already set up – with an installer that's much simpler than today's Arch installation.
 - [ ] **Own security tool for desktop users** to replace ClamAV.
 - [ ] **Module market**: more modules you add as needed.
 
 **Done**
+- [x] **Driver assistant**: detect graphics, Wi-Fi, Bluetooth and printers and set them up with one click (1.6.0)
+- [x] **Troubleshooting in plain language** with a device manager (1.6.0)
+- [x] **Windows data**: mount drive read-only, take over files, detect dual boot (1.6.0)
 - [x] **Gaming setup**: Steam, GameMode, MangoHud, Lutris, Heroic, Bottles, Wine – with an anti-cheat note (1.3.0)
 - [x] **Set default apps** (browser, email, PDF, images, videos, music, text) (1.3.0)
 - [x] **CachyOS support**: CachyOS kernels are detected (1.3.0)
