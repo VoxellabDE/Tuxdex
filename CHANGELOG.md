@@ -3,7 +3,7 @@
 ## 1.6.0.2
 Lizenz (Beta).
 
-- **Lizenz**: Tuxdex steht ab dieser Version unter der **GPL-3.0-or-later** (vorher MIT). `LICENSE`, `PKGBUILD`, README, SECURITY-Hinweise, der „Über“-Dialog und die Quelltext-Kopfzeilen (SPDX) sind angepasst. Wer Tuxdex verändert und weitergibt, muss den Quellcode unter derselben Lizenz mitgeben. Frühere Versionen bleiben unter der MIT-Lizenz, unter der sie veröffentlicht wurden.
+- **Lizenz**: Tuxdex steht ab dieser Version unter der **GPL-3.0-or-later**. `LICENSE`, `PKGBUILD`, README, SECURITY-Hinweise, der „Über“-Dialog und die Quelltext-Kopfzeilen (SPDX) sind angepasst. Wer Tuxdex verändert und weitergibt, muss den Quellcode unter derselben Lizenz mitgeben.
 
 ## 1.6.0.1
 Auswahllisten (Beta).

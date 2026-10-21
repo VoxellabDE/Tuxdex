@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.6.0.2--beta-2fb3a3">
+  <img alt="Version" src="https://img.shields.io/badge/version-1.6.0.2-2fb3a3">
   <img alt="Lizenz" src="https://img.shields.io/badge/lizenz-GPL--3.0-2fb3a3">
   <img alt="Für Arch Linux" src="https://img.shields.io/badge/f%C3%BCr-Arch%20Linux-1793d1">
   <img alt="Python" src="https://img.shields.io/badge/python-3.11%2B-3776ab">
@@ -313,7 +313,7 @@ Tuxdex ist ein **KI-gestütztes Projekt (AI made)**: Idee, Anforderungen und Tes
 
 [GPL-3.0-or-later](LICENSE) © 2026 PyloGER · Voxellab
 
-Tuxdex ist freie Software: Du darfst es nutzen, verändern und weitergeben – veränderte Versionen müssen unter derselben Lizenz (GPL) mit Quellcode weitergegeben werden. Bis einschließlich Version 1.6.0.1 stand der Code unter der MIT-Lizenz.
+Tuxdex ist freie Software: Du darfst es nutzen, verändern und weitergeben – veränderte Versionen müssen unter derselben Lizenz (GPL) mit Quellcode weitergegeben werden.
 
 ---
 
