@@ -2,6 +2,11 @@
 
 English version of [CHANGELOG.md](CHANGELOG.md). Entries before 1.0.0 are only available in German.
 
+## 1.6.0.1
+Drop-down lists (beta).
+
+- **Drop-downs**: all selection lists in Tuxdex now show up to **5 entries completely** and only scroll when there are more. At the bottom edge of the screen the list opens upwards instead of being squeezed into one or two half rows. Operation as usual: mouse, arrow keys, Enter, Esc.
+
 ## 1.6.0
 Drivers, diagnosis and Windows data (beta).
 

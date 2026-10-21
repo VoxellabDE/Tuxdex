@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.0.1
+Auswahllisten (Beta).
+
+- **Dropdowns**: Alle Auswahllisten in Tuxdex zeigen jetzt bis zu **5 Einträge vollständig** und scrollen erst bei mehr. Am unteren Bildschirmrand klappt die Liste nach oben auf, statt auf ein bis zwei halbe Zeilen zusammengedrückt zu werden. Bedienung wie gewohnt: Maus, Pfeiltasten, Enter, Esc.
+
 ## 1.6.0
 Treiber, Diagnose und Windows-Daten (Beta).
 

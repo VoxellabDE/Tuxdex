@@ -104,7 +104,7 @@ def _show_fatal_error(title, message):
 
 
 try:
-    from PySide6.QtCore import QObject, Qt, Signal, Slot, QTimer, QSize, QRectF, QEvent, QPropertyAnimation
+    from PySide6.QtCore import QObject, Qt, Signal, Slot, QTimer, QSize, QRectF, QEvent, QPropertyAnimation, QPoint
     from PySide6.QtGui import (QColor, QFont, QFontDatabase, QPainter, QPainterPath, QPen, QTextCharFormat,
                                QTextCursor, QIcon, QPixmap, QPalette)
     from PySide6.QtWidgets import (
@@ -327,6 +327,110 @@ class QPushButton(QPushButton):
         super().__init__(*_tr_args(a), **k)
 
 
+class _ComboPopup(QFrame):
+    """Eigene Auswahlliste für QComboBox: zeigt bis zu 5 Einträge vollständig (danach Scrollen) und legt sich bei
+    wenig Platz unten über das Feld statt abgeschnitten zu werden."""
+    ROW = 30
+    VISIBLE = 5
+
+    def __init__(self, combo):
+        super().__init__(combo, Qt.Popup | Qt.FramelessWindowHint)
+        self.setObjectName("ComboPopup")
+        self.combo = combo
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(4, 4, 4, 4)
+        from PySide6.QtWidgets import QListWidget as _LW, QListWidgetItem as _LI
+        self.list = _LW()
+        self.list.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.list.setMouseTracking(True)
+        self.list.setUniformItemSizes(True)
+        lay.addWidget(self.list)
+        from PySide6.QtCore import QSize as _QS
+        cur = combo.currentIndex()
+        for i in range(combo.count()):
+            it = _LI(combo.itemText(i))
+            it.setSizeHint(_QS(10, self.ROW))
+            flags = combo.model().flags(combo.model().index(i, 0))
+            if not (flags & Qt.ItemIsEnabled):
+                it.setFlags(it.flags() & ~Qt.ItemIsEnabled & ~Qt.ItemIsSelectable)
+            self.list.addItem(it)
+        if cur >= 0:
+            self.list.setCurrentRow(cur)
+        self.list.itemClicked.connect(self._pick)
+        self.list.installEventFilter(self)
+
+    def _pick(self, item):
+        i = self.list.row(item)
+        self.close()
+        self.combo.setCurrentIndex(i)
+        self.combo.activated.emit(i)
+
+    def eventFilter(self, obj, ev):
+        if obj is self.list and ev.type() == QEvent.KeyPress:
+            if ev.key() in (Qt.Key_Return, Qt.Key_Enter, Qt.Key_Space):
+                it = self.list.currentItem()
+                if it is not None and (it.flags() & Qt.ItemIsEnabled):
+                    self._pick(it)
+                return True
+            if ev.key() == Qt.Key_Escape:
+                self.close()
+                return True
+        return super().eventFilter(obj, ev)
+
+    def popup(self):
+        c = self.combo
+        n = max(1, c.count())
+        shown = min(n, self.VISIBLE)
+        h = shown * self.ROW + 8 + 2
+        w = max(c.width(), 160)
+        scr = c.screen().availableGeometry() if c.screen() else None
+        below = c.mapToGlobal(QPoint(0, c.height() + 2))
+        above_y = c.mapToGlobal(QPoint(0, 0)).y() - 2
+        x, y = below.x(), below.y()
+        if scr is not None:
+            room_below = scr.bottom() - below.y()
+            room_above = above_y - scr.top()
+            if room_below < h:
+                if room_above >= h:
+                    y = above_y - h                       # genug Platz oberhalb
+                else:                                     # überall knapp: größere Seite nehmen, Liste scrollt
+                    if room_above > room_below:
+                        h = max(self.ROW + 10, room_above)
+                        y = above_y - h
+                    else:
+                        h = max(self.ROW + 10, room_below)
+            x = max(scr.left(), min(x, scr.right() - w))
+        self.setGeometry(x, y, w, h)
+        self.show()
+        self.list.setFocus()
+        from PySide6.QtWidgets import QAbstractItemView as _AIV
+        self.list.scrollTo(self.list.currentIndex(), _AIV.PositionAtCenter)
+
+
+class QComboBox(QComboBox):
+    """Auswahlliste mit eigenem Popup (siehe _ComboPopup): bis zu 5 Einträge vollständig, erst danach Scrollen."""
+
+    def __init__(self, *a, **k):
+        super().__init__(*a, **k)
+        self.setMaxVisibleItems(5)
+        self._popup = None
+
+    def showPopup(self):
+        if self.count() == 0 or not self.isEnabled():
+            return
+        self._popup = _ComboPopup(self)
+        self._popup.popup()
+
+    def hidePopup(self):
+        if self._popup is not None:
+            try:
+                self._popup.close()
+            except RuntimeError:
+                pass
+            self._popup = None
+
+
 class QCheckBox(QCheckBox):
     def __init__(self, *a, **k):
         super().__init__(*_tr_args(a), **k)
@@ -446,7 +550,7 @@ def module_enabled(key, settings=None):
 FONTS = {"sans": "Sans Serif", "mono": "Monospace"}
 
 APP_ID = "tuxdex"
-APP_VERSION = "1.6.0"
+APP_VERSION = "1.6.0.1"
 APP_STAGE = ""             # früher „alpha“ – das Namensschild kommt jetzt vom Kanal (Stabil ohne Zusatz, Beta mit „-beta“)
 
 
@@ -682,6 +786,13 @@ QComboBox QAbstractItemView {
     background: $bg2; color: $ink; border: 1px solid $line; border-radius: 6px; padding: 4px;
     selection-background-color: $accent; selection-color: $on_accent; outline: 0;
 }
+
+#ComboPopup { background: $bg2; border: 1px solid $line_strong; border-radius: 6px; }
+#ComboPopup QListWidget { background: transparent; border: 0; outline: 0; padding: 0; color: $ink; }
+#ComboPopup QListWidget::item { padding: 0 10px; border-radius: 4px; }
+#ComboPopup QListWidget::item:hover { background: $bg3; }
+#ComboPopup QListWidget::item:selected { background: $accent; color: $on_accent; }
+#ComboPopup QListWidget::item:disabled { color: $line_strong; }
 
 QCheckBox { spacing: 8px; background: transparent; }
 QCheckBox::indicator {
