@@ -429,7 +429,7 @@ def module_enabled(key, settings=None):
 FONTS = {"sans": "Sans Serif", "mono": "Monospace"}
 
 APP_ID = "tuxdex"
-APP_VERSION = "1.5.0"
+APP_VERSION = "1.5.1"
 APP_STAGE = "alpha"        # Reifegrad – wird nur angezeigt, die Versionsnummer selbst bleibt ohne Zusatz
 
 
@@ -9924,7 +9924,9 @@ class AntivirusTab(Page):
         if not fresh:
             notes.append(f'<span style="color:{COLORS["muted"]}">Tipp: Automatische Updates halten die '
                          f'Signaturen täglich aktuell (Dienst clamav-freshclam).</span>')
-        self.b_auto.setVisible(not fresh)
+        self.auto_on = fresh
+        self.b_auto.setText("Automatische Updates deaktivieren" if fresh else "Automatische Updates aktivieren")
+        self.b_auto.setVisible(True)
         self.b_scan.setEnabled(age_days is not None)
         self.b_scan.setToolTip("" if age_days is not None else "Erst Signaturen laden – ohne sie kann ClamAV nichts erkennen.")
         self.b_fresh.setProperty("variant", "primary" if (age_days is None or age_days > 3) else "ghost")
@@ -10021,10 +10023,17 @@ class AntivirusTab(Page):
         run_capture_async(args, cb, needs_sudo=True)
 
     def enable_auto(self):
+        on = not getattr(self, "auto_on", False)
+        if not on and not ask_confirm(self, "Automatische Updates", "Automatische Signatur-Updates ausschalten?\n\n"
+                                      "Die Virensignaturen veralten dann, bis du sie von Hand aktualisierst.",
+                                      "Ausschalten"):
+            return
         if not self.app.priv.ensure(self):
             return
-        self.log.set_text("$ sudo systemctl enable --now clamav-freshclam\n")
-        run_streaming(["systemctl", "enable", "--now", "clamav-freshclam"], self.log, needs_sudo=True,
+        cmd = ["systemctl", "enable", "--now", "clamav-freshclam"] if on else \
+            ["systemctl", "disable", "--now", "clamav-freshclam"]
+        self.log.set_text(f"$ sudo {' '.join(cmd)}\n")
+        run_streaming(cmd, self.log, needs_sudo=True,
                       clear_first=False, on_done=lambda rc: (self.log.append_text(f"[Exit-Code {rc}]\n"),
                                                              self.refresh_status()))
 
@@ -16302,6 +16311,10 @@ EN = {
     'makepkg (Paket pacman, Gruppe base-devel) wird benötigt.': 'makepkg (package pacman, group base-devel) is required.',
     'makepkg fehlt': 'makepkg missing',
     'Bauwerkzeuge fehlen': 'Build tools missing',
+    'Automatische Updates deaktivieren': 'Disable automatic updates',
+    'Automatische Updates': 'Automatic updates',
+    'Ausschalten': 'Turn off',
+    'Automatische Signatur-Updates ausschalten?\n\nDie Virensignaturen veralten dann, bis du sie von Hand aktualisierst.': 'Turn off automatic signature updates?\n\nThe virus signatures will become outdated until you update them by hand.',
     'Benutzer hinzufügen …': 'Add user …',
     'Benutzer hinzufügen': 'Add user',
     'Passwort ändern …': 'Change password …',

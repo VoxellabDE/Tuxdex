@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.1
+Fehlerbehebung.
+
+- **Antivirus**: Die automatischen Signatur-Updates lassen sich wieder **ausschalten** – der Knopf wechselt zwischen „aktivieren“ und „deaktivieren“.
+
 ## 1.5.0
 Benutzerverwaltung.
 

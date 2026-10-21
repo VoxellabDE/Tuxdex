@@ -2,6 +2,11 @@
 
 English version of [CHANGELOG.md](CHANGELOG.md). Entries before 1.0.0 are only available in German.
 
+## 1.5.1
+Bug fix.
+
+- **Antivirus**: automatic signature updates can be **turned off** again – the button switches between "enable" and "disable".
+
 ## 1.5.0
 User management.
 
