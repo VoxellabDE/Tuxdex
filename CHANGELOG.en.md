@@ -2,6 +2,11 @@
 
 English version of [CHANGELOG.md](CHANGELOG.md). Entries before 1.0.0 are only available in German.
 
+## 1.6.1.1
+Feedback (beta).
+
+- **Feedback button at the top of the bar** (next to the BETA badge), visible in every module: opens the feedback page on GitHub for bugs, questions, ideas and beta feedback. The button in the Kernel module stays.
+
 ## 1.6.1
 Kernel management (beta).
 

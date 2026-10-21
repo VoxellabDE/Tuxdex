@@ -554,7 +554,7 @@ def module_enabled(key, settings=None):
 FONTS = {"sans": "Sans Serif", "mono": "Monospace"}
 
 APP_ID = "tuxdex"
-APP_VERSION = "1.6.1"
+APP_VERSION = "1.6.1.1"
 APP_STAGE = ""             # früher „alpha“ – das Namensschild kommt jetzt vom Kanal (Stabil ohne Zusatz, Beta mit „-beta“)
 
 
@@ -1004,6 +1004,18 @@ def apply_theme(app):
     app.setStyle("Fusion")
     app.setPalette(tuxdex_palette())
     app.setStyleSheet(QSS.substitute(COLORS, check=check, arrow=arrow, sans=FONTS["sans"], mono=FONTS["mono"]))
+
+
+def feedback_url():
+    return f"https://github.com/{DEFAULT_REPO}/issues/new/choose"
+
+
+def open_feedback(*_):
+    """Rückmeldeseite auf GitHub öffnen (Fehler, Fragen, Ideen, Beta-Feedback)."""
+    try:
+        subprocess.Popen(["xdg-open", feedback_url()], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
 
 
 def short_path(p):
@@ -6857,9 +6869,8 @@ class KernelTab(Page):
         wrow = QHBoxLayout()
         wrow.setSpacing(12)
         wrow.addWidget(warn, 1)
-        wrow.addWidget(Button("Feedback geben", "primary", lambda: subprocess.Popen(
-            ["xdg-open", f"https://github.com/{DEFAULT_REPO}/issues/new/choose"], stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL), "Öffnet die Rückmeldeseite auf GitHub"), 0, Qt.AlignVCenter)
+        wrow.addWidget(Button("Feedback geben", "primary", open_feedback, "Öffnet die Rückmeldeseite auf GitHub"), 0,
+                       Qt.AlignVCenter)
         self.lay.addLayout(wrow)
         self.lay.addWidget(Label("Hier siehst du, welcher Kernel läuft, und kannst weitere installieren – Tuxdex "
                                  "sorgt danach dafür, dass sie im Bootmenü (z. B. GRUB) stehen und beim Start "
@@ -17920,6 +17931,10 @@ class MainWindow(QWidget):
         self.alpha_badge.setToolTip("Beta-Version: Aktionen mit root-Rechten auf eigenes Risiko. "
                                     "Vor der ersten root-Aktion fragt Tuxdex einmal nach deiner Zustimmung.")
         tl.addWidget(self.alpha_badge)
+        tl.addSpacing(6)
+        self.b_feedback = Button("💬 Feedback", "ghost", open_feedback,
+                                 "Fehler melden, Fragen stellen oder Rückmeldung zu Beta-Funktionen geben (GitHub)")
+        tl.addWidget(self.b_feedback)
         tl.addStretch(1)
         self.auth_badge = StatusBadge("off", "Nicht angemeldet")
         tl.addWidget(self.auth_badge)
@@ -19377,6 +19392,8 @@ EN = {
     'makepkg (Paket pacman, Gruppe base-devel) wird benötigt.': 'makepkg (package pacman, group base-devel) is required.',
     'makepkg fehlt': 'makepkg missing',
     'Bauwerkzeuge fehlen': 'Build tools missing',
+    '💬 Feedback': '💬 Feedback',
+    'Fehler melden, Fragen stellen oder Rückmeldung zu Beta-Funktionen geben (GitHub)': 'Report bugs, ask questions or give feedback on beta features (GitHub)',
     'Feedback geben': 'Give feedback',
     'Öffnet die Rückmeldeseite auf GitHub': 'Opens the feedback page on GitHub',
     '▲  Dieses Modul wurde noch nicht offiziell getestet. Änderungen an Kernel und Bootmenü können dazu führen, dass der Rechner nicht mehr startet – probiere es bitte zuerst in einer virtuellen Maschine (VM) aus und lege vorher ein Backup an. Dein Feedback hilft: Sag uns, was geklappt hat und was nicht.': "▲  This module hasn't been officially tested yet. Changes to the kernel and boot menu can make the computer stop booting – please try it in a virtual machine (VM) first and make a backup beforehand. Your feedback helps: tell us what worked and what didn't.",

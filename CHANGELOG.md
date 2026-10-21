@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.1.1
+Feedback (Beta).
+
+- **Feedback-Knopf oben in der Leiste** (neben dem BETA-Kennzeichen), in jedem Modul sichtbar: öffnet die Rückmeldeseite auf GitHub für Fehler, Fragen, Ideen und Beta-Feedback. Der Knopf im Kernel-Modul bleibt.
+
 ## 1.6.1
 Kernel-Verwaltung (Beta).
 
