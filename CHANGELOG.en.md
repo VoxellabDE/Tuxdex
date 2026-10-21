@@ -2,6 +2,11 @@
 
 English version of [CHANGELOG.md](CHANGELOG.md). Entries before 1.0.0 are only available in German.
 
+## 1.6.0.3
+"Updates" tab (beta).
+
+- The number of open updates on the tab now appears in **square brackets and in color**: "Updates [20]" – yellow, red when important updates are pending.
+
 ## 1.6.0.2
 License (beta).
 

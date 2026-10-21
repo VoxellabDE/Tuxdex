@@ -552,7 +552,7 @@ def module_enabled(key, settings=None):
 FONTS = {"sans": "Sans Serif", "mono": "Monospace"}
 
 APP_ID = "tuxdex"
-APP_VERSION = "1.6.0.2"
+APP_VERSION = "1.6.0.3"
 APP_STAGE = ""             # früher „alpha“ – das Namensschild kommt jetzt vom Kanal (Stabil ohne Zusatz, Beta mit „-beta“)
 
 
@@ -17774,7 +17774,11 @@ class MainWindow(QWidget):
         tabs = getattr(self, "tabs", None)
         if tabs:
             i = [m[0] for m in MODULES].index("update")
-            tabs[i].text.setText("Updates" + (f"  {n}" if n else ""))
+            # Anzahl in eckigen Klammern und eingefärbt: rot bei wichtigen Updates, sonst gelb
+            col = COLORS["danger"] if important else COLORS["warn"]
+            tabs[i].text.setTextFormat(Qt.RichText)
+            set_text_raw(tabs[i].text, "Updates" + (f' <span style="color:{col}; font-weight:700;">[{n}]</span>'
+                                                    if n else ""))
 
     def show_update_hint(self, ver):
         if ver:

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.0.3
+Tab „Updates“ (Beta).
+
+- Die Zahl offener Updates am Tab steht jetzt in **eckigen Klammern und farbig**: „Updates [20]“ – gelb, bei wichtigen Updates rot.
+
 ## 1.6.0.2
 Lizenz (Beta).
 
