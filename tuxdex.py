@@ -440,7 +440,7 @@ def module_enabled(key, settings=None):
 FONTS = {"sans": "Sans Serif", "mono": "Monospace"}
 
 APP_ID = "tuxdex"
-APP_VERSION = "1.5.17.1"
+APP_VERSION = "1.5.17.2"
 APP_STAGE = ""             # früher „alpha“ – das Namensschild kommt jetzt vom Kanal (Stabil ohne Zusatz, Beta mit „-beta“)
 
 
@@ -831,7 +831,27 @@ class DialogFlattener(QObject):
                 lbl.setAutoFillBackground(True)
                 lbl.setStyleSheet(lbl.styleSheet() + f"background: {bg};")
                 lbl.setProperty("tdx_flat", True)
+            # Nach dem Umstellen der Beschriftungen die Fenstergröße nachziehen – sonst kann ein Dialog zu klein
+            # bleiben und Eingabefeld und Knöpfe schieben sich übereinander.
+            QTimer.singleShot(0, lambda d=obj: self._fit(d))
+            QTimer.singleShot(150, lambda d=obj: self._fit(d))
         return False
+
+    @staticmethod
+    def _fit(dlg):
+        try:
+            lay = dlg.layout()
+            if lay is None or not dlg.isVisible():
+                return
+            lay.invalidate()
+            lay.activate()
+            need = lay.totalMinimumSize()
+            if lay.hasHeightForWidth():                   # umbrechende Texte: Höhe hängt von der Breite ab
+                need.setHeight(max(need.height(), lay.totalHeightForWidth(max(dlg.width(), need.width()))))
+            if dlg.height() < need.height() or dlg.width() < need.width():
+                dlg.resize(dlg.size().expandedTo(need))
+        except RuntimeError:                     # Dialog wurde schon geschlossen
+            pass
 
 
 def apply_theme(app):

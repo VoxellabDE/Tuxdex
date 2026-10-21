@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.17.2
+Anmelde-Dialog (Beta).
+
+- **Pop-ups**: Passen sich nach dem Aufbau der Beschriftungen in der Größe an. Beim Anmelde-Fenster konnten sich Eingabefeld und Knöpfe sonst zusammenschieben, wenn das Fenster zu klein blieb.
+
 ## 1.5.17.1
 Tab-Leiste (Beta).
 
