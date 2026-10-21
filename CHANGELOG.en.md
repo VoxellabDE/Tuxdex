@@ -2,6 +2,11 @@
 
 English version of [CHANGELOG.md](CHANGELOG.md). Entries before 1.0.0 are only available in German.
 
+## 1.5.12
+Version names (beta).
+
+- **Naming scheme**: the stable version is simply "1.5.2", the beta branch "1.5.12-beta". The former "-alpha" after every number is gone. Tuxdex determines the channel of the installed version by comparing with the versions on GitHub (newer than stable = beta) and remembers the values offline. Applies to the status bar, settings, update window and GitHub releases (releases from `main` carry no suffix).
+
 ## 1.5.11
 Bug fix (beta).
 

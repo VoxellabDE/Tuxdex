@@ -431,14 +431,30 @@ def module_enabled(key, settings=None):
 FONTS = {"sans": "Sans Serif", "mono": "Monospace"}
 
 APP_ID = "tuxdex"
-APP_VERSION = "1.5.11"
-APP_STAGE = "alpha"        # Reifegrad – wird nur angezeigt, die Versionsnummer selbst bleibt ohne Zusatz
+APP_VERSION = "1.5.12"
+APP_STAGE = ""             # früher „alpha“ – das Namensschild kommt jetzt vom Kanal (Stabil ohne Zusatz, Beta mit „-beta“)
 
 
-def vlabel(v=None):
-    """Version zum Anzeigen: „1.1.3-alpha“; Beta-Stände („1.2.0-beta.1“) bleiben, wie sie sind."""
+def installed_channel():
+    """„stable“ oder „beta“ – Kanal der installierten Version. Verglichen wird mit den zuletzt bekannten Versionen
+    auf GitHub (Einstellungen „channels“): neuer als die stabile Version heißt Beta. Ohne Vergleichswerte gilt der
+    gewählte Update-Kanal."""
+    st = load_settings()
+    stable = (st.get("channels") or {}).get("main")
+    if stable:
+        return "beta" if version_tuple(APP_VERSION) > version_tuple(stable) else "stable"
+    return "beta" if st.get("branch") == "beta" else "stable"
+
+
+def vlabel(v=None, channel=None):
+    """Version zum Anzeigen: Stabil ohne Zusatz („1.5.2“), Beta mit „-beta“ („1.5.11-beta“). channel: „stable“
+    oder „beta“; ohne Angabe gilt für die installierte Version ihr Kanal."""
     v = APP_VERSION if v is None else v
-    return v if "-" in v or not APP_STAGE or not re.match(r"\d", v) else f"{v}-{APP_STAGE}"
+    if "-" in v or not re.match(r"\d", v):
+        return v
+    if channel is None and v == APP_VERSION:
+        channel = installed_channel()
+    return f"{v}-beta" if channel == "beta" else v
 SYSTEM_INSTALL = os.path.abspath(__file__).startswith("/usr/")
 
 # App-Logo (Kachel mit drei Reglern) – Taskleiste, Kopfzeile, Starter
@@ -15253,33 +15269,27 @@ class UpdatePanel(QWidget):
         self._show_channel_info()
         self.check()
 
+    def _vl(self, ver):
+        """Version aus dem gewählten Update-Kanal beschriftet: Beta mit „-beta“, Stabil ohne Zusatz."""
+        return vlabel(ver, "beta" if self.settings.get("branch") == "beta" else "stable")
+
+    def _cache_channels(self, vers):
+        """Die zuletzt bekannten Versionen merken, damit der Kanal der installierten Version auch ohne Netz stimmt."""
+        known = {b: v for b, v in vers.items() if v}
+        if known and known != (self.settings.get("channels") or {}):
+            self.settings["channels"] = {**(self.settings.get("channels") or {}), **known}
+            save_settings(self.settings)
+            if hasattr(self.app, "refresh_version_labels"):
+                self.app.refresh_version_labels()
+
     def _show_channel_info(self):
         """Welche Version gibt es in welchem Zweig – und was ist installiert?"""
         rv = self.remote_versions
-        inst = self._installed_channel(rv)
         parts = []
         for b, name in (("main", "Stabil"), ("beta", "Beta")):
             v = rv.get(b)
-            parts.append(f"{name}: <b>{vlabel(v)}</b>" if v else f"{name}: {'…' if b not in rv else '—'}")
-        self.channel_info.setText(" · ".join(parts) + f"<br>Installiert: <b>{vlabel()}</b>" + (f" ({inst})" if inst else ""))
-
-    @staticmethod
-    def _installed_channel(rv):
-        """Zu welchem Kanal die installierte Version gehört – nach dem Vergleich mit den Versionen auf GitHub,
-        nicht nach der Einstellung (wer die Beta installiert hat, steht trotzdem auf „Stabil“ als Suchkanal)."""
-        me = version_tuple(APP_VERSION)
-        stable, beta = rv.get("main"), rv.get("beta")
-        if stable and me == version_tuple(stable):
-            return tr("Stabil")
-        if beta and me == version_tuple(beta):
-            return "Beta"
-        if beta and me > version_tuple(beta):
-            return tr("Entwicklungsstand")
-        if stable and me < version_tuple(stable):
-            return tr("veraltet")
-        if beta and me > (version_tuple(stable) if stable else (0,)):
-            return "Beta"
-        return ""
+            parts.append(f"{name}: <b>{vlabel(v, 'beta' if b == 'beta' else 'stable')}</b>" if v else f"{name}: {'…' if b not in rv else '—'}")
+        self.channel_info.setText(" · ".join(parts) + f"<br>Installiert: <b>{vlabel()}</b>")
 
     def _auto_changed(self, on):
         self.settings["auto_check"] = on
@@ -15358,7 +15368,7 @@ class UpdatePanel(QWidget):
                         vers[b] = remote_info(repo, b)[0]
                     except Exception:
                         vers[b] = None
-            ui(lambda: (self.remote_versions.update(vers), self._show_channel_info(),
+            ui(lambda: (self.remote_versions.update(vers), self._cache_channels(vers), self._show_channel_info(),
                         self._checked(*res, silent=silent)))
         threading.Thread(target=worker, daemon=True).start()
 
@@ -15381,18 +15391,18 @@ class UpdatePanel(QWidget):
         # Von einer Beta zurück zur stabilen Version: ältere Version anbieten, aber nicht beim Start aufdrängen
         back = not newer and self.settings.get("branch", "main") == "main" and \
             version_tuple(ver) < version_tuple(APP_VERSION)
-        self.b_update.setText(f"Zur stabilen Version {vlabel(ver)} wechseln" if back else "Jetzt aktualisieren")
+        self.b_update.setText(f"Zur stabilen Version {self._vl(ver)} wechseln" if back else "Jetzt aktualisieren")
         self.b_update.setVisible(newer or back)
         self.app.show_update_hint(ver if newer else None)
         if back:
-            self.badge.set("info", f"Beta {vlabel()} installiert")
-            self.changes.setText(f"Die aktuelle stabile Version ist {vlabel(ver)}. Du nutzt noch die Beta {vlabel()} – "
+            self.badge.set("info", f"{vlabel()} installiert")
+            self.changes.setText(f"Die aktuelle stabile Version ist {self._vl(ver)}. Du nutzt noch {vlabel()} – "
                                  "wechseln installiert die stabile Version.")
             self.changes.setVisible(not silent)
         elif newer:
-            self.badge.set("warn", f"Version {vlabel(ver)} verfügbar")
+            self.badge.set("warn", f"Version {self._vl(ver)} verfügbar")
             txt = changes_since(cl, APP_VERSION)
-            set_text_raw(self.changes, txt) if txt else self.changes.setText(f"Neue Version {vlabel(ver)}.")
+            set_text_raw(self.changes, txt) if txt else self.changes.setText(f"Neue Version {self._vl(ver)}.")
             self.changes.show()
             if silent and self.settings.get("ask_on_start", True) and ver not in self._offered:
                 self._offered.add(ver)
@@ -15408,7 +15418,7 @@ class UpdatePanel(QWidget):
         set_msg_icon(box, QMessageBox.Information)
         box.setWindowTitle("Update verfügbar")
         box.setTextFormat(Qt.RichText)
-        box.setText(f"<b>Tuxdex {vlabel(ver)} ist verfügbar</b> – installiert ist {vlabel()}.")
+        box.setText(f"<b>Tuxdex {self._vl(ver)} ist verfügbar</b> – installiert ist {vlabel()}.")
         set_text_raw(box, changes_html or "", "setInformativeText")
         later = box.addButton("Später", QMessageBox.RejectRole)
         later.setProperty("variant", "ghost")
@@ -15579,7 +15589,7 @@ class UpdatePanel(QWidget):
         m = re.search(r"^pkgver=([\w.]+)", _read(os.path.join(src, "PKGBUILD")), re.M)
         ver = m.group(1) if m else "?"
         if version_tuple(ver) <= version_tuple(APP_VERSION):
-            if not ask_confirm(self, "Gleiche oder ältere Version", f"{origin} enthält Version {vlabel(ver)} – installiert ist "
+            if not ask_confirm(self, "Gleiche oder ältere Version", f"{origin} enthält Version {self._vl(ver)} – installiert ist "
                                f"{vlabel()}. Trotzdem neu installieren?", "Installieren"):
                 self._prog_fail("Abgebrochen")
                 return
@@ -16027,7 +16037,8 @@ class MainWindow(QWidget):
         self.upd_hint.hide()
         sl.addWidget(self.upd_hint)
         sl.addSpacing(12)
-        sl.addWidget(Label(f"Version {vlabel()}", "StatusText"))
+        self.ver_label = Label(f"Version {vlabel()}", "StatusText")
+        sl.addWidget(self.ver_label)
         root.addWidget(sb)
 
         # Tabs werden erst beim ersten Öffnen gebaut (spart RAM und Startzeit);
@@ -16248,6 +16259,9 @@ class MainWindow(QWidget):
         self.gear.setChecked(True)
         for t in self.tabs:
             t.set_selected(False)
+
+    def refresh_version_labels(self):
+        self.ver_label.setText(tr("Version") + f" {vlabel()}")
 
     def open_update(self):
         """Klick auf „Version … verfügbar“: Einstellungen öffnen und direkt zum Update-Feld springen; ein zweiter

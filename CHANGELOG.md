@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.12
+Versionsnamen (Beta).
+
+- **Namensschema**: Die stabile Version heißt einfach „1.5.2“, der Beta-Zweig „1.5.12-beta“. Das frühere „-alpha“ hinter jeder Nummer entfällt. Welcher Kanal die installierte Version ist, ermittelt Tuxdex durch Vergleich mit den Versionen auf GitHub (neuer als die stabile = Beta) und merkt sich die Werte auch ohne Netz. Gilt für Statusleiste, Einstellungen, Update-Fenster und GitHub-Releases (Releases aus `main` tragen keinen Zusatz).
+
 ## 1.5.11
 Fehlerbehebung (Beta).
 
