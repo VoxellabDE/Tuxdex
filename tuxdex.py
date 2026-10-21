@@ -431,7 +431,7 @@ def module_enabled(key, settings=None):
 FONTS = {"sans": "Sans Serif", "mono": "Monospace"}
 
 APP_ID = "tuxdex"
-APP_VERSION = "1.5.9"
+APP_VERSION = "1.5.10"
 APP_STAGE = "alpha"        # Reifegrad – wird nur angezeigt, die Versionsnummer selbst bleibt ohne Zusatz
 
 
@@ -15696,8 +15696,8 @@ class UpdatePanel(QWidget):
 
 
 class SettingsPage(Page):
-    def _lang_changed(self, _=0):
-        code = self.cb_lang.currentData()
+    def _lang_changed(self, idx=0):
+        code = ("de", "en")[idx]
         st = load_settings()
         st["lang"] = code
         save_settings(st)
@@ -15775,14 +15775,9 @@ class SettingsPage(Page):
         self.lay.addWidget(self.update_panel)
         langp = Panel("Sprache · Language")
         lrow = QHBoxLayout()
-        self.cb_lang = QComboBox()
-        self.cb_lang.setMinimumHeight(38)
-        self.cb_lang.setMinimumWidth(220)
-        for text, code in (("Deutsch", "de"), ("English", "en")):
-            self.cb_lang.addItem(text, code)
-        self.cb_lang.setCurrentIndex(0 if LANG == "de" else 1)
-        self.cb_lang.currentIndexChanged.connect(self._lang_changed)
-        lrow.addWidget(self.cb_lang)
+        self.lang_seg = Segmented(["DE", "EN"], self._lang_changed)       # ein Umschalter statt Auswahlliste
+        self.lang_seg.set(0 if LANG == "de" else 1)
+        lrow.addWidget(self.lang_seg)
         lrow.addStretch(1)
         langp.body.addLayout(lrow)
         langp.body.addWidget(Label("Wirkt nach einem Neustart von Tuxdex.", "Hint", wrap=True))

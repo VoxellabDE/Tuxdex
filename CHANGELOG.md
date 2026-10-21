@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.10
+Sprache (Beta).
+
+- **Einstellungen → Sprache**: statt der Auswahlliste gibt es jetzt einen Umschalter **DE | EN**.
+
 ## 1.5.9
 Installations-Anzeige (Beta).
 
