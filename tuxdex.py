@@ -1328,6 +1328,24 @@ class LogView(QPlainTextEdit):
             f = QTextCharFormat()
             f.setForeground(QColor(COLORS[key]))
             self._fmts[tag] = f
+        # „Kopieren“ schwebt oben rechts im Feld – gesamte Ausgabe in die Zwischenablage, ohne zu markieren
+        self.b_copy = Button("Kopieren", "ghost", self._copy_all, "Gesamte Ausgabe in die Zwischenablage")
+        self.b_copy.setParent(self)
+        self.b_copy.setStyleSheet("padding: 3px 10px; font-size: 9pt;")
+        self.b_copy.adjustSize()
+        self.b_copy.raise_()
+
+    def _copy_all(self):
+        QApplication.clipboard().setText(self.toPlainText())
+        self.b_copy.setText(tr("Kopiert ✓"))
+        QTimer.singleShot(1500, lambda: self.b_copy.setText(tr("Kopieren")))
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        self.b_copy.adjustSize()
+        sb = self.verticalScrollBar()
+        x = self.width() - self.b_copy.width() - 8 - (sb.width() if sb.isVisible() else 0)
+        self.b_copy.move(max(0, x), 6)
 
     def _tag(self, line):
         s = line.strip()
@@ -15725,6 +15743,8 @@ EN = {
     'makepkg (Paket pacman, Gruppe base-devel) wird benötigt.': 'makepkg (package pacman, group base-devel) is required.',
     'makepkg fehlt': 'makepkg missing',
     'Bauwerkzeuge fehlen': 'Build tools missing',
+    'Kopieren': 'Copy',
+    'Kopiert ✓': 'Copied ✓',
     'Root-Rechte nötig': 'Root rights needed',
     'Mit root-Rechten': 'With root rights',
     'Bauwerkzeuge fehlgeschlagen': 'Build tools failed',
