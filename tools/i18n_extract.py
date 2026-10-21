@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 PyloGER (Voxellab)
 """Sammelt alle Oberflächentexte aus tuxdex.py und zeigt, welche im englischen Katalog (EN = {...}) fehlen.
 
     python3 tools/i18n_extract.py            → Anzahl fehlender Texte

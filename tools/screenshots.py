@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 PyloGER (Voxellab)
 """Erzeugt die README-Screenshots mit Beispieldaten – nichts davon stammt vom echten System.
 
     QT_QPA_PLATFORM=offscreen python3 tools/screenshots.py [--lang en] [--out docs/screenshots] [--size 1440x900]

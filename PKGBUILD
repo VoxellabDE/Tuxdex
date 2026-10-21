@@ -1,12 +1,12 @@
 # Maintainer: PyloGER (Voxellab) <contact@voxellab.de>
 pkgname=tuxdex
-pkgver=1.6.0.1
+pkgver=1.6.0.2
 epoch=1
 pkgrel=1
 pkgdesc="Grafische Systemverwaltung für Arch Linux: Updates, Software, Backup, Flatpak-Rechte, Datenträger, Speicher, Taskmanager, Antivirus, Sicherheit & Mullvad VPN"
 arch=('any')
 url="https://github.com/VoxellabDE/Tuxdex"
-license=('MIT')
+license=('GPL-3.0-or-later')
 depends=('python' 'pyside6' 'sudo' 'util-linux' 'iproute2' 'pciutils' 'hwdata' 'pacman-contrib' 'ttf-ibm-plex' 'rsync')
 optdepends=(
     'paru: AUR-Pakete aktualisieren und installieren'
@@ -42,7 +42,7 @@ source=(
         tuxdex-256.png
         tuxdex-512.png
         LICENSE)
-sha256sums=('45e1ef505a1420d88558026834c52e7c167efe2be01b93bebbeb9def48a64e4c'
+sha256sums=('fab9c7cb5a2cafae10226206b35e62a07a83387aff948db248ef0275858f0545'
             '27c40e4efe990d8cc8e5e3484caab4dfb6c4577e04c9dc1ae903344440f19519'
             '992bab031982cb434b9a6ba4648cf29187ee8b956a0ca7aefe2909c62dc62fe6'
             '8f26609520915020bbd6da6d90bf3cbf59b8d8eb223072ad53cee0e0d2bdb010'
@@ -53,7 +53,7 @@ sha256sums=('45e1ef505a1420d88558026834c52e7c167efe2be01b93bebbeb9def48a64e4c'
             'b9c22246ea2913006a81bd665a186cfb79c9f57c31dae090a693b9cd2052ab9f'
             'ab1a61c6f5ab235478564c3e0860f817ef4d89a6298dfcb491356adc54342a1d'
             'f97e0af03c351e904d75bccd38dafa82df884c9bbc37e571540b0687eacbc8ac'
-            '4b90291970687641ff6d103277075acbb5824cc0f3c7e120609f78044c2d3228')
+            '3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986')
 
 package() {
     install -Dm755 tuxdex.py "$pkgdir/usr/lib/$pkgname/tuxdex.py"

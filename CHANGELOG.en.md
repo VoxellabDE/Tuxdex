@@ -2,6 +2,11 @@
 
 English version of [CHANGELOG.md](CHANGELOG.md). Entries before 1.0.0 are only available in German.
 
+## 1.6.0.2
+License (beta).
+
+- **License**: from this version on Tuxdex is under the **GPL-3.0-or-later** (previously MIT). `LICENSE`, `PKGBUILD`, README, security notes, the "About" dialog and the source headers (SPDX) are adjusted. Anyone who modifies and passes on Tuxdex must provide the source code under the same license. Earlier versions stay under the MIT license they were published under.
+
 ## 1.6.0.1
 Drop-down lists (beta).
 

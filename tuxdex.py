@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 PyloGER (Voxellab)
 """
 Tuxdex - grafische Systemverwaltung für Arch Linux: Updates, Paketverwaltung,
 Fallback-Speicher (Swap), Firewall und Benutzerübersicht.
@@ -550,7 +552,7 @@ def module_enabled(key, settings=None):
 FONTS = {"sans": "Sans Serif", "mono": "Monospace"}
 
 APP_ID = "tuxdex"
-APP_VERSION = "1.6.0.1"
+APP_VERSION = "1.6.0.2"
 APP_STAGE = ""             # früher „alpha“ – das Namensschild kommt jetzt vom Kanal (Stabil ohne Zusatz, Beta mit „-beta“)
 
 
@@ -1789,7 +1791,7 @@ ALPHA_FILE = os.path.join(os.path.expanduser("~/.config"), "tuxdex", "settings.j
 ALPHA_TEXT = ("Tuxdex ist in der <b>Beta-Phase</b>. Aktionen mit Administrator-Rechten (root) ändern dein System "
               "direkt – z. B. Pakete, Datenträger, Swap, Firewall, Systemdateien. Trotz Rückfragen und Prüfungen "
               "können Fehler passieren, bis hin zu Datenverlust oder einem System, das nicht mehr startet.<br><br>"
-              "<b>Nutzung auf eigenes Risiko.</b> Es gibt keine Gewährleistung (MIT-Lizenz). Lege vorher ein Backup "
+              "<b>Nutzung auf eigenes Risiko.</b> Es gibt keine Gewährleistung (GPL-3.0). Lege vorher ein Backup "
               "an und lies bei jeder Rückfrage, welcher Befehl ausgeführt wird – er steht immer im Ausgabefeld.")
 
 
@@ -17431,7 +17433,7 @@ class SettingsPage(Page):
         mail.setTextFormat(Qt.RichText)
         mail.setOpenExternalLinks(True)
         g.addLayout(Field("Kontakt", mail), 0, 1)
-        g.addLayout(Field("Lizenz", Label("MIT – frei nutzbar, veränderbar und weitergebbar", "Value", wrap=True)), 1, 0)
+        g.addLayout(Field("Lizenz", Label("GPL-3.0 – frei nutzbar, veränderbar und weitergebbar (Weitergabe unter derselben Lizenz)", "Value", wrap=True)), 1, 0)
         g.addLayout(Field("Erstellt", Label("2026", "Value")), 1, 1)
         au.body.addLayout(g)
         self.lay.addWidget(au)
@@ -19399,7 +19401,7 @@ EN = {
     'Mit root-Rechten (genauer)': 'With root rights (more accurate)',
     'Mit root-Rechten (nötig für Systemordner wie /etc)': 'With root rights (needed for system folders like /etc)',
     'Mit root-Rechten (nötig für Systemordner)': 'With root rights (needed for system folders)',
-    'MIT – frei nutzbar, veränderbar und weitergebbar': 'MIT – free to use, modify and share',
+    'GPL-3.0 – frei nutzbar, veränderbar und weitergebbar (Weitergabe unter derselben Lizenz)': 'GPL-3.0 – free to use, modify and share (shared under the same license)',
     'Mitglied in:': 'Member of:',
     'Mitglied in: {}.': 'Member of: {}.',
     'mittel': 'medium',
@@ -19805,7 +19807,7 @@ EN = {
     'Tuxdex auf Version {} aktualisieren?\n\nQuelle: github.com/{} ({})': 'Update Tuxdex to version {}?\n\nSource: github.com/{} ({})',
     'Tuxdex beenden': 'Quit Tuxdex',
     'Tuxdex ist als Paket installiert – bitte das Archiv (tuxdex-X.Y.Z.tar.gz) oder den Ordner mit PKGBUILD wählen.': 'Tuxdex is installed as a package – please choose the archive (tuxdex-X.Y.Z.tar.gz) or the folder with the PKGBUILD.',
-    'Tuxdex ist in der <b>Beta-Phase</b>. Aktionen mit Administrator-Rechten (root) ändern dein System direkt – z. B. Pakete, Datenträger, Swap, Firewall, Systemdateien. Trotz Rückfragen und Prüfungen können Fehler passieren, bis hin zu Datenverlust oder einem System, das nicht mehr startet.<br><br><b>Nutzung auf eigenes Risiko.</b> Es gibt keine Gewährleistung (MIT-Lizenz). Lege vorher ein Backup an und lies bei jeder Rückfrage, welcher Befehl ausgeführt wird – er steht immer im Ausgabefeld.': 'Tuxdex is in the <b>beta stage</b>. Actions with administrator rights (root) change your system directly – e.g. packages, drives, swap, firewall, system files. Despite confirmations and checks, errors can happen, up to data loss or a system that no longer boots.<br><br><b>Use at your own risk.</b> There is no warranty (MIT license). Make a backup first and read which command will run at every confirmation – it is always shown in the output box.',
+    'Tuxdex ist in der <b>Beta-Phase</b>. Aktionen mit Administrator-Rechten (root) ändern dein System direkt – z. B. Pakete, Datenträger, Swap, Firewall, Systemdateien. Trotz Rückfragen und Prüfungen können Fehler passieren, bis hin zu Datenverlust oder einem System, das nicht mehr startet.<br><br><b>Nutzung auf eigenes Risiko.</b> Es gibt keine Gewährleistung (GPL-3.0). Lege vorher ein Backup an und lies bei jeder Rückfrage, welcher Befehl ausgeführt wird – er steht immer im Ausgabefeld.': 'Tuxdex is in the <b>beta stage</b>. Actions with administrator rights (root) change your system directly – e.g. packages, drives, swap, firewall, system files. Despite confirmations and checks, errors can happen, up to data loss or a system that no longer boots.<br><br><b>Use at your own risk.</b> There is no warranty (GPL-3.0). Make a backup first and read which command will run at every confirmation – it is always shown in the output box.',
     'Tuxdex jetzt neu starten?': 'Restart Tuxdex now?',
     'Tuxdex {} aus {} installieren?': 'Install Tuxdex {} from {}?',
     'Tuxdex-Update wählen': 'Choose Tuxdex update',

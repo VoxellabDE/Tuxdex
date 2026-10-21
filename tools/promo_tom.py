@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 PyloGER (Voxellab)
 """Tom-Reel: Cartoon-Werbevideo mit Sprecher (Kokoro-TTS), Lippensynchronisation, Wort-Untertiteln
 und Soundeffekten. Persona: Tom – braune Haare, aus Deutschland, Nerd.
 

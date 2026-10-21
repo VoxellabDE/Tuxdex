@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 PyloGER (Voxellab)
 """Kurze Werbevideos (Reels, 1080×1920) aus den Tuxdex-Screenshots.
 
   QT_QPA_PLATFORM=offscreen python3 tools/promo_video.py --shots /tmp/shots [--out DIR]
