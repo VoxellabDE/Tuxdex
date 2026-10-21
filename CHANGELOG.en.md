@@ -2,6 +2,11 @@
 
 English version of [CHANGELOG.md](CHANGELOG.md). Entries before 1.0.0 are only available in German.
 
+## 1.5.17.2
+Login dialog (beta).
+
+- **Pop-ups**: adjust their size after the labels are set up. In the login window the input field and buttons could otherwise be squeezed together when the window stayed too small.
+
 ## 1.5.17.1
 Tab bar (beta).
 
