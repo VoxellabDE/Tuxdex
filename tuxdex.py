@@ -12192,13 +12192,28 @@ class BackupJob:
         self.on_progress, self.on_log, self.on_done = on_progress, on_log, on_done
         self.passphrase, self.use_sudo = passphrase, use_sudo
         self.procs, self.cancelled = [], False
+        self.partial = False       # Dateien waren nicht lesbar (Sicherung ohne root-Rechte)
         self.now = datetime.now()
         self.ts = self.now.strftime(BACKUP_TS)
         self.label = backup_label(cfg.get("name_pattern"), self.now)
         self.results = {}
 
     def start(self):
-        threading.Thread(target=self._run, daemon=True).start()
+        threading.Thread(target=self._run_guarded, daemon=True).start()
+
+    def _run_guarded(self):
+        # sudo-Ticket während des Backups frisch halten: Sonst scheitern bei langen Läufen am Ende das
+        # Umbenennen des Snapshots und das Aufräumen alter Versionen (sudo -n braucht ein gültiges Ticket).
+        stop = threading.Event()
+        if self.use_sudo:
+            def keep():
+                while not stop.wait(60):
+                    self._run_quiet(["sudo", "-n", "-v"])
+            threading.Thread(target=keep, daemon=True).start()
+        try:
+            self._run()
+        finally:
+            stop.set()
 
     def cancel(self):
         self.cancelled = True
@@ -12257,12 +12272,15 @@ class BackupJob:
         dur = int(time.time() - t0)
         summary = (f"{len(ok)} von {len(self.targets)} Zielen erfolgreich · {fmt_bytes(self.total)} · "
                    f"Dauer {dur // 3600}:{dur // 60 % 60:02d}:{dur % 60:02d}")
+        if self.partial and ok:
+            summary = "Unvollständig (Dateien nicht lesbar) · " + summary + \
+                " · für Systemordner wie /etc „Mit root-Rechten“ anhaken"
         if not self.cancelled:
             cfg = backup_load()
             cfg["history"] = ([{"at": time.time(), "mode": self.cfg["mode"], "targets": self.targets,
                                 "ok": len(ok), "size": self.total, "dur": dur}] + cfg.get("history", []))[:30]
             backup_save(cfg)
-        self.on_done(bool(ok) and len(ok) == len(self.targets) and not self.cancelled,
+        self.on_done(bool(ok) and len(ok) == len(self.targets) and not self.cancelled and not self.partial,
                      "Abgebrochen" if self.cancelled else summary)
 
     # ---- Snapshot / Spiegel (rsync, je Ziel ein Prozess) ----
@@ -12341,12 +12359,17 @@ class BackupJob:
             return
         note = ""
         if rc == 23:
+            self.partial = True
             note = " · einige Dateien nicht lesbar (ggf. mit root-Rechten sichern)"
         elif rc == 24:
             note = " · einige Dateien verschwanden während des Backups"
         if mode == "snapshot":
             final = dest[:-len(".partial")]
-            self._run_quiet(self._sudo() + ["mv", dest, final])
+            if self._run_quiet(self._sudo() + ["mv", dest, final]) != 0:
+                self.results[target] = "error"
+                self._prog(target, state="error", msg="Snapshot konnte nicht abgeschlossen werden (umbenennen "
+                           "fehlgeschlagen – root-Rechte abgelaufen?). Daten liegen als .partial im Ziel.")
+                return
             link = os.path.join(base, "latest")
             try:
                 if os.path.islink(link):
@@ -12529,6 +12552,8 @@ class BackupJob:
         rcs = [s.wait() for s in stages]
         for e in errs[:30]:
             self.on_log(f"tar: {e}\n")
+        if any("Permission denied" in e for e in errs):
+            self.partial = True
         broken = self.cancelled or rc_tar not in (0, 1) or any(rcs)
         digest = h.hexdigest()
         ok_targets = []
@@ -13144,6 +13169,16 @@ class BackupTab(Page):
             if pw != self.pw2.text():
                 show_warning(self, "Passwort", "Die Passwörter stimmen nicht überein.")
                 return
+        sysdirs = ("/etc", "/var", "/usr", "/root", "/boot", "/opt", "/srv")
+        needs_root = [s for s in cfg["sources"] if _expand(s) in sysdirs or _expand(s).startswith(
+            tuple(d + "/" for d in sysdirs))]
+        if needs_root and not cfg["root"] and os.geteuid() != 0:
+            if ask_confirm(self, "Root-Rechte nötig", "Diese Ordner kann nur root komplett lesen:\n\n"
+                           + "\n".join(short_path(_expand(s)) for s in needs_root)
+                           + "\n\nOhne root-Rechte fehlen Dateien im Backup. Mit root-Rechten sichern?",
+                           "Mit root-Rechten"):
+                self.o_root.setChecked(True)
+                cfg = self._collect()
         use_sudo = cfg["root"]
         if use_sudo and not self.app.priv.ensure(self):
             return
@@ -15690,6 +15725,8 @@ EN = {
     'makepkg (Paket pacman, Gruppe base-devel) wird benötigt.': 'makepkg (package pacman, group base-devel) is required.',
     'makepkg fehlt': 'makepkg missing',
     'Bauwerkzeuge fehlen': 'Build tools missing',
+    'Root-Rechte nötig': 'Root rights needed',
+    'Mit root-Rechten': 'With root rights',
     'Bauwerkzeuge fehlgeschlagen': 'Build tools failed',
     'Installiere Bauwerkzeuge …': 'Installing build tools …',
     'Installiere base-devel …': 'Installing base-devel …',
