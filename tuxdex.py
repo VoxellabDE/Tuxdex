@@ -431,7 +431,7 @@ def module_enabled(key, settings=None):
 FONTS = {"sans": "Sans Serif", "mono": "Monospace"}
 
 APP_ID = "tuxdex"
-APP_VERSION = "1.5.8"
+APP_VERSION = "1.5.9"
 APP_STAGE = "alpha"        # Reifegrad – wird nur angezeigt, die Versionsnummer selbst bleibt ohne Zusatz
 
 
@@ -620,6 +620,11 @@ QPushButton:disabled, QPushButton[variant="primary"]:disabled, QPushButton[varia
     background: transparent; color: $line_strong; border: 1px solid $line; padding: 6px 15px;
 }
 QPushButton[variant="icon"] { padding: 6px 10px; min-width: 16px; }
+
+/* Installier-Zeilen: laufende Installation ist umrahmt und hat eine eigene Leiste */
+#InstRow { border: 1px solid transparent; border-radius: 8px; background: transparent; }
+#InstRow[busy="true"] { border: 1px solid $accent; background: $bg3; }
+#InstRow QLabel { background: transparent; }
 
 /* Status-Badges */
 #Badge { border: 1px solid; border-radius: 3px; padding: 2px 8px; font-size: 9pt; font-weight: 600; background: $bg2; }
@@ -1070,9 +1075,10 @@ class ProcessRun:
     wird an den Prozess geschickt."""
 
     def __init__(self, cmd, log, needs_sudo=False, on_done=None, interactive=False, on_line=None, cwd=None,
-                 on_percent=None):
+                 on_percent=None, on_text=None):
         self.log = log
         self.cwd = cwd
+        self.on_text = on_text         # optional: Ausgabe-Stücke (bereinigt, GUI-Thread) für eine Fortschrittsberechnung
         self.on_percent = on_percent   # optional: zuletzt gemeldete Prozentzahl (GUI-Thread)
         self.on_done = on_done
         self.on_line = on_line   # optional: pro vollständiger Zeile (GUI-Thread)
@@ -1150,6 +1156,8 @@ class ProcessRun:
                 if self.log is not None:
                     ui(lambda t=text: self.log.write_raw(t))
                 clean = ANSI_RE.sub("", text).replace("\r\n", "\n")
+                if self.on_text:
+                    ui(lambda t=clean: self.on_text(t))
                 if self.on_percent:
                     pct = PCT_RE.findall(clean)
                     if pct:
@@ -1189,14 +1197,15 @@ class ProcessRun:
 
 
 def run_streaming(cmd, log, needs_sudo=False, on_done=None, clear_first=True, interactive=False, on_line=None,
-                  cwd=None, on_percent=None):
+                  cwd=None, on_percent=None, on_text=None):
     """Führt cmd aus und streamt die Ausgabe live in das LogView - alles
     innerhalb des Programmfensters, kein externes Terminal. Gibt ein
     ProcessRun-Objekt zurück (u. a. zum Abbrechen)."""
     if clear_first:
         log.set_text("")
     return ProcessRun(cmd, log, needs_sudo=needs_sudo, on_done=on_done, interactive=interactive,
-                      on_line=on_line, cwd=cwd, on_percent=on_percent)
+                      on_line=on_line, cwd=cwd, on_percent=on_percent,
+                      on_text=on_text)
 
 
 class SequenceRun:
@@ -1225,7 +1234,8 @@ class SequenceRun:
 
         self.current = run_streaming(step["cmd"], self.log, needs_sudo=step["needs_sudo"], on_done=done,
                                      clear_first=False, interactive=step.get("interactive", False),
-                                     cwd=step.get("cwd"), on_percent=step.get("on_percent"))
+                                     cwd=step.get("cwd"), on_percent=step.get("on_percent"),
+                                     on_text=step.get("on_text"))
 
     def cancel(self):
         self.cancelled = True
@@ -2499,6 +2509,40 @@ SOFT_CATALOG = [
 ]
 
 
+class InstallRow(QFrame):
+    """Zeile „Name · Beschreibung · Knopf“. Läuft eine Installation, wird die Zeile umrahmt und zeigt unter der
+    Beschreibung eine eigene Fortschrittsleiste – so ist sofort klar, welches Programm gerade installiert."""
+
+    def __init__(self, name, desc, button):
+        super().__init__()
+        self.setObjectName("InstRow")
+        self.setProperty("busy", False)
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(8, 6, 8, 6)
+        lay.setSpacing(10)
+        col = QVBoxLayout()
+        col.setSpacing(2)
+        nm = Label(name)
+        nm.setStyleSheet("font-weight:600;")
+        col.addWidget(nm)
+        col.addWidget(Label(desc, "Hint", wrap=True))
+        self.bar = ProgressBar()
+        self.bar.hide()
+        col.addWidget(self.bar)
+        lay.addLayout(col, 1)
+        lay.addWidget(button, 0, Qt.AlignVCenter)
+
+    def set_busy(self, pct):
+        if pct is None:
+            self.setProperty("busy", False)
+            self.bar.hide()
+        else:
+            self.setProperty("busy", True)
+            self.bar.show()
+            self.bar.set(pct, f"{pct} %")
+        repolish(self)
+
+
 # Gleiche Programme aus der jeweils anderen Quelle – wer z. B. OBS per Flatpak installiert hat, soll es hier
 # trotzdem als installiert sehen.
 CATALOG_ALTS = {
@@ -2561,6 +2605,7 @@ class CatalogPanel(Panel):
         self.fpnames = {}
         self.installing = {}        # (Quelle, Kennung) -> Prozent
         self.btns = {}
+        self.rows = {}
         self.body.addWidget(Label("Direkt installieren – gleich unter dem Namen steht, woher das Programm kommt "
                                   "(pacman = Arch-Paketquellen, Flatpak = Flathub).", "Hint", wrap=True))
         row = QHBoxLayout()
@@ -2596,6 +2641,7 @@ class CatalogPanel(Panel):
     def render(self):
         clear_layout(self.box)
         self.btns = {}
+        self.rows = {}
         cat = self.cat_cb.currentData()
         q = self.search.text().strip().lower()
         shown = 0
@@ -2610,19 +2656,14 @@ class CatalogPanel(Panel):
                 self.box.addSpacing(6)
                 self.box.addWidget(head)
             for name, desc, src, ident in hits:
-                r = QHBoxLayout()
-                r.setSpacing(10)
-                col = QVBoxLayout()
-                col.setSpacing(0)
-                nm = Label(name)
-                nm.setStyleSheet("font-weight:600;")
-                col.addWidget(nm)
-                col.addWidget(Label(desc, "Hint", wrap=True))
-                r.addLayout(col, 1)
                 b = self._button(name, src, ident)
                 b.setMinimumWidth(170)
-                r.addWidget(b, 0, Qt.AlignVCenter)
-                self.box.addLayout(r)
+                row = InstallRow(name, tr(desc), b)
+                key = (src, ident)
+                self.rows.setdefault(key, []).append(row)
+                if key in self.installing:
+                    row.set_busy(self.installing[key])
+                self.box.addWidget(row)
                 shown += 1
         if not shown:
             self.box.addWidget(Label("Nichts gefunden.", "Muted"))
@@ -2657,6 +2698,11 @@ class CatalogPanel(Panel):
                 repolish(b)
             except RuntimeError:
                 pass
+        for row in self.rows.get(key, []):
+            try:
+                row.set_busy(pct)
+            except RuntimeError:
+                pass
 
     def install(self, name, src, ident):
         key = (src, ident)
@@ -2674,7 +2720,7 @@ class CatalogPanel(Panel):
             step = {"cmd": ["flatpak", "install", "-y", "flathub", ident], "needs_sudo": True, "interactive": True,
                     "label": f"flatpak install flathub {ident}"}
         self._set_busy(key, 0)
-        step["on_percent"] = monotone(lambda v: self._set_busy(key, v))
+        step["on_text"] = monotone(lambda v: self._set_busy(key, v))
 
         def all_done():
             self.installing.pop(key, None)
@@ -4498,15 +4544,83 @@ def busy_text(pct):
     return f"{tr('Wird installiert …')} {pct}%"
 
 
-def monotone(cb):
-    """pacman und Flatpak melden pro Paket 0–100 %. Daraus wird eine Anzeige, die nie zurückspringt und erst
-    mit dem Abschluss 100 % erreicht."""
-    top = [0]
+class InstallTracker:
+    """Rechnet aus der Ausgabe von pacman und Flatpak einen Gesamtfortschritt (0–99 %) aus – statt der Balken
+    der einzelnen Pakete, die jeweils selbst von 0 auf 100 laufen.
 
-    def f(v):
-        top[0] = max(top[0], min(v, 99))
-        cb(top[0])
-    return f
+    pacman: Download 0–40 % (fertige Pakete ÷ „Pakete (N)“), Prüfungen ab 45 %, Installation 50–97 %
+    (Zähler „(i/N) installiere …“). Flatpak: Zähler „i/n“ plus der Balken des aktuellen Pakets.
+    Die Anzeige springt nie zurück; 100 % gibt es erst mit dem Ende des Vorgangs."""
+
+    INSTALL_RE = re.compile(r"^\(\s*(\d+)/(\d+)\)\s+(installing|upgrading|reinstalling|downgrading|installiere|"
+                            r"aktualisiere|neu installiere|herabgestuft|downgrade)", re.I)
+    COUNT_RE = re.compile(r"^\(\s*(\d+)/(\d+)\)")
+    PKGS_RE = re.compile(r"^(?:Packages|Pakete)\s*\((\d+)\)", re.I)
+    PHASE_RE = re.compile(r"Processing package changes|Paket.nderungen", re.I)
+    FLAT_RE = re.compile(r"(\d+)/(\d+)\D")
+
+    def __init__(self, cb):
+        self.cb, self.top, self.buf = cb, 0, ""
+        self.n = self.dl = 0
+        self.in_install = False
+
+    def _set(self, v):
+        v = max(self.top, min(int(v), 99))
+        if v != self.top or v == 0:
+            self.top = v
+            self.cb(v)
+
+    def feed(self, text):
+        self.buf += text
+        *done, self.buf = re.split(r"[\r\n]", self.buf)
+        for ln in done:
+            self._line(ln.strip(), final=True)
+        self._line(self.buf.strip(), final=False)
+
+    def _line(self, ln, final):
+        if not ln:
+            return
+        m = self.PKGS_RE.match(ln)
+        if m:
+            self.n = int(m.group(1))
+            self._set(2)
+            return
+        pct = PCT_RE.findall(ln)
+        p = min(100, int(pct[-1])) if pct else None
+        if self.PHASE_RE.search(ln):
+            self.in_install = True
+            self._set(50)
+            return
+        m = self.INSTALL_RE.match(ln)
+        if m or (self.in_install and self.COUNT_RE.match(ln)):
+            mm = m or self.COUNT_RE.match(ln)
+            i, n = int(mm.group(1)), int(mm.group(2))
+            self._set(50 + ((i - 1) + (p or 0) / 100) / max(n, 1) * 47)
+            if i >= n and p == 100:
+                self.in_install = False
+                self._set(97)
+            return
+        if self.COUNT_RE.match(ln):                  # Prüfphasen vor der Installation, später Hooks
+            self._set(45 if not self.in_install else 97)
+            return
+        if re.search(r"/s\b", ln) and p is not None and not re.match(r"(Total|Gesamt)", ln, re.I):
+            if final and p == 100:
+                self.dl += 1
+            if self.n:
+                self._set((min(self.dl, self.n) + (p / 100 if not final else 0)) / self.n * 40)
+            return
+        m = self.FLAT_RE.search(ln)                  # Flatpak: „Installing 2/3… 45 %“
+        if p is not None and re.match(r"(Install|Updat|Download|Installiere|Aktualisiere|Lade)", ln, re.I):
+            if m:
+                i, n = int(m.group(1)), int(m.group(2))
+                self._set(((i - 1) + p / 100) / max(n, 1) * 100)
+            else:
+                self._set(p)
+
+
+def monotone(cb):
+    """Alter Name: liefert eine Funktion, die Ausgabetext entgegennimmt (siehe InstallTracker)."""
+    return InstallTracker(cb).feed
 
 
 _LAUNCH_CACHE = {}
@@ -4587,6 +4701,7 @@ class SetupTab(Page):
         self.fp = set()
         self.installing = {}     # (Quelle, Kennung) bzw. ("game", key) -> Prozent, solange installiert wird
         self.alt_btns = {}
+        self.alt_rows = {}
         self.game_state = {}     # key -> "install" | "launch" | "done"
         self.game_launch = {}
         self.badge = StatusBadge("off", "Lade …")
@@ -4876,12 +4991,13 @@ class SetupTab(Page):
         self._set_game_busy(run_keys, 0)
         pct = monotone(lambda v: self._set_game_busy(run_keys, v))
         for st in steps:
-            st["on_percent"] = pct
+            st["on_text"] = pct
         self._run(steps, [("game", k) for k in run_keys])
 
     def render_alternatives(self, *_):
         clear_layout(self.alt_box)
         self.alt_btns = {}
+        self.alt_rows = {}
         hits = find_alternatives(self.search.text())
         if not hits:
             self.alt_box.addWidget(Label("Dazu kenne ich noch keinen Ersatz. Im Tab „Software“ kannst du "
@@ -4897,12 +5013,11 @@ class SetupTab(Page):
             head.setStyleSheet("font-weight:600;")
             cl.addWidget(head)
             for name, desc, src, ident in alts:
-                r = QHBoxLayout()
-                r.setSpacing(10)
-                r.addWidget(Label(name), 0)
-                r.addWidget(Label(desc, "Hint"), 1)
-                r.addWidget(self._alt_button(name, src, ident), 0)
-                cl.addLayout(r)
+                row = InstallRow(name, tr(desc), self._alt_button(name, src, ident))
+                self.alt_rows.setdefault((src, ident), []).append(row)
+                if (src, ident) in self.installing:
+                    row.set_busy(self.installing[(src, ident)])
+                cl.addWidget(row)
             self.alt_box.addWidget(card)
         if len(hits) > 12:
             self.alt_box.addWidget(Label(f"… und {len(hits) - 12} weitere – einfach suchen.", "Hint"))
@@ -4958,7 +5073,7 @@ class SetupTab(Page):
         def busy(v):
             btn.setText(busy_text(v))
         busy(0)
-        steps[0]["on_percent"] = monotone(busy)
+        steps[0]["on_text"] = monotone(busy)
         if key == "power":
             steps.append({"cmd": ["systemctl", "enable", "--now", "power-profiles-daemon"], "needs_sudo": True,
                           "label": "systemctl enable --now power-profiles-daemon"})
@@ -4972,6 +5087,11 @@ class SetupTab(Page):
                 b.setProperty("variant", "ghost")
                 repolish(b)
             except RuntimeError:       # Knopf wurde beim Neuzeichnen schon entsorgt
+                pass
+        for row in self.alt_rows.get(key, []):
+            try:
+                row.set_busy(pct)
+            except RuntimeError:
                 pass
 
     def install_alt(self, name, src, ident):
@@ -4990,7 +5110,7 @@ class SetupTab(Page):
                     "label": f"flatpak install flathub {ident}"}
         key = (src, ident)
         self._set_alt_busy(key, 0)
-        step["on_percent"] = monotone(lambda v: self._set_alt_busy(key, v))
+        step["on_text"] = monotone(lambda v: self._set_alt_busy(key, v))
         self._run([step], [key])
 
     def set_power(self, idx):
@@ -10762,7 +10882,7 @@ class AntivirusTab(Page):
                                      "„Automatische Updates aktivieren“.\n")
             self.refresh_status()
         run_streaming(["pacman", "-S", "--needed", "--noconfirm", "clamav"], self.log, needs_sudo=True,
-                      clear_first=False, interactive=True, on_done=done, on_percent=busy)
+                      clear_first=False, interactive=True, on_done=done, on_text=busy)
 
     def update_signatures(self):
         if not self.app.priv.ensure(self):
