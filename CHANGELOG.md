@@ -1,10 +1,18 @@
 # Changelog
 
-## 1.4.0
-Laufwerke dauerhaft einhängen.
+## 1.4.1
+Fehlerbehebungen und kleine Verbesserungen.
 
 - **Firewall-Regeln mit IP-Adresse**: Regeln lassen sich jetzt auf eine IP-Adresse oder ein Netz beschränken (z. B. SSH nur von 192.168.1.20 erlauben). Port und IP sind beide optional, mindestens eins ist nötig.
 - **Installieren-Knöpfe**: zeigen beim Installieren den Fortschritt in % („Wird installiert … 42 %“) und werden danach zu einem blauen **„Starten“**-Knopf – so sieht man sofort, was schon installiert ist (bei Programmen mit Fenster; Konsolen-Tools bleiben „Installiert“).
+- **Backup**: Bei langen Läufen mit root-Rechten läuft das sudo-Ticket nicht mehr ab (Snapshots wurden sonst nicht abgeschlossen). Systemordner wie /etc: Tuxdex fragt nach root-Rechten, unvollständige Backups werden als „Unvollständig“ gekennzeichnet.
+- **Ausgabe-Felder**: „Kopieren“-Knopf kopiert die gesamte Ausgabe.
+- **Updater**: fehlende Bauwerkzeuge (`base-devel`) werden zur Installation angeboten; die Update-Prüfung beim Start wiederholt sich, wenn das Netzwerk noch fehlt.
+- **Leak-Test**: ungültige Antwort von ipapi.is führt nicht mehr zum Absturz.
+
+## 1.4.0
+Laufwerke dauerhaft einhängen.
+
 - **Datenträger → „Dauerhaft einhängen …“**: Eine Platte wird bei jedem Start automatisch eingehängt – ohne die `/etc/fstab` von Hand zu bearbeiten. Tuxdex trägt den Eintrag **per UUID** ein, wählt passende Optionen je Dateisystem (ext4, btrfs, xfs, f2fs, NTFS, exFAT, FAT32) und setzt `nofail`, damit der Start nicht hängt, wenn die Platte mal fehlt. Vorher gibt es eine Sicherung (`/etc/fstab.tuxdex.bak`); klappt das Einhängen nicht, wird die `fstab` automatisch zurückgesetzt. Bei Linux-Dateisystemen kann der Ordner dir zugewiesen werden, damit du darin schreiben darfst.
 - **„Dauerhaft entfernen“** löscht den Eintrag wieder. System-Einträge (/, /boot, /home, Swap) bleiben geschützt; Einhängepunkte in Systemordnern (/etc, /usr, /var …) werden abgelehnt.
 
