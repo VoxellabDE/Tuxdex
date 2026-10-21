@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.15
+Tab-Leiste (Beta).
+
+- **Kleine Fenster**: Passen nicht alle Module in die Leiste, werden die Namen nicht mehr abgeschnitten. Die Tabs behalten ihre volle Breite, die Leiste lässt sich scrollen (Mausrad oder die Pfeile ‹ ›), und der gewählte Tab scrollt automatisch ins Bild. Pfeile erscheinen nur, wenn sie gebraucht werden.
+
 ## 1.5.14
 Sprachwechsel ohne Neustart (Beta).
 

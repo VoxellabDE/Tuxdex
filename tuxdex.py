@@ -440,7 +440,7 @@ def module_enabled(key, settings=None):
 FONTS = {"sans": "Sans Serif", "mono": "Monospace"}
 
 APP_ID = "tuxdex"
-APP_VERSION = "1.5.14"
+APP_VERSION = "1.5.15"
 APP_STAGE = ""             # früher „alpha“ – das Namensschild kommt jetzt vom Kanal (Stabil ohne Zusatz, Beta mit „-beta“)
 
 
@@ -602,6 +602,9 @@ QToolTip { background: $bg2; color: $ink; border: 1px solid $line; padding: 4px 
 #Topbar { background: $bg1; }
 #AppTitle { font-size: 15pt; font-weight: 600; }
 #TabBar { background: $bg1; border-bottom: 1px solid $line; }
+#TabScroll, #TabInner { background: transparent; }
+#TabScroll > QWidget > QWidget { background: transparent; }
+#TabScroll > QWidget { background: transparent; }
 #Tab { background: transparent; border-top-left-radius: 6px; border-top-right-radius: 6px; }
 #Tab[selected="true"] { background: $bg0; }
 #Tab:hover { background: $bg2; }
@@ -16007,9 +16010,34 @@ class MainWindow(QWidget):
         # Tab-Leiste
         tabbar = QFrame()
         tabbar.setObjectName("TabBar")
-        tb = QHBoxLayout(tabbar)
-        tb.setContentsMargins(16, 4, 16, 0)
+        outer = QHBoxLayout(tabbar)
+        outer.setContentsMargins(8, 4, 8, 0)
+        outer.setSpacing(2)
+        # Passen nicht alle Tabs ins Fenster, bleiben sie in voller Breite lesbar und die Leiste lässt sich
+        # scrollen (Mausrad oder ‹ ›) – statt die Namen abzuschneiden.
+        self.tab_left = Button("‹", "icon", lambda: self._scroll_tabs(-260))
+        self.tab_right = Button("›", "icon", lambda: self._scroll_tabs(260))
+        for b in (self.tab_left, self.tab_right):
+            b.setFixedWidth(28)
+            b.hide()
+        outer.addWidget(self.tab_left)
+        self.tab_scroll = QScrollArea()
+        self.tab_scroll.setObjectName("TabScroll")
+        self.tab_scroll.setFrameShape(QFrame.NoFrame)
+        self.tab_scroll.setWidgetResizable(True)
+        self.tab_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.tab_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        inner = QWidget()
+        inner.setObjectName("TabInner")
+        tb = QHBoxLayout(inner)
+        tb.setContentsMargins(8, 0, 8, 0)
         tb.setSpacing(2)
+        self.tab_scroll.setWidget(inner)
+        self.tab_scroll.viewport().installEventFilter(self)
+        self.tab_scroll.horizontalScrollBar().rangeChanged.connect(lambda *_: self._update_tab_arrows())
+        self.tab_scroll.horizontalScrollBar().valueChanged.connect(lambda *_: self._update_tab_arrows())
+        outer.addWidget(self.tab_scroll, 1)
+        outer.addWidget(self.tab_right)
         root.addWidget(tabbar)
 
         self.stack = QStackedWidget()
@@ -16067,6 +16095,7 @@ class MainWindow(QWidget):
             tb.addWidget(t)
             self.tabs.append(t)
         tb.addStretch(1)
+        self.tab_scroll.setFixedHeight(inner.sizeHint().height() + 2)
         self.page("update")          # prüft beim Start auf System-Updates
         self.show_sys_updates(*self._sys_updates)
         self.settings_page = SettingsPage(self)
@@ -16329,8 +16358,29 @@ class MainWindow(QWidget):
         if not on and self._last_tab == i:
             self._last_tab = 0
 
+    def _scroll_tabs(self, dx):
+        sb = self.tab_scroll.horizontalScrollBar()
+        sb.setValue(sb.value() + dx)
+
+    def _update_tab_arrows(self):
+        sb = self.tab_scroll.horizontalScrollBar()
+        more = sb.maximum() > 0
+        self.tab_left.setVisible(more)
+        self.tab_right.setVisible(more)
+        self.tab_left.setEnabled(sb.value() > 0)
+        self.tab_right.setEnabled(sb.value() < sb.maximum())
+
+    def eventFilter(self, obj, ev):
+        # Mausrad über der Tab-Leiste scrollt sie seitwärts
+        if obj is self.tab_scroll.viewport() and ev.type() == QEvent.Wheel:
+            d = ev.angleDelta()
+            self._scroll_tabs(-(d.x() or d.y()))
+            return True
+        return super().eventFilter(obj, ev)
+
     def select(self, idx):
         self.tabs[idx].setVisible(True)      # Sprung aus einem anderen Modul in ein abgewähltes: Tab kurz zeigen
+        QTimer.singleShot(0, lambda: self.tab_scroll.ensureWidgetVisible(self.tabs[idx], 40, 0))
         self._last_tab = idx
         self.gear.setChecked(False)
         new = MODULES[idx][0] not in self.pages

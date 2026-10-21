@@ -2,6 +2,11 @@
 
 English version of [CHANGELOG.md](CHANGELOG.md). Entries before 1.0.0 are only available in German.
 
+## 1.5.15
+Tab bar (beta).
+
+- **Small windows**: when not all modules fit in the bar, the names are no longer cut off. The tabs keep their full width, the bar can be scrolled (mouse wheel or the arrows ‹ ›), and the selected tab scrolls into view automatically. The arrows only appear when needed.
+
 ## 1.5.14
 Language switch without restart (beta).
 
