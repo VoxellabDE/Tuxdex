@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.1.3
+Kernel-Modul (Beta).
+
+- **Bootloader wird auch ohne Leserechte erkannt**: Ist `/boot` (EFI-Partition) für normale Benutzer nicht lesbar, erkennt Tuxdex GRUB, systemd-boot, Limine und rEFInd jetzt zusätzlich über die Boot-Einträge der Firmware (`efibootmgr`) und die installierten Pakete. Vorher stand dort „Unbekannt“. Eine nicht lesbare `grub.cfg` wird nicht mehr fälschlich als „Kernel fehlt im Bootmenü“ gemeldet.
+- „Paket“ in der Kernel-Anzeige ist jetzt übersetzt.
+
 ## 1.6.1.2
 Feedback-Knopf (Beta).
 

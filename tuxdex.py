@@ -554,7 +554,7 @@ def module_enabled(key, settings=None):
 FONTS = {"sans": "Sans Serif", "mono": "Monospace"}
 
 APP_ID = "tuxdex"
-APP_VERSION = "1.6.1.2"
+APP_VERSION = "1.6.1.3"
 APP_STAGE = ""             # früher „alpha“ – das Namensschild kommt jetzt vom Kanal (Stabil ohne Zusatz, Beta mit „-beta“)
 
 
@@ -6777,6 +6777,18 @@ def detect_bootloader():
     for p in ("/boot/EFI/refind", "/boot/efi/EFI/refind", "/efi/EFI/refind"):
         if os.path.isdir(p):
             return "refind", p
+    # Ohne Leserechte auf /boot (oft bei der EFI-Partition): über die Boot-Einträge der Firmware und die installierten
+    # Pakete erkennen – die lassen sich ohne root lesen.
+    efi = _cmd_out(["efibootmgr"], 6).lower()
+    pk = set(_cmd_out(["pacman", "-Qq", "grub", "limine", "refind", "systemd-boot-manager"], 8).split())
+    if "linux boot manager" in efi or "systemd-boot" in efi:
+        return "systemd-boot", ""
+    if "limine" in efi or "limine" in pk:
+        return "limine", ""
+    if "refind" in efi or "refind" in pk:
+        return "refind", ""
+    if "grub" in efi or "grub" in pk:
+        return "grub", "/boot/grub/grub.cfg"
     return None, ""
 
 
@@ -6784,10 +6796,14 @@ def kernel_in_bootmenu(pkg, release, bl, path):
     """True/False/None (None = nicht prüfbar): Taucht der Kernel im Bootmenü auf?"""
     if bl == "grub" and path:
         txt = _read(path)
-        return bool(txt) and (f"vmlinuz-{pkg}" in txt or f"vmlinuz-{release}" in txt)
+        if not txt:
+            return None                       # nicht lesbar (nur root) – nicht als „fehlt“ melden
+        return f"vmlinuz-{pkg}" in txt or f"vmlinuz-{release}" in txt
     if bl == "limine" and path:
         txt = _read(path)
-        return bool(txt) and (f"vmlinuz-{pkg}" in txt or release in txt)
+        if not txt:
+            return None
+        return f"vmlinuz-{pkg}" in txt or release in txt
     if bl == "systemd-boot":
         out = _cmd_out(["bootctl", "list", "--no-pager"], 10)
         if out:
@@ -6935,7 +6951,7 @@ class KernelTab(Page):
         names = {"grub": "GRUB", "systemd-boot": "systemd-boot", "limine": "Limine", "refind": "rEFInd"}
         run = next((k for k in f["installed"] if k["running"]), None)
         r = CheckRow("Laufender Kernel")
-        r.set("ok", "Läuft", f"{f['release']}" + (f"  ·  Paket {run['pkg']}" if run else ""))
+        r.set("ok", "Läuft", f"{f['release']}" + (f"  ·  {tr('Paket')} {run['pkg']}" if run else ""))
         self.now_box.addWidget(r)
         r = CheckRow("Scheduler")
         r.set("info", "Scheduler", f["scheduler"])

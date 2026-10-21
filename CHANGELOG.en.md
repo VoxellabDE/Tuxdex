@@ -2,6 +2,12 @@
 
 English version of [CHANGELOG.md](CHANGELOG.md). Entries before 1.0.0 are only available in German.
 
+## 1.6.1.3
+Kernel module (beta).
+
+- **Bootloader is also detected without read permission**: if `/boot` (EFI partition) isn't readable for normal users, Tuxdex now also detects GRUB, systemd-boot, Limine and rEFInd from the firmware's boot entries (`efibootmgr`) and the installed packages. Before, it said "Unknown". An unreadable `grub.cfg` is no longer wrongly reported as "kernel missing in boot menu".
+- "Package" in the kernel display is now translated.
+
 ## 1.6.1.2
 Feedback button (beta).
 
