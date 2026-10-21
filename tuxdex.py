@@ -553,7 +553,7 @@ def module_enabled(key, settings=None):
 FONTS = {"sans": "Sans Serif", "mono": "Monospace"}
 
 APP_ID = "tuxdex"
-APP_VERSION = "1.6.1.6"
+APP_VERSION = "1.6.1.7"
 APP_STAGE = ""             # früher „alpha“ – das Namensschild kommt jetzt vom Kanal (Stabil ohne Zusatz, Beta mit „-beta“)
 
 
@@ -2198,9 +2198,9 @@ class UpdaterTab(Page):
         src = Panel("Quellen")
         self.cb_pacman = QCheckBox("Pacman")
         self.cb_pacman.setChecked(True)
-        self.cb_aur = QCheckBox("AUR (paru)" if which("paru") else "AUR (paru nicht installiert)")
-        self.cb_aur.setChecked(which("paru"))
-        self.cb_aur.setEnabled(which("paru"))
+        self.cb_aur = QCheckBox(f"AUR ({aur_helper()})" if aur_helper() else "AUR (AUR-Helper nicht installiert)")
+        self.cb_aur.setChecked(bool(aur_helper()))
+        self.cb_aur.setEnabled(bool(aur_helper()))
         self.cb_flatpak = QCheckBox("Flatpak" if which("flatpak") else "Flatpak (nicht installiert)")
         self.cb_flatpak.setChecked(which("flatpak"))
         self.cb_flatpak.setEnabled(which("flatpak"))
@@ -2401,15 +2401,15 @@ class UpdaterTab(Page):
             else:
                 parts.append("== Pacman ==\ncheckupdates (Paket pacman-contrib) nicht installiert.")
 
-            if which("paru"):
-                r = subprocess.run(["paru", "-Qua"], capture_output=True, text=True)
+            if aur_helper():
+                r = subprocess.run([aur_helper(), "-Qua"], capture_output=True, text=True)
                 for line in r.stdout.splitlines():
                     m = UPDATE_RE.match(line)
                     if m:
                         found.append(("AUR",) + m.groups())
                 parts.append("== AUR ==\n" + (r.stdout.strip() or "Keine Updates verfügbar."))
             else:
-                parts.append("== AUR ==\nparu nicht installiert.")
+                parts.append("== AUR ==\nAUR-Helper (paru oder yay) nicht installiert.")
 
             if which("flatpak"):
                 r = subprocess.run(["flatpak", "remotes", "--columns=name"], capture_output=True, text=True)
@@ -2449,7 +2449,7 @@ class UpdaterTab(Page):
 
     def start_update(self):
         pacman = self.cb_pacman.isChecked()
-        aur = self.cb_aur.isChecked() and which("paru")
+        aur = self.cb_aur.isChecked() and aur_helper()
         flatpak = self.cb_flatpak.isChecked() and which("flatpak")
 
         if not (pacman or aur or flatpak):
@@ -2470,14 +2470,14 @@ class UpdaterTab(Page):
         if snap:
             steps.append(snap)
         if pacman and aur:
-            steps.append({"cmd": ["paru", "-Syu"], "needs_sudo": False, "interactive": True,
-                          "label": "paru -Syu  (Repos + AUR)"})
+            steps.append({"cmd": [aur, "-Syu"], "needs_sudo": False, "interactive": True,
+                          "label": f"{aur} -Syu  (Repos + AUR)"})
         elif pacman:
             steps.append({"cmd": ["pacman", "-Syu"], "needs_sudo": True, "interactive": True,
                           "label": "sudo pacman -Syu"})
         elif aur:
-            steps.append({"cmd": ["paru", "-Sua"], "needs_sudo": False, "interactive": True,
-                          "label": "paru -Sua"})
+            steps.append({"cmd": [aur, "-Sua"], "needs_sudo": False, "interactive": True,
+                          "label": f"{aur} -Sua"})
         if flatpak:
             steps.append({"cmd": ["flatpak", "update", "-y"], "needs_sudo": False, "interactive": True,
                           "label": "flatpak update"})
@@ -2996,7 +2996,7 @@ class SoftwareTab(Page):
         self.install_edit.returnPressed.connect(self.install)
         row.addLayout(Field("Paketname(n)", self.install_edit), 1)
         self.inst_src = QComboBox()
-        self.inst_src.addItems(["Offizielle Paketquellen (pacman)", "AUR (paru)", "Flatpak (Flathub)"])
+        self.inst_src.addItems(["Offizielle Paketquellen (pacman)", "AUR (paru / yay)", "Flatpak (Flathub)"])
         self.inst_src.setMinimumWidth(240)
         row.addLayout(Field("Woher", self.inst_src))
         btns = QVBoxLayout()
@@ -3181,12 +3181,13 @@ class SoftwareTab(Page):
                 return
             cmd, needs_sudo, label = ["pacman", "-S", "--"] + pkgs, True, "sudo pacman -S " + quoted(pkgs)
         elif src == 1:
-            if not which("paru"):
-                show_error(self, "paru fehlt", "paru ist nicht installiert.")
+            helper = aur_helper()
+            if not helper:
+                show_error(self, "AUR-Helper fehlt", "Weder paru noch yay ist installiert.")
                 return
             if not self.app.priv.ensure(self):
                 return
-            cmd, needs_sudo, label = ["paru", "-S", "--"] + pkgs, False, "paru -S " + quoted(pkgs)
+            cmd, needs_sudo, label = [helper, "-S", "--"] + pkgs, False, f"{helper} -S " + quoted(pkgs)
         else:
             if not which("flatpak"):
                 show_error(self, "flatpak fehlt", "flatpak ist nicht installiert – im Tab „Flatpak“ einrichten.")
@@ -4880,6 +4881,11 @@ def start_app(cmd):
         pass
 
 
+def aur_helper():
+    """Installierter AUR-Helper („paru“ bevorzugt, sonst „yay“) oder None."""
+    return next((h for h in ("paru", "yay") if which(h)), None)
+
+
 def installed_pacman():
     try:
         return set(subprocess.run(["pacman", "-Qq"], capture_output=True, text=True, timeout=15).stdout.split())
@@ -6113,7 +6119,7 @@ def diag_updates():
     f = []
     lock = "/var/lib/pacman/db.lck"
     running = _cmd_out(["pgrep", "-x", "pacman|paru|yay"]) or _cmd_out(["pgrep", "-x", "pacman"]) \
-        or _cmd_out(["pgrep", "-x", "paru"])
+        or _cmd_out(["pgrep", "-x", "paru"]) or _cmd_out(["pgrep", "-x", "yay"])
     if os.path.exists(lock):
         if running.strip():
             f.append(finding("info", "Läuft gerade", "Paketdatenbank", "Gerade läuft ein anderer pacman-Vorgang. "
@@ -9584,6 +9590,10 @@ class StorageTab(Page):
              "action": None, "hint": "nur Anzeige",
              "info": "paru baut AUR-Pakete in ~/.cache/paru/clone und hebt Quellcode und fertige Pakete auf.\n\n"
                      "Zum Aufräumen im Terminal: paru -Sc (fragt nach, was gelöscht wird)."},
+            {"key": "yay", "name": "AUR-Build-Cache (yay)", "path": os.path.join(home, ".cache/yay"),
+             "action": None, "hint": "nur Anzeige",
+             "info": "yay baut AUR-Pakete in ~/.cache/yay und hebt Quellcode und fertige Pakete auf.\n\n"
+                     "Zum Aufräumen im Terminal: yay -Sc (fragt nach, was gelöscht wird)."},
             {"key": "docker", "name": "Docker", "path": "/var/lib/docker", "action": None, "hint": "nur Anzeige",
              "info": "Docker speichert Images, Container und Volumes in /var/lib/docker.\n\nZum Aufräumen im "
                      "Terminal: docker system prune (entfernt gestoppte Container, ungenutzte Netzwerke und "
@@ -20168,6 +20178,13 @@ EN = {
     'Papierkorb leeren': 'Empty trash',
     'Partitionen (eingehängt)': 'Partitions (mounted)',
     'paru baut AUR-Pakete in ~/.cache/paru/clone und hebt Quellcode und fertige Pakete auf.\n\nZum Aufräumen im Terminal: paru -Sc (fragt nach, was gelöscht wird).': 'paru builds AUR packages in ~/.cache/paru/clone and keeps source code and built packages.\n\nTo clean up in the terminal: paru -Sc (asks what to delete).',
+    'AUR-Helper fehlt': 'AUR helper missing',
+    'Weder paru noch yay ist installiert.': 'Neither paru nor yay is installed.',
+    'AUR (AUR-Helper nicht installiert)': 'AUR (AUR helper not installed)',
+    'AUR (paru / yay)': 'AUR (paru / yay)',
+    '== AUR ==\nAUR-Helper (paru oder yay) nicht installiert.': '== AUR ==\nAUR helper (paru or yay) not installed.',
+    'AUR-Build-Cache (yay)': 'AUR build cache (yay)',
+    'yay baut AUR-Pakete in ~/.cache/yay und hebt Quellcode und fertige Pakete auf.\n\nZum Aufräumen im Terminal: yay -Sc (fragt nach, was gelöscht wird).': 'yay builds AUR packages in ~/.cache/yay and keeps source code and finished packages.\n\nTo clean up in the terminal: yay -Sc (asks what to delete).',
     'paru fehlt': 'paru missing',
     'paru ist nicht installiert.': 'paru is not installed.',
     'Passend': 'Suitable',

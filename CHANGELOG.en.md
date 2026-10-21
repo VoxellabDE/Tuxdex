@@ -2,6 +2,10 @@
 
 English version of [CHANGELOG.md](CHANGELOG.md). Entries before 1.0.0 are only available in German.
 
+## 1.6.1.7
+
+- New: support for **yay** alongside paru (AUR updates, AUR install, build cache). If both are installed, paru is used.
+
 ## 1.6.1.6
 
 - Tuxdex now starts in English by default (German can still be chosen in the settings).

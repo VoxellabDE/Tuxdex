@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.6.1.7
+
+- Neu: Unterstützung für **yay** neben paru (AUR-Updates, AUR-Installation, Build-Cache). Ist beides installiert, wird paru verwendet.
+
 ## 1.6.1.6
 
 - Tuxdex startet jetzt standardmäßig auf Englisch (Deutsch weiterhin in den Einstellungen wählbar).
