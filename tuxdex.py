@@ -429,7 +429,7 @@ def module_enabled(key, settings=None):
 FONTS = {"sans": "Sans Serif", "mono": "Monospace"}
 
 APP_ID = "tuxdex"
-APP_VERSION = "1.5.5"
+APP_VERSION = "1.5.6"
 APP_STAGE = "alpha"        # Reifegrad – wird nur angezeigt, die Versionsnummer selbst bleibt ohne Zusatz
 
 
@@ -15019,6 +15019,8 @@ class SettingsPage(Page):
                                   "installiert wird erst, wenn du im Tab „Updates“ auf „Update starten“ klickst.",
                                   "Hint", wrap=True))
         self.lay.addWidget(sysp)
+        self.update_panel = UpdatePanel(app)          # Tuxdex-Aktualisierung direkt unter den System-Updates
+        self.lay.addWidget(self.update_panel)
         langp = Panel("Sprache · Language")
         lrow = QHBoxLayout()
         self.cb_lang = QComboBox()
@@ -15034,8 +15036,6 @@ class SettingsPage(Page):
         langp.body.addWidget(Label("Wirkt nach einem Neustart von Tuxdex.", "Hint", wrap=True))
         self.lay.addWidget(langp)
         self.lay.addWidget(self._modules_panel())
-        self.update_panel = UpdatePanel(app)
-        self.lay.addWidget(self.update_panel)
 
         # --- Über ---
         about = Panel("Über das Projekt")

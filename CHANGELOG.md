@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.6
+Einstellungen (Beta).
+
+- **Einstellungen**: Das Feld „Aktualisierung“ (Tuxdex-Updates) steht jetzt direkt unter „System-Updates“.
+
 ## 1.5.5
 Updates während der Nutzung (Beta).
 

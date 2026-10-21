@@ -2,6 +2,11 @@
 
 English version of [CHANGELOG.md](CHANGELOG.md). Entries before 1.0.0 are only available in German.
 
+## 1.5.6
+Settings (beta).
+
+- **Settings**: the "Updating" panel (Tuxdex updates) now sits directly below "System updates".
+
 ## 1.5.5
 Updates while in use (beta).
 
