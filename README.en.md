@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.6.0.3--beta-2fb3a3">
+  <img alt="Version" src="https://img.shields.io/badge/version-1.6.1--beta-2fb3a3">
   <img alt="License" src="https://img.shields.io/badge/license-GPL--3.0-2fb3a3">
   <img alt="For Arch Linux" src="https://img.shields.io/badge/for-Arch%20Linux-1793d1">
   <img alt="Python" src="https://img.shields.io/badge/python-3.11%2B-3776ab">
@@ -65,6 +65,7 @@ Tuxdex is a **toolkit**: under **Settings → Modules** you choose which tools a
 | **Drivers** | Detects **graphics card** (NVIDIA, AMD, Intel), **Wi-Fi**, **Bluetooth** and **printers** and sets up the matching drivers with one click (pacman) – with hints for hybrid laptops, Realtek, Broadcom and HP |
 | **Diagnosis** | **Troubleshooting in plain language**: "No internet", "No sound", Bluetooth, graphics, slow startup, full storage, failing updates, printer – with an understandable explanation and a fix button · **device manager** with the driver for each device |
 | **Windows data** | Finds NTFS/Windows drives, mounts them **read-only** and takes over **documents, pictures, videos, music, downloads and desktop** (existing files are never overwritten) · detects dual boot |
+| **Kernel** | Shows the running kernel, the **scheduler** (e.g. BORE) and the **CPU governor** (switchable) · **install kernels**, including **CachyOS** ones (with headers and the matching NVIDIA module) · maintains the **boot menu** (GRUB, systemd-boot, Limine) and checks that the kernel is listed there and loaded at startup · **not officially tested yet – please try it in a VM first, feedback welcome** |
 | **Storage** | Usage per drive · **pie chart**: operating system, applications, system data, photos & videos, personal files · “What is using the space?” with drill-down into folders · cleanup: package cache, orphaned packages, journal, trash, Flatpak |
 | **Backup** | Snapshots (versioned, space-saving), mirror or compressed archives (zstd/xz/gzip, optionally with password) · **several targets at once** · verification after writing · custom names with date ([how it works](#naming-backups)) · old versions cleaned up automatically · restore · daily/weekly schedule |
 | **Restore** | System snapshots with snapper (btrfs) or Timeshift · **snapshot before every update** · list, create, delete · **roll back to a state** with one click |

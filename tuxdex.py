@@ -501,6 +501,7 @@ MODULES = [
     ("setup", "Einrichten", "#f7a072"),
     ("drivers", "Treiber", "#ee99a0"),
     ("diagnose", "Diagnose", "#a6da95"),
+    ("kernel", "Kernel", "#f5bde6"),
     ("software", "Software", "#5aa6f0"),
     ("flatpak", "Flatpak", "#8fa8ff"),
     ("disks", "Datenträger", "#d9b95c"),
@@ -523,6 +524,7 @@ MODULE_INFO = {
     "setup": "Basics wie Schriften und Codecs mit einem Klick, dazu Ersatz für Windows-Programme.",
     "drivers": "Grafikkarte, WLAN, Bluetooth und Drucker erkennen und die passenden Treiber mit einem Klick einrichten.",
     "diagnose": "Fehlersuche in Klartext (Internet, Ton, Bluetooth, Grafik, Start …) plus Gerätemanager.",
+    "kernel": "Kernel anzeigen, installieren (auch CachyOS), Bootmenü pflegen, Scheduler und CPU-Governor.",
     "windows": "Windows-Laufwerk lesend einhängen und Dokumente, Bilder, Videos … zu dir übernehmen.",
     "software": "Programme suchen, installieren und entfernen (pacman und AUR).",
     "flatpak": "Flatpak-Apps verwalten und ihre Rechte per Schalter einstellen.",
@@ -552,7 +554,7 @@ def module_enabled(key, settings=None):
 FONTS = {"sans": "Sans Serif", "mono": "Monospace"}
 
 APP_ID = "tuxdex"
-APP_VERSION = "1.6.0.3"
+APP_VERSION = "1.6.1"
 APP_STAGE = ""             # früher „alpha“ – das Namensschild kommt jetzt vom Kanal (Stabil ohne Zusatz, Beta mit „-beta“)
 
 
@@ -6684,6 +6686,382 @@ class WindowsTab(Page):
             self.status.setText("Fertig – alle ausgewählten Dateien sind bei dir.")
             self.bar.set(100, "100 %")
         self.log.append_text("\n[Fertig]\n")
+
+
+
+# --------------------------------------------------------------------------
+# Modul: Kernel (installieren, Bootmenü, Scheduler und CPU-Governor)
+# --------------------------------------------------------------------------
+
+KERNEL_NOTES = {
+    "linux": "Standard-Kernel von Arch",
+    "linux-lts": "Langzeit-Kernel: seltener neue Versionen, sehr stabil",
+    "linux-zen": "Desktop-Kernel mit Feinschliff für flüssige Bedienung",
+    "linux-hardened": "Gehärteter Kernel mit mehr Schutz (kann manche Programme stören)",
+    "linux-rt": "Echtzeit-Kernel für Audio-Produktion",
+    "linux-rt-lts": "Echtzeit-Kernel, Langzeit",
+    "linux-cachyos": "CachyOS-Kernel: BORE-Scheduler, auf Spiele und Reaktionszeit getrimmt",
+    "linux-cachyos-bore": "CachyOS-Kernel mit BORE-Scheduler",
+    "linux-cachyos-lts": "CachyOS-Kernel auf LTS-Basis",
+    "linux-cachyos-hardened": "CachyOS-Kernel mit Härtung",
+    "linux-cachyos-server": "CachyOS-Kernel für Server (Durchsatz statt Reaktionszeit)",
+    "linux-cachyos-rc": "CachyOS-Kernel auf Basis eines Release Candidate (neueste Technik, weniger getestet)",
+    "linux-cachyos-deckify": "CachyOS-Kernel für Handhelds (Steam Deck & Co.)",
+    "linux-cachyos-eevdf": "CachyOS-Kernel mit EEVDF-Scheduler",
+}
+KERNEL_IMG_RE = re.compile(r"linux(-(lts|zen|hardened|rt|rt-lts|cachyos(-[a-z0-9]+)*))?")
+
+
+def installed_kernels():
+    """[{pkg, release, running}] – installierte Kernel nach /usr/lib/modules/*/pkgbase."""
+    res, run = [], os.uname().release
+    base = "/usr/lib/modules"
+    try:
+        dirs = sorted(os.listdir(base))
+    except OSError:
+        return res
+    for d in dirs:
+        pk = _first_line(os.path.join(base, d, "pkgbase"))
+        if pk:
+            res.append({"pkg": pk, "release": d, "running": d == run})
+    return res
+
+
+def available_kernels():
+    """Kernel-Pakete aus den Paketquellen: [{pkg, repo, version, installed}]. Ein Kernel ist ein Paket, zu dem es ein
+    „-headers“-Paket gibt (so fallen Modulpakete wie -nvidia-open heraus)."""
+    out = _cmd_out(["pacman", "-Sl"], 30)
+    rows = {}
+    for line in out.splitlines():
+        p = line.split()
+        if len(p) >= 3:
+            rows[p[1]] = (p[0], p[2], "[installed]" in line or "[installiert]" in line)
+    res = []
+    for name, (repo, ver, inst) in rows.items():
+        if KERNEL_IMG_RE.fullmatch(name) and f"{name}-headers" in rows:
+            res.append({"pkg": name, "repo": repo, "version": ver, "installed": inst})
+    return sorted(res, key=lambda r: (not r["pkg"].startswith("linux-cachyos"), r["pkg"]))
+
+
+def detect_bootloader():
+    """('grub'|'systemd-boot'|'limine'|'refind'|None, Konfig-Pfad oder '')"""
+    sdb = False
+    if which("bootctl"):
+        try:
+            sdb = subprocess.run(["bootctl", "is-installed"], capture_output=True, timeout=10).returncode == 0
+        except Exception:
+            sdb = False
+    if sdb:
+        for d in ("/boot/loader", "/efi/loader", "/boot/efi/loader"):
+            if os.path.isdir(d):
+                return "systemd-boot", d
+        return "systemd-boot", ""
+    for p in ("/boot/limine.conf", "/boot/limine/limine.conf", "/boot/EFI/limine/limine.conf", "/efi/limine.conf"):
+        if os.path.exists(p):
+            return "limine", p
+    for p in ("/boot/grub/grub.cfg", "/boot/grub2/grub.cfg"):
+        if os.path.exists(p):
+            return "grub", p
+    for p in ("/boot/EFI/refind", "/boot/efi/EFI/refind", "/efi/EFI/refind"):
+        if os.path.isdir(p):
+            return "refind", p
+    return None, ""
+
+
+def kernel_in_bootmenu(pkg, release, bl, path):
+    """True/False/None (None = nicht prüfbar): Taucht der Kernel im Bootmenü auf?"""
+    if bl == "grub" and path:
+        txt = _read(path)
+        return bool(txt) and (f"vmlinuz-{pkg}" in txt or f"vmlinuz-{release}" in txt)
+    if bl == "limine" and path:
+        txt = _read(path)
+        return bool(txt) and (f"vmlinuz-{pkg}" in txt or release in txt)
+    if bl == "systemd-boot":
+        out = _cmd_out(["bootctl", "list", "--no-pager"], 10)
+        if out:
+            return pkg in out or release in out
+        return None
+    return None
+
+
+def bootmenu_steps(bl, path):
+    """Befehle, die das Bootmenü neu erzeugen – None, wenn Tuxdex dafür nichts tun kann."""
+    if bl == "grub" and which("grub-mkconfig"):
+        return [{"cmd": ["cp", "-a", path, path + ".tuxdex.bak"], "needs_sudo": True,
+                 "label": f"sudo cp -a {path} {path}.tuxdex.bak"},
+                {"cmd": ["grub-mkconfig", "-o", path], "needs_sudo": True, "label": f"sudo grub-mkconfig -o {path}"}]
+    if bl == "systemd-boot" and which("sdboot-manage"):
+        return [{"cmd": ["sdboot-manage", "gen"], "needs_sudo": True, "label": "sudo sdboot-manage gen"}]
+    if bl == "limine" and which("limine-update"):
+        return [{"cmd": ["limine-update"], "needs_sudo": True, "label": "sudo limine-update"}]
+    return None
+
+
+def scheduler_info():
+    """(Name des Schedulers, Hinweis)"""
+    bore = _cmd_out(["sysctl", "-n", "kernel.sched_bore"]).strip()
+    rel = os.uname().release
+    m = re.match(r"(\d+)\.(\d+)", rel)
+    ver = (int(m.group(1)), int(m.group(2))) if m else (0, 0)
+    ext = os.path.exists("/sys/kernel/sched_ext/state")
+    ext_state = _first_line("/sys/kernel/sched_ext/state") if ext else ""
+    if bore in ("0", "1"):
+        base = "BORE (Burst-Oriented Response Enhancer)" if bore == "1" else "EEVDF (BORE ausgeschaltet)"
+    elif ver >= (6, 6):
+        base = "EEVDF"
+    else:
+        base = "CFS"
+    if ext and ext_state and ext_state != "disabled":
+        base += f" + sched_ext ({ext_state})"
+    return base
+
+
+def cpu_governor():
+    """(aktuell, Treiber, [verfügbare])"""
+    d = "/sys/devices/system/cpu/cpu0/cpufreq"
+    return (_first_line(f"{d}/scaling_governor") or "", _first_line(f"{d}/scaling_driver") or "",
+            (_first_line(f"{d}/scaling_available_governors") or "").split())
+
+
+def kernel_facts():
+    bl, path = detect_bootloader()
+    inst = installed_kernels()
+    for k in inst:
+        k["in_menu"] = kernel_in_bootmenu(k["pkg"], k["release"], bl, path)
+    return {"installed": inst, "available": available_kernels(), "bootloader": bl, "bl_path": path,
+            "scheduler": scheduler_info(), "gov": cpu_governor(), "release": os.uname().release,
+            "nvidia": any(_cmd_out(["pacman", "-Qq", p]).strip() for p in ("nvidia-utils",))}
+
+
+GOV_HINT = {
+    "performance": "Immer volle Taktrate – am schnellsten, braucht mehr Strom",
+    "powersave": "Spart Strom (bei intel_pstate/amd-pstate trotzdem dynamisch)",
+    "schedutil": "Passt den Takt der Auslastung an",
+    "ondemand": "Schaltet bei Last hoch, sonst runter",
+    "conservative": "Wie ondemand, aber vorsichtiger",
+}
+
+
+class KernelTab(Page):
+    def __init__(self, app):
+        super().__init__()
+        self.app = app
+        self.busy = False
+        self.facts = None
+        self.badge = StatusBadge("off", "Prüfe …")
+        self.lay.addLayout(page_header("Kernel", self.badge, Button("↻", "icon", self.refresh, "Neu einlesen")))
+        warn = Label("▲  Dieses Modul wurde noch nicht offiziell getestet. Änderungen an Kernel und Bootmenü können dazu "
+                     "führen, dass der Rechner nicht mehr startet – probiere es bitte zuerst in einer virtuellen "
+                     "Maschine (VM) aus und lege vorher ein Backup an. Dein Feedback hilft: Sag uns, was geklappt hat "
+                     "und was nicht.", "Warn", wrap=True)
+        wrow = QHBoxLayout()
+        wrow.setSpacing(12)
+        wrow.addWidget(warn, 1)
+        wrow.addWidget(Button("Feedback geben", "primary", lambda: subprocess.Popen(
+            ["xdg-open", f"https://github.com/{DEFAULT_REPO}/issues/new/choose"], stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL), "Öffnet die Rückmeldeseite auf GitHub"), 0, Qt.AlignVCenter)
+        self.lay.addLayout(wrow)
+        self.lay.addWidget(Label("Hier siehst du, welcher Kernel läuft, und kannst weitere installieren – Tuxdex "
+                                 "sorgt danach dafür, dass sie im Bootmenü (z. B. GRUB) stehen und beim Start "
+                                 "wirklich geladen werden. Ein neuer Kernel läuft erst nach einem Neustart.",
+                                 "Hint", wrap=True))
+
+        self.p_now = Panel("Aktueller Stand")
+        self.now_box = QVBoxLayout()
+        self.now_box.setSpacing(4)
+        self.p_now.body.addLayout(self.now_box)
+        self.lay.addWidget(self.p_now)
+
+        self.p_inst = Panel("Installierte Kernel")
+        self.inst_box = QVBoxLayout()
+        self.inst_box.setSpacing(4)
+        self.p_inst.body.addLayout(self.inst_box)
+        self.lay.addWidget(self.p_inst)
+
+        self.p_av = Panel("Kernel installieren")
+        self.av_box = QVBoxLayout()
+        self.av_box.setSpacing(4)
+        self.p_av.body.addLayout(self.av_box)
+        self.lay.addWidget(self.p_av)
+
+        self.p_gov = Panel("CPU-Governor")
+        grow = QHBoxLayout()
+        grow.setSpacing(8)
+        self.gov_cb = QComboBox()
+        self.gov_cb.setMinimumHeight(38)
+        grow.addLayout(Field("Governor", self.gov_cb), 1)
+        gb = QVBoxLayout()
+        gb.addStretch(1)
+        self.b_gov = Button("Anwenden", "ghost", self.apply_governor)
+        gb.addWidget(self.b_gov)
+        grow.addLayout(gb)
+        self.p_gov.body.addLayout(grow)
+        self.gov_note = Label("", "Hint", wrap=True)
+        self.p_gov.body.addWidget(self.gov_note)
+        self.lay.addWidget(self.p_gov)
+        for pnl in (self.p_now, self.p_inst, self.p_av, self.p_gov):
+            pnl.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)     # Zusatzhöhe geht ans Ausgabefeld
+
+        out = Panel("Ausgabe")
+        self.log = LogView(150)
+        out.body.addWidget(self.log)
+        self.lay.addWidget(out)
+        self.refresh()
+
+    def refresh(self):
+        self.badge.set("info", "Prüfe …")
+
+        def worker():
+            f = kernel_facts()
+            ui(lambda: self._render(f))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _render(self, f):
+        self.facts = f
+        for box in (self.now_box, self.inst_box, self.av_box):
+            clear_layout(box)
+        bl = f["bootloader"]
+        names = {"grub": "GRUB", "systemd-boot": "systemd-boot", "limine": "Limine", "refind": "rEFInd"}
+        run = next((k for k in f["installed"] if k["running"]), None)
+        r = CheckRow("Laufender Kernel")
+        r.set("ok", "Läuft", f"{f['release']}" + (f"  ·  Paket {run['pkg']}" if run else ""))
+        self.now_box.addWidget(r)
+        r = CheckRow("Scheduler")
+        r.set("info", "Scheduler", f["scheduler"])
+        self.now_box.addWidget(r)
+        r = CheckRow("Bootloader")
+        if bl:
+            can = bootmenu_steps(bl, f["bl_path"]) is not None
+            r.set("ok" if can else "info", names.get(bl, bl),
+                  ("Tuxdex kann das Bootmenü selbst neu erzeugen." if can else
+                   "Das Bootmenü pflegt dein System automatisch (Hooks) – Tuxdex prüft nur, ob der Kernel drinsteht."),
+                  "Bootmenü neu erzeugen" if can else None, self.rebuild_menu if can else None)
+        else:
+            r.set("warn", "Unbekannt", "Es wurde kein bekannter Bootloader gefunden (GRUB, systemd-boot, Limine, rEFInd).")
+        self.now_box.addWidget(r)
+
+        # installierte Kernel
+        warn = 0
+        multi = len(f["installed"]) > 1
+        for k in f["installed"]:
+            row = CheckRow(k["pkg"] + "  ·  " + k["release"])
+            menu = k["in_menu"]
+            if menu is False:
+                warn += 1
+            tone = "ok" if (menu in (True, None)) else "warn"
+            short = "Läuft" if k["running"] else "Installiert"
+            detail = KERNEL_NOTES.get(k["pkg"], "")
+            if menu is True:
+                detail += (" · " if detail else "") + "Im Bootmenü eingetragen."
+            elif menu is False:
+                detail += (" · " if detail else "") + "NICHT im Bootmenü – „Bootmenü neu erzeugen“ klicken."
+            action, cb = None, None
+            if multi and not k["running"]:
+                action, cb = "Entfernen", (lambda kk=k["pkg"]: self.remove(kk))
+            row.set(tone, short, detail, action, cb)
+            self.inst_box.addWidget(row)
+        if not f["installed"]:
+            self.inst_box.addWidget(Label("Es wurde kein Kernel erkannt.", "Muted"))
+
+        # verfügbare Kernel
+        have = {k["pkg"] for k in f["installed"]}
+        shown = 0
+        for a in f["available"]:
+            if a["pkg"] in have:
+                continue
+            row = CheckRow(a["pkg"])
+            note = KERNEL_NOTES.get(a["pkg"], "Kernel aus den Paketquellen")
+            row.set("off", a["repo"], f"{note}  ·  {a['version']}", install_text("pacman"),
+                    lambda p=a["pkg"]: self.install(p))
+            self.av_box.addWidget(row)
+            shown += 1
+        if not shown:
+            self.av_box.addWidget(Label("Keine weiteren Kernel in den Paketquellen gefunden (pacman -Sl).", "Muted"))
+        # Governor
+        cur, drv, avail = f["gov"]
+        self.gov_cb.clear()
+        for g in avail:
+            self.gov_cb.addItem(f"{g}  –  {tr(GOV_HINT[g])}" if g in GOV_HINT else g, g)
+        i = self.gov_cb.findData(cur)
+        if i >= 0:
+            self.gov_cb.setCurrentIndex(i)
+        self.gov_cb.setEnabled(bool(avail))
+        self.b_gov.setEnabled(bool(avail))
+        self.gov_note.setText((f"Aktuell: {cur}" + (f" · Treiber {drv}" if drv else "") + ". Die Einstellung gilt bis "
+                               "zum Neustart.") if avail else "Dieser Rechner stellt keinen CPU-Governor bereit.")
+        self.badge.set("warn" if warn else "ok", f"{warn} nicht im Bootmenü" if warn else "Alles in Ordnung")
+
+    # ---- Aktionen --------------------------------------------------------------
+    def _run(self, steps, done_text):
+        if self.busy:
+            return
+        if not self.app.priv.ensure(self):
+            return
+        self.busy = True
+
+        def done():
+            self.busy = False
+            self.log.append_text("\n" + done_text + "\n")
+            self.refresh()
+        run_sequence(steps, self.log, on_all_done=done)
+
+    def install(self, pkg):
+        f = self.facts or {}
+        pk = [pkg, pkg + "-headers"]
+        mod = pkg + "-nvidia-open"
+        if f.get("nvidia") and pkg.startswith("linux-cachyos") and _cmd_out(["pacman", "-Si", mod]).strip():
+            pk.append(mod)               # NVIDIA braucht für CachyOS-Kernel das passende Modulpaket
+        text = f"pacman: {', '.join(pk)}"
+        bl, path = f.get("bootloader"), f.get("bl_path", "")
+        menu = bootmenu_steps(bl, path) if bl else None
+        if not ask_confirm(self, "Kernel installieren",
+                           f"Installieren?\n\n{text}\n\nDanach wird das Bootmenü "
+                           + ("neu erzeugt" if menu else "geprüft")
+                           + ". Der laufende Kernel bleibt erhalten, du kannst beim Start den neuen wählen "
+                           "(oder er ist je nach Bootloader schon vorausgewählt).\n\nHinweis: Das Modul ist noch nicht "
+                           "offiziell getestet – am besten zuerst in einer VM ausprobieren.", "Installieren (pacman)"):
+            return
+        steps = [{"cmd": ["pacman", "-S", "--needed", "--"] + pk, "needs_sudo": True, "interactive": True,
+                  "label": "sudo pacman -S " + " ".join(pk)}] + (menu or [])
+        self._run(steps, f"{pkg} ist installiert. Neustarten, um ihn zu nutzen – danach zeigt `uname -r` und "
+                         "fastfetch den neuen Kernel.")
+
+    def remove(self, pkg):
+        f = self.facts or {}
+        pk = [pkg, pkg + "-headers"]
+        installed = {k["pkg"] for k in f.get("installed", [])}
+        mod = [p for p in (pkg + "-nvidia-open", pkg + "-nvidia", pkg + "-zfs") if _cmd_out(["pacman", "-Qq", p]).strip()]
+        pk += mod
+        if not ask_confirm(self, "Kernel entfernen", f"{pkg} entfernen?\n\npacman: {', '.join(pk)}\n\nDer laufende Kernel "
+                           "und andere Kernel bleiben erhalten.", "Entfernen", danger=True):
+            return
+        bl, path = f.get("bootloader"), f.get("bl_path", "")
+        menu = bootmenu_steps(bl, path) if bl else None
+        steps = [{"cmd": ["pacman", "-Rns", "--"] + [p for p in pk if _cmd_out(["pacman", "-Qq", p]).strip()],
+                  "needs_sudo": True, "interactive": True, "label": "sudo pacman -Rns " + " ".join(pk)}] + (menu or [])
+        self._run(steps, f"{pkg} wurde entfernt.")
+
+    def rebuild_menu(self):
+        f = self.facts or {}
+        menu = bootmenu_steps(f.get("bootloader"), f.get("bl_path", ""))
+        if not menu:
+            return
+        if not ask_confirm(self, "Bootmenü neu erzeugen", "Das Bootmenü wird aus den installierten Kernen neu "
+                           "erzeugt. Vorher legt Tuxdex eine Sicherung an (.tuxdex.bak).", "Neu erzeugen"):
+            return
+        self._run(menu, "Bootmenü neu erzeugt.")
+
+    def apply_governor(self):
+        g = self.gov_cb.currentData()
+        avail = (self.facts or {}).get("gov", ("", "", []))[2]
+        if not g or g not in avail:
+            return
+        if not self.app.priv.ensure(self):
+            return
+        self.log.set_text(f"$ sudo (Governor {g} für alle Kerne)\n")
+        script = f"for f in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo {g} > \"$f\"; done"
+        run_streaming(["bash", "-c", script], self.log, needs_sudo=True, clear_first=False,
+                      on_done=lambda rc: (self.log.append_text(f"[Exit-Code {rc}]\n"), self.refresh()))
 
 
 
@@ -17387,6 +17765,7 @@ class SettingsPage(Page):
             "update": "Updates prüfen und einspielen (pacman, AUR, Flatpak), Major-Updates erkennen",
             "drivers": "Grafikkarte, WLAN, Bluetooth und Drucker erkennen und per Klick einrichten",
             "diagnose": "Fehlersuche in Klartext (Internet, Ton, Bluetooth, Grafik, Start …) plus Gerätemanager",
+            "kernel": "Kernel installieren (auch CachyOS), Bootmenü pflegen, Scheduler und CPU-Governor",
             "windows": "Windows-Laufwerk lesend einhängen und eigene Dateien übernehmen",
             "software": "Pakete mit Icons, Größe, Version und Datum – per Kästchen auswählen und entfernen",
             "flatpak": "Flatpak-Apps und ihre Rechte (Dateien, Geräte, Netzwerk …) wie mit Flatseal",
@@ -17621,7 +18000,7 @@ class MainWindow(QWidget):
         # Tabs werden erst beim ersten Öffnen gebaut (spart RAM und Startzeit);
         # bis dahin steht ein leerer Platzhalter im Stack, damit die Indizes stimmen.
         self.page_classes = {
-            "update": UpdaterTab, "software": SoftwareTab, "flatpak": FlatpakTab, "swap": SwapTab, "restore": RestoreTab, "setup": SetupTab, "drivers": DriversTab, "diagnose": DiagnoseTab, "windows": WindowsTab,
+            "update": UpdaterTab, "software": SoftwareTab, "flatpak": FlatpakTab, "swap": SwapTab, "restore": RestoreTab, "setup": SetupTab, "drivers": DriversTab, "diagnose": DiagnoseTab, "kernel": KernelTab, "windows": WindowsTab,
             "disks": DisksTab, "flash": FlashTab, "storage": StorageTab, "backup": BackupTab, "tasks": TaskTab, "antivirus": AntivirusTab,
             "security": SecurityTab, "users": UsersTab,
         }
@@ -18998,6 +19377,56 @@ EN = {
     'makepkg (Paket pacman, Gruppe base-devel) wird benötigt.': 'makepkg (package pacman, group base-devel) is required.',
     'makepkg fehlt': 'makepkg missing',
     'Bauwerkzeuge fehlen': 'Build tools missing',
+    'Feedback geben': 'Give feedback',
+    'Öffnet die Rückmeldeseite auf GitHub': 'Opens the feedback page on GitHub',
+    '▲  Dieses Modul wurde noch nicht offiziell getestet. Änderungen an Kernel und Bootmenü können dazu führen, dass der Rechner nicht mehr startet – probiere es bitte zuerst in einer virtuellen Maschine (VM) aus und lege vorher ein Backup an. Dein Feedback hilft: Sag uns, was geklappt hat und was nicht.': "▲  This module hasn't been officially tested yet. Changes to the kernel and boot menu can make the computer stop booting – please try it in a virtual machine (VM) first and make a backup beforehand. Your feedback helps: tell us what worked and what didn't.",
+    'Kernel': 'Kernel',
+    'Standard-Kernel von Arch': 'Default kernel from Arch',
+    'Langzeit-Kernel: seltener neue Versionen, sehr stabil': 'Long-term kernel: fewer new versions, very stable',
+    'Desktop-Kernel mit Feinschliff für flüssige Bedienung': 'Desktop kernel tuned for a smooth experience',
+    'Gehärteter Kernel mit mehr Schutz (kann manche Programme stören)': 'Hardened kernel with extra protection (may break some programs)',
+    'Echtzeit-Kernel für Audio-Produktion': 'Real-time kernel for audio production',
+    'Echtzeit-Kernel, Langzeit': 'Real-time kernel, long-term',
+    'CachyOS-Kernel: BORE-Scheduler, auf Spiele und Reaktionszeit getrimmt': 'CachyOS kernel: BORE scheduler, tuned for games and responsiveness',
+    'CachyOS-Kernel mit BORE-Scheduler': 'CachyOS kernel with BORE scheduler',
+    'CachyOS-Kernel auf LTS-Basis': 'CachyOS kernel on an LTS base',
+    'CachyOS-Kernel mit Härtung': 'CachyOS kernel with hardening',
+    'CachyOS-Kernel für Server (Durchsatz statt Reaktionszeit)': 'CachyOS kernel for servers (throughput instead of responsiveness)',
+    'CachyOS-Kernel auf Basis eines Release Candidate (neueste Technik, weniger getestet)': 'CachyOS kernel based on a release candidate (newest tech, less tested)',
+    'CachyOS-Kernel für Handhelds (Steam Deck & Co.)': 'CachyOS kernel for handhelds (Steam Deck & co.)',
+    'CachyOS-Kernel mit EEVDF-Scheduler': 'CachyOS kernel with EEVDF scheduler',
+    'Kernel aus den Paketquellen': 'Kernel from the repositories',
+    'Immer volle Taktrate – am schnellsten, braucht mehr Strom': 'Always full clock speed – fastest, uses more power',
+    'Spart Strom (bei intel_pstate/amd-pstate trotzdem dynamisch)': 'Saves power (still dynamic with intel_pstate/amd-pstate)',
+    'Passt den Takt der Auslastung an': 'Adjusts the clock to the load',
+    'Schaltet bei Last hoch, sonst runter': 'Scales up under load, down otherwise',
+    'Wie ondemand, aber vorsichtiger': 'Like ondemand, but more careful',
+    'Hier siehst du, welcher Kernel läuft, und kannst weitere installieren – Tuxdex sorgt danach dafür, dass sie im Bootmenü (z. B. GRUB) stehen und beim Start wirklich geladen werden. Ein neuer Kernel läuft erst nach einem Neustart.': 'Here you see which kernel is running and can install more – Tuxdex then makes sure they appear in the boot menu (e.g. GRUB) and are really loaded at startup. A new kernel only runs after a restart.',
+    'Aktueller Stand': 'Current state',
+    'Installierte Kernel': 'Installed kernels',
+    'Kernel installieren': 'Install kernel',
+    'CPU-Governor': 'CPU governor',
+    'Laufender Kernel': 'Running kernel',
+    'Scheduler': 'Scheduler',
+    'Bootloader': 'Bootloader',
+    'Governor': 'Governor',
+    'Anwenden': 'Apply',
+    'Tuxdex kann das Bootmenü selbst neu erzeugen.': 'Tuxdex can rebuild the boot menu itself.',
+    'Das Bootmenü pflegt dein System automatisch (Hooks) – Tuxdex prüft nur, ob der Kernel drinsteht.': 'Your system maintains the boot menu automatically (hooks) – Tuxdex only checks whether the kernel is listed.',
+    'Bootmenü neu erzeugen': 'Rebuild boot menu',
+    'Es wurde kein bekannter Bootloader gefunden (GRUB, systemd-boot, Limine, rEFInd).': 'No known bootloader was found (GRUB, systemd-boot, Limine, rEFInd).',
+    'Es wurde kein Kernel erkannt.': 'No kernel was detected.',
+    'Im Bootmenü eingetragen.': 'Listed in the boot menu.',
+    'NICHT im Bootmenü – „Bootmenü neu erzeugen“ klicken.': 'NOT in the boot menu – click "Rebuild boot menu".',
+    'Keine weiteren Kernel in den Paketquellen gefunden (pacman -Sl).': 'No further kernels found in the repositories (pacman -Sl).',
+    'Dieser Rechner stellt keinen CPU-Governor bereit.': "This computer doesn't provide a CPU governor.",
+    '{} nicht im Bootmenü': '{} not in the boot menu',
+    'Kernel entfernen': 'Remove kernel',
+    'Das Bootmenü wird aus den installierten Kernen neu erzeugt. Vorher legt Tuxdex eine Sicherung an (.tuxdex.bak).': 'The boot menu is rebuilt from the installed kernels. Tuxdex makes a backup first (.tuxdex.bak).',
+    'Neu erzeugen': 'Rebuild',
+    'Bootmenü neu erzeugt.': 'Boot menu rebuilt.',
+    'Kernel anzeigen, installieren (auch CachyOS), Bootmenü pflegen, Scheduler und CPU-Governor.': 'Show and install kernels (also CachyOS), maintain the boot menu, scheduler and CPU governor.',
+    'Kernel installieren (auch CachyOS), Bootmenü pflegen, Scheduler und CPU-Governor': 'Install kernels (also CachyOS), maintain the boot menu, scheduler and CPU governor',
     'Ausführen?\n\n{}': 'Run?\n\n{}',
     'Windows-Daten': 'Windows data',
     'Grafikkarte': 'Graphics card',

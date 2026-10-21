@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.1
+Kernel-Verwaltung (Beta).
+
+- **Neues Modul „Kernel“**: zeigt den laufenden Kernel, den **Scheduler** (BORE, EEVDF …) und den **CPU-Governor** (bis zum Neustart umschaltbar). **Kernel installieren** aus den Paketquellen – auch die von **CachyOS** (`linux-cachyos`, `-lts`, `-rc` …) – jeweils mit Headers und, wenn ein NVIDIA-Treiber installiert ist, dem passenden Modulpaket.
+- **Bootmenü**: Nach dem Installieren oder Entfernen erzeugt Tuxdex das Bootmenü neu (GRUB mit Sicherung der `grub.cfg`, systemd-boot über `sdboot-manage`, Limine über `limine-update`) und prüft, ob der Kernel wirklich eingetragen ist. Fehlt er, weist die Liste darauf hin. Damit läuft der Kernel nach dem Neustart wirklich und wird von `uname -r` und fastfetch richtig angezeigt.
+- Der laufende Kernel lässt sich nicht entfernen.
+- **Wichtig:** Das Modul ist noch **nicht offiziell getestet**. Änderungen an Kernel und Bootmenü können dazu führen, dass der Rechner nicht mehr startet – bitte zuerst in einer **virtuellen Maschine (VM)** ausprobieren und vorher ein Backup anlegen. Dazu steht ein Hinweis im Modul – mit einem Knopf **„Feedback geben“**. Rückmeldungen, was geklappt hat und was nicht, sind ausdrücklich erwünscht.
+
 ## 1.6.0.3
 Tab „Updates“ (Beta).
 

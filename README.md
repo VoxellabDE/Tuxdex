@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.6.0.3--beta-2fb3a3">
+  <img alt="Version" src="https://img.shields.io/badge/version-1.6.1--beta-2fb3a3">
   <img alt="Lizenz" src="https://img.shields.io/badge/lizenz-GPL--3.0-2fb3a3">
   <img alt="Für Arch Linux" src="https://img.shields.io/badge/f%C3%BCr-Arch%20Linux-1793d1">
   <img alt="Python" src="https://img.shields.io/badge/python-3.11%2B-3776ab">
@@ -65,6 +65,7 @@ Tuxdex ist ein **Baukasten**: Unter **Einstellungen → Module** wählst du selb
 | **Treiber** | Erkennt **Grafikkarte** (NVIDIA, AMD, Intel), **WLAN**, **Bluetooth** und **Drucker** und richtet die passenden Treiber mit einem Klick ein (pacman) – mit Hinweisen für Hybrid-Laptops, Realtek, Broadcom und HP |
 | **Diagnose** | **Fehlersuche in Klartext**: „Internet geht nicht“, „Kein Ton“, Bluetooth, Grafik, langsamer Start, Speicher voll, Updates schlagen fehl, Drucker – mit verständlicher Erklärung und Knopf zur Behebung · **Gerätemanager** mit Treiber je Gerät |
 | **Windows-Daten** | Findet NTFS-/Windows-Laufwerke, hängt sie **nur lesend** ein und übernimmt **Dokumente, Bilder, Videos, Musik, Downloads und Desktop** (vorhandene Dateien werden nie überschrieben) · erkennt Dual-Boot |
+| **Kernel** | Zeigt den laufenden Kernel, den **Scheduler** (z. B. BORE) und den **CPU-Governor** (umschaltbar) · **Kernel installieren**, auch die von **CachyOS** (inkl. Headers und passendem NVIDIA-Modul) · pflegt das **Bootmenü** (GRUB, systemd-boot, Limine) und prüft, dass der Kernel dort steht und beim Start geladen wird · **noch nicht offiziell getestet – bitte zuerst in einer VM ausprobieren, Feedback willkommen** |
 | **Speicher** | Belegung je Festplatte · **Tortendiagramm**: Betriebssystem, Anwendungen, Systemdaten, Fotos & Videos, eigene Dateien · „Was belegt den Platz?“ mit Drill-down in Ordner · Aufräumen: Paket-Cache, verwaiste Pakete, Journal, Papierkorb, Flatpak |
 | **Backup** | Snapshots (versioniert, platzsparend), Spiegel oder komprimierte Archive (zstd/xz/gzip, optional mit Passwort) · **mehrere Ziele gleichzeitig** · Prüfung nach dem Schreiben · eigene Namen mit Datum ([so geht’s](#backups-benennen)) · alte Versionen automatisch aufräumen · wiederherstellen · Zeitplan täglich/wöchentlich |
 | **Wiederherstellung** | System-Snapshots mit snapper (btrfs) oder Timeshift · **Snapshot vor jedem Update** · Liste, erstellen, löschen · **auf einen Stand zurücksetzen** per Klick |

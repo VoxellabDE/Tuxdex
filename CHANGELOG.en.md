@@ -2,6 +2,14 @@
 
 English version of [CHANGELOG.md](CHANGELOG.md). Entries before 1.0.0 are only available in German.
 
+## 1.6.1
+Kernel management (beta).
+
+- **New module "Kernel"**: shows the running kernel, the **scheduler** (BORE, EEVDF …) and the **CPU governor** (switchable until restart). **Install kernels** from the repositories – including **CachyOS** ones (`linux-cachyos`, `-lts`, `-rc` …) – each with headers and, if an NVIDIA driver is installed, the matching module package.
+- **Boot menu**: after installing or removing, Tuxdex rebuilds the boot menu (GRUB with a backup of `grub.cfg`, systemd-boot via `sdboot-manage`, Limine via `limine-update`) and checks that the kernel is really listed. If it's missing, the list points it out. This way the kernel really runs after the restart and is shown correctly by `uname -r` and fastfetch.
+- The running kernel can't be removed.
+- **Important:** the module has **not been officially tested yet**. Changes to the kernel and boot menu can make the computer stop booting – please try it in a **virtual machine (VM)** first and make a backup beforehand. A notice is shown in the module – with a **"Give feedback"** button. Feedback on what worked and what didn't is explicitly welcome.
+
 ## 1.6.0.3
 "Updates" tab (beta).
 
