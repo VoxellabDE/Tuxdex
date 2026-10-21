@@ -1,5 +1,49 @@
 # Changelog
 
+## 1.5.2
+Fehlerbehebung.
+
+- **Pop-ups**: Auch Häkchen-Felder in Dialogen liegen nicht mehr auf einem schwarzen Kasten.
+
+## 1.5.1
+Fehlerbehebung.
+
+- **Antivirus**: Die automatischen Signatur-Updates lassen sich wieder **ausschalten** – der Knopf wechselt zwischen „aktivieren“ und „deaktivieren“.
+
+## 1.5.0
+Benutzerverwaltung.
+
+- **Benutzer hinzufügen**: Name, vollständiger Name, Passwort, optional Administrator (Gruppe „wheel“) und „Passwort beim ersten Anmelden ändern“. Der Benutzername wird geprüft, das Passwort erscheint nie im Ausgabefeld.
+- **Passwort ändern** für jeden Benutzer, auf Wunsch mit Zwang zur Änderung beim nächsten Anmelden. Die Liste zeigt, **wann das Passwort zuletzt geändert wurde** (und ob das Konto gesperrt ist).
+- **Speicher je Benutzer**: Größe des Home-Ordners und Arbeitsspeicher aller laufenden Prozesse des Benutzers.
+- **Aktive Zeit**: Summe aller Anmeldungen aus dem Systemprotokoll (wtmp), laufende Sitzungen zählen mit.
+- **Beschreibung**: Wofür der Nutzer da ist (z. B. „Büro-PC“, „Kinderkonto“) – beim Anlegen oder später. Tuxdex speichert sie nur für sich unter `~/.config/tuxdex`, am System ändert sich nichts.
+
+## 1.4.2
+Kleine Verbesserungen und Fehlerbehebungen.
+
+- **Firewall (ufw)**: Regeln bekommen einen Namen/eine Bezeichnung (als ufw-Kommentar, steht in der Regelliste).
+- **Energieprofil**: Es werden nur noch Profile angeboten, die der Rechner wirklich kennt – „Leistung“ fehlt auf vielen Geräten und führte zu einer Fehlermeldung.
+- **Rückfragen und Textfenster**: auch hier ein „Kopieren“-Knopf für die ganze Ausgabe.
+- **Pop-ups**: Beschriftungen und Symbole liegen nicht mehr auf einem schwarzen Kasten (auch unter KDE).
+- **Antivirus**: ClamAV lässt sich direkt im Tab installieren (pacman), mit Fortschritt in %.
+
+## 1.4.1
+Fehlerbehebungen und kleine Verbesserungen.
+
+- **Firewall-Regeln mit IP-Adresse**: Regeln lassen sich jetzt auf eine IP-Adresse oder ein Netz beschränken (z. B. SSH nur von 192.168.1.20 erlauben). Port und IP sind beide optional, mindestens eins ist nötig.
+- **Installieren-Knöpfe**: zeigen beim Installieren den Fortschritt in % („Wird installiert … 42 %“) und werden danach zu einem blauen **„Starten“**-Knopf – so sieht man sofort, was schon installiert ist (bei Programmen mit Fenster; Konsolen-Tools bleiben „Installiert“).
+- **Backup**: Bei langen Läufen mit root-Rechten läuft das sudo-Ticket nicht mehr ab (Snapshots wurden sonst nicht abgeschlossen). Systemordner wie /etc: Tuxdex fragt nach root-Rechten, unvollständige Backups werden als „Unvollständig“ gekennzeichnet.
+- **Ausgabe-Felder**: „Kopieren“-Knopf kopiert die gesamte Ausgabe.
+- **Updater**: fehlende Bauwerkzeuge (`base-devel`) werden zur Installation angeboten; die Update-Prüfung beim Start wiederholt sich, wenn das Netzwerk noch fehlt.
+- **Leak-Test**: ungültige Antwort von ipapi.is führt nicht mehr zum Absturz.
+
+## 1.4.0
+Laufwerke dauerhaft einhängen.
+
+- **Datenträger → „Dauerhaft einhängen …“**: Eine Platte wird bei jedem Start automatisch eingehängt – ohne die `/etc/fstab` von Hand zu bearbeiten. Tuxdex trägt den Eintrag **per UUID** ein, wählt passende Optionen je Dateisystem (ext4, btrfs, xfs, f2fs, NTFS, exFAT, FAT32) und setzt `nofail`, damit der Start nicht hängt, wenn die Platte mal fehlt. Vorher gibt es eine Sicherung (`/etc/fstab.tuxdex.bak`); klappt das Einhängen nicht, wird die `fstab` automatisch zurückgesetzt. Bei Linux-Dateisystemen kann der Ordner dir zugewiesen werden, damit du darin schreiben darfst.
+- **„Dauerhaft entfernen“** löscht den Eintrag wieder. System-Einträge (/, /boot, /home, Swap) bleiben geschützt; Einhängepunkte in Systemordnern (/etc, /usr, /var …) werden abgelehnt.
+
 ## 1.3.0
 Systemwiederherstellung und Einrichten für Umsteiger.
 

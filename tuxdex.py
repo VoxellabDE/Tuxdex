@@ -104,15 +104,15 @@ def _show_fatal_error(title, message):
 
 
 try:
-    from PySide6.QtCore import QObject, Qt, Signal, Slot, QTimer, QSize, QRectF
+    from PySide6.QtCore import QObject, Qt, Signal, Slot, QTimer, QSize, QRectF, QEvent
     from PySide6.QtGui import (QColor, QFont, QFontDatabase, QPainter, QPainterPath, QPen, QTextCharFormat,
-                               QTextCursor, QIcon, QPixmap)
+                               QTextCursor, QIcon, QPixmap, QPalette)
     from PySide6.QtWidgets import (
         QApplication, QWidget, QFrame, QLabel, QPushButton, QHBoxLayout, QVBoxLayout,
         QGridLayout, QStackedWidget, QPlainTextEdit, QLineEdit, QCheckBox, QComboBox,
         QListWidget, QAbstractItemView, QTableWidget, QTableWidgetItem, QHeaderView,
         QTreeWidget, QTreeWidgetItem, QLayout,
-        QSlider, QDialog, QMessageBox, QScrollArea, QSizePolicy,
+        QSlider, QDialog, QMessageBox, QScrollArea, QSizePolicy, QFileDialog,
     )
 except Exception as e:
     _show_fatal_error(
@@ -376,6 +376,8 @@ COLORS = {
     "danger_h": "#f58d86",
     "on_danger": "#2a0906",
     "info": "#5aa6f0",
+    "info_h": "#7dbcf6",
+    "on_info": "#07182b",
 }
 
 # Modul-Kennfarben
@@ -411,7 +413,7 @@ MODULE_INFO = {
     "antivirus": "ClamAV-Virenscanner. Auf Linux-Desktops wenig nützlich – vor allem für Server und "
                  "Dateien, die an Windows-Rechner weitergehen.",
     "security": "Sicherheits-Check, Checkliste, Firewall, offene Ports und VPN.",
-    "users": "Benutzerkonten und Gruppen verwalten. Für Fortgeschrittene.",
+    "users": "Benutzer anlegen, Passwörter ändern, Speicher, aktive Zeit und Beschreibung. Für Fortgeschrittene.",
 }
 MODULES_CORE = {"update"}
 MODULES_OFF_BY_DEFAULT = {"swap", "antivirus", "users"}
@@ -427,7 +429,7 @@ def module_enabled(key, settings=None):
 FONTS = {"sans": "Sans Serif", "mono": "Monospace"}
 
 APP_ID = "tuxdex"
-APP_VERSION = "1.3.0"
+APP_VERSION = "1.5.2"
 APP_STAGE = "alpha"        # Reifegrad – wird nur angezeigt, die Versionsnummer selbst bleibt ohne Zusatz
 
 
@@ -610,6 +612,8 @@ QPushButton[variant="primary"] { background: $accent; color: $on_accent; }
 QPushButton[variant="primary"]:hover { background: $accent_h; }
 QPushButton[variant="danger"] { background: $danger; color: $on_danger; }
 QPushButton[variant="danger"]:hover { background: $danger_h; }
+QPushButton[variant="launch"] { background: $info; color: $on_info; }
+QPushButton[variant="launch"]:hover { background: $info_h; }
 QPushButton:disabled, QPushButton[variant="primary"]:disabled, QPushButton[variant="danger"]:disabled {
     background: transparent; color: $line_strong; border: 1px solid $line; padding: 6px 15px;
 }
@@ -692,7 +696,7 @@ QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
 /* Dialoge */
 QDialog, QMessageBox { background: $bg2; }
 /* Feste Fläche statt transparent – sonst malen manche Plattform-Themes (KDE) die Labels schwarz */
-QDialog QLabel { background: $bg2; }
+QDialog QLabel, QDialog QCheckBox, QDialog QRadioButton { background: $bg2; }
 QDialogButtonBox { background: $bg2; }
 QMessageBox QPushButton { min-width: 88px; }
 /* Reihenfolge wie in den eigenen Dialogen: Abbrechen links, Aktion rechts */
@@ -772,7 +776,32 @@ def tuxdex_palette():
     return pal
 
 
+class DialogFlattener(QObject):
+    """Beim Öffnen jedes Dialogs die Beschriftungen auf die Dialogfläche setzen. Manche Desktop-Themes (KDE)
+    malen Texte und Symbole in Pop-ups sonst auf einen schwarzen Kasten."""
+
+    def eventFilter(self, obj, ev):
+        if ev.type() == QEvent.Show and isinstance(obj, QDialog) and not obj.property("tdx_flat") \
+                and not isinstance(obj, QFileDialog):
+            obj.setProperty("tdx_flat", True)
+            bg = COLORS["bg2"]
+            import PySide6.QtWidgets as _W      # Qt-eigene Klasse: QLabel heißt hier die Übersetzungs-Unterklasse
+            for lbl in obj.findChildren(_W.QLabel) + obj.findChildren(_W.QCheckBox) + obj.findChildren(_W.QRadioButton):
+                if lbl.property("tdx_flat") or lbl.objectName() in ("Badge",):
+                    continue
+                pal = lbl.palette()
+                for role in (QPalette.Window, QPalette.Base):
+                    pal.setColor(role, QColor(bg))
+                lbl.setPalette(pal)
+                lbl.setAutoFillBackground(True)
+                lbl.setStyleSheet(lbl.styleSheet() + f"background: {bg};")
+                lbl.setProperty("tdx_flat", True)
+        return False
+
+
 def apply_theme(app):
+    app._dialog_flattener = DialogFlattener(app)
+    app.installEventFilter(app._dialog_flattener)
     families = set(QFontDatabase.families())
 
     def pick(cands, fallback):
@@ -1027,6 +1056,9 @@ def orphaned_jobs():
     return res
 
 
+PCT_RE = re.compile(r"(\d{1,3})%")
+
+
 class ProcessRun:
     """Startet einen Prozess und streamt die Ausgabe ins LogView.
 
@@ -1035,9 +1067,11 @@ class ProcessRun:
     Wartet der Prozess auf eine Eingabe, erscheint ein Dialog; die Antwort
     wird an den Prozess geschickt."""
 
-    def __init__(self, cmd, log, needs_sudo=False, on_done=None, interactive=False, on_line=None, cwd=None):
+    def __init__(self, cmd, log, needs_sudo=False, on_done=None, interactive=False, on_line=None, cwd=None,
+                 on_percent=None):
         self.log = log
         self.cwd = cwd
+        self.on_percent = on_percent   # optional: zuletzt gemeldete Prozentzahl (GUI-Thread)
         self.on_done = on_done
         self.on_line = on_line   # optional: pro vollständiger Zeile (GUI-Thread)
         self.proc = None
@@ -1114,6 +1148,10 @@ class ProcessRun:
                 if self.log is not None:
                     ui(lambda t=text: self.log.write_raw(t))
                 clean = ANSI_RE.sub("", text).replace("\r\n", "\n")
+                if self.on_percent:
+                    pct = PCT_RE.findall(clean)
+                    if pct:
+                        ui(lambda v=min(100, int(pct[-1])): self.on_percent(v))
                 if self.on_line:
                     self._linebuf = getattr(self, "_linebuf", "") + clean
                     *full, self._linebuf = self._linebuf.split("\n")
@@ -1149,14 +1187,14 @@ class ProcessRun:
 
 
 def run_streaming(cmd, log, needs_sudo=False, on_done=None, clear_first=True, interactive=False, on_line=None,
-                  cwd=None):
+                  cwd=None, on_percent=None):
     """Führt cmd aus und streamt die Ausgabe live in das LogView - alles
     innerhalb des Programmfensters, kein externes Terminal. Gibt ein
     ProcessRun-Objekt zurück (u. a. zum Abbrechen)."""
     if clear_first:
         log.set_text("")
     return ProcessRun(cmd, log, needs_sudo=needs_sudo, on_done=on_done, interactive=interactive,
-                      on_line=on_line, cwd=cwd)
+                      on_line=on_line, cwd=cwd, on_percent=on_percent)
 
 
 class SequenceRun:
@@ -1185,7 +1223,7 @@ class SequenceRun:
 
         self.current = run_streaming(step["cmd"], self.log, needs_sudo=step["needs_sudo"], on_done=done,
                                      clear_first=False, interactive=step.get("interactive", False),
-                                     cwd=step.get("cwd"))
+                                     cwd=step.get("cwd"), on_percent=step.get("on_percent"))
 
     def cancel(self):
         self.cancelled = True
@@ -1315,6 +1353,24 @@ class LogView(QPlainTextEdit):
             f = QTextCharFormat()
             f.setForeground(QColor(COLORS[key]))
             self._fmts[tag] = f
+        # „Kopieren“ schwebt oben rechts im Feld – gesamte Ausgabe in die Zwischenablage, ohne zu markieren
+        self.b_copy = Button("Kopieren", "ghost", self._copy_all, "Gesamte Ausgabe in die Zwischenablage")
+        self.b_copy.setParent(self)
+        self.b_copy.setStyleSheet("padding: 3px 10px; font-size: 9pt;")
+        self.b_copy.adjustSize()
+        self.b_copy.raise_()
+
+    def _copy_all(self):
+        QApplication.clipboard().setText(self.toPlainText())
+        self.b_copy.setText(tr("Kopiert ✓"))
+        QTimer.singleShot(1500, lambda: self.b_copy.setText(tr("Kopieren")))
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        self.b_copy.adjustSize()
+        sb = self.verticalScrollBar()
+        x = self.width() - self.b_copy.width() - 8 - (sb.width() if sb.isVisible() else 0)
+        self.b_copy.move(max(0, x), 6)
 
     def _tag(self, line):
         s = line.strip()
@@ -1665,6 +1721,42 @@ def ask_password(parent, title="Administrator-Passwort", error=None):
     return None
 
 
+class _CopyOverlay(QObject):
+    """Hält den „Kopieren“-Knopf oben rechts im Textfeld."""
+
+    def __init__(self, edit):
+        super().__init__(edit)
+        self.edit = edit
+        self.btn = Button("Kopieren", "ghost", self.copy, "Gesamte Ausgabe in die Zwischenablage")
+        self.btn.setParent(edit)
+        self.btn.setStyleSheet("padding: 3px 10px; font-size: 9pt;")
+        edit.installEventFilter(self)
+        self.place()
+
+    def copy(self):
+        QApplication.clipboard().setText(self.edit.toPlainText())
+        self.btn.setText(tr("Kopiert ✓"))
+        QTimer.singleShot(1500, lambda: self.btn.setText(tr("Kopieren")))
+
+    def place(self):
+        self.btn.adjustSize()
+        sb = self.edit.verticalScrollBar()
+        x = self.edit.width() - self.btn.width() - 8 - (sb.width() if sb.isVisible() else 0)
+        self.btn.move(max(0, x), 6)
+        self.btn.raise_()
+
+    def eventFilter(self, obj, ev):
+        if ev.type() in (QEvent.Resize, QEvent.Show):
+            self.place()
+        return False
+
+
+def attach_copy_button(edit):
+    """„Kopieren“-Knopf für ein Textfeld mit Konsolenausgabe (jede Ausgabe ohne Markieren kopierbar)."""
+    edit._copy_overlay = _CopyOverlay(edit)
+    return edit
+
+
 class PromptDialog(QDialog):
     """Rückfrage eines laufenden Prozesses (pacman/paru) als Fenster."""
 
@@ -1686,6 +1778,7 @@ class PromptDialog(QDialog):
         ctx.setFont(QFont(FONTS["mono"], 9))
         ctx.setMinimumHeight(180)
         ctx.moveCursor(QTextCursor.End)
+        attach_copy_button(ctx)
         lay.addWidget(ctx)
         q = Label(prompt.strip(), "Value", wrap=True)
         lay.addWidget(q)
@@ -4163,6 +4256,54 @@ def install_text(src):
     return f"Installieren ({SRC_LABEL.get(src, src)})"
 
 
+def busy_text(pct):
+    """Knopftext während der Installation, z. B. „Wird installiert … 42 %“"""
+    return f"{tr('Wird installiert …')} {pct}%"
+
+
+def monotone(cb):
+    """pacman und Flatpak melden pro Paket 0–100 %. Daraus wird eine Anzeige, die nie zurückspringt und erst
+    mit dem Abschluss 100 % erreicht."""
+    top = [0]
+
+    def f(v):
+        top[0] = max(top[0], min(v, 99))
+        cb(top[0])
+    return f
+
+
+_LAUNCH_CACHE = {}
+
+
+def launch_cmd(src, ident):
+    """Befehl, der ein installiertes Programm startet – None, wenn es kein Fenster-Programm ist (nur Konsole)."""
+    if src == "flathub":
+        return ["flatpak", "run", ident]
+    if ident in _LAUNCH_CACHE:
+        return _LAUNCH_CACHE[ident]
+    cmd = None
+    try:
+        out = subprocess.run(["pacman", "-Ql", ident], capture_output=True, text=True, timeout=10).stdout
+        for line in out.splitlines():
+            path = line.split(" ", 1)[-1].strip()
+            if path.startswith("/usr/share/applications/") and path.endswith(".desktop"):
+                txt = _read(path)
+                if "Type=Application" in txt and "NoDisplay=true" not in txt:
+                    cmd = ["gio", "launch", path] if which("gio") else ["gtk-launch", os.path.basename(path)]
+                    break
+    except Exception:
+        pass
+    _LAUNCH_CACHE[ident] = cmd
+    return cmd
+
+
+def start_app(cmd):
+    try:
+        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    except Exception:
+        pass
+
+
 def installed_pacman():
     try:
         return set(subprocess.run(["pacman", "-Qq"], capture_output=True, text=True, timeout=15).stdout.split())
@@ -4178,6 +4319,15 @@ def installed_flatpaks():
                                   capture_output=True, text=True, timeout=15).stdout.split())
     except Exception:
         return set()
+
+
+def power_profiles_available():
+    """Profile, die dieser Rechner wirklich kennt – „performance“ gibt es nur auf Geräten, deren Treiber es
+    anbietet (powerprofilesctl list)."""
+    if not which("powerprofilesctl"):
+        return set()
+    return set(re.findall(r"^[\s*]*([\w-]+):\s*$", _cmd_out(["powerprofilesctl", "list"]), re.M)) \
+        & {p[0] for p in POWER_PROFILES}
 
 
 def power_profile():
@@ -4198,6 +4348,10 @@ class SetupTab(Page):
         self.app = app
         self.pac = set()
         self.fp = set()
+        self.installing = {}     # (Quelle, Kennung) bzw. ("game", key) -> Prozent, solange installiert wird
+        self.alt_btns = {}
+        self.game_state = {}     # key -> "install" | "launch" | "done"
+        self.game_launch = {}
         self.badge = StatusBadge("off", "Lade …")
         self.lay.addLayout(page_header("Einrichten", self.badge))
         self.lay.addWidget(Label("Was nach einem Umstieg von Windows fehlt – mit einem Klick erledigt.",
@@ -4272,7 +4426,7 @@ class SetupTab(Page):
             n.setMinimumWidth(110)
             r.addWidget(n)
             r.addWidget(Label(desc, "Hint"), 1)
-            b = Button("Installieren", "primary", lambda _=False, k=key: self.install_games([k]))
+            b = Button("Installieren", "primary", lambda _=False, k=key: self._game_click(k))
             b.setMinimumWidth(130)
             r.addWidget(b)
             gp.body.addLayout(r)
@@ -4307,6 +4461,7 @@ class SetupTab(Page):
     def refresh(self):
         def worker():
             pac, fp, prof = installed_pacman(), installed_flatpaks(), power_profile()
+            self.power_avail = power_profiles_available()
             defaults, ml = default_apps_state(), multilib_enabled()
             ui(lambda: (self._apply_defaults(defaults), self._apply_games(pac, fp, ml), self._apply(pac, fp, prof)))
         threading.Thread(target=worker, daemon=True).start()
@@ -4324,10 +4479,14 @@ class SetupTab(Page):
                 badge.set("warn", f"{len(pkgs) - len(missing)} von {len(pkgs)}")
             else:
                 badge.set("off", "Fehlt")
+            b.setText(install_text("pacman"))
             b.setVisible(bool(missing))
         self.badge.set("ok" if done == len(BASICS) else "info", f"{done} von {len(BASICS)} Basics")
         ids = [p[0] for p in POWER_PROFILES]
         self.power_box.setVisible(prof in ids)
+        avail = getattr(self, "power_avail", set())
+        for i, pid in enumerate(ids):
+            self.power_seg.btns[i].setVisible(not avail or pid in avail)
         if prof in ids:
             self.power_seg.set(ids.index(prof))
         self.render_alternatives()
@@ -4360,11 +4519,27 @@ class SetupTab(Page):
             if key == "steam":
                 have = "steam" in pac or STEAM_FLATHUB in fp
             b = self.game_rows[key]
-            b.setEnabled(not have)
             if key == "steam" and not ml:
                 src = "flathub"                      # ohne multilib kommt Steam von Flathub
-            b.setText("Installiert" if have else install_text(src))
-            b.setProperty("variant", "ghost" if have else "primary")
+            if ("game", key) in self.installing:
+                if have:
+                    self.installing.pop(("game", key), None)
+                else:
+                    continue                         # läuft gerade – Anzeige nicht zurücksetzen
+            if have:
+                lsrc, lid = (("pacman", "steam") if "steam" in pac else ("flathub", STEAM_FLATHUB)) \
+                    if key == "steam" else (src, ident)
+                cmd = launch_cmd(lsrc, lid)
+                self.game_launch[key] = cmd
+                self.game_state[key] = "launch" if cmd else "done"
+                b.setEnabled(bool(cmd))
+                b.setText("Starten" if cmd else "Installiert")
+                b.setProperty("variant", "launch" if cmd else "ghost")
+            else:
+                self.game_state[key] = "install"
+                b.setEnabled(True)
+                b.setText(install_text(src))
+                b.setProperty("variant", "primary")
             repolish(b)
             if key in GAMES_RECOMMENDED and not have:
                 missing.append(f"{name} ({SRC_LABEL[src]})")
@@ -4406,10 +4581,29 @@ class SetupTab(Page):
         self._run([{"cmd": ["bash", "-c", script], "needs_sudo": True, "label": "multilib einschalten"},
                    {"cmd": ["pacman", "-Syu"], "needs_sudo": True, "interactive": True, "label": "sudo pacman -Syu"}])
 
+    def _game_click(self, key):
+        state = self.game_state.get(key, "install")
+        if ("game", key) in self.installing or state == "done":
+            return
+        if state == "launch":
+            start_app(self.game_launch[key])
+            self.app.set_status("Wird gestartet …")
+        else:
+            self.install_games([key])
+
+    def _set_game_busy(self, keys, pct):
+        for k in keys:
+            self.installing[("game", k)] = pct
+            b = self.game_rows[k]
+            b.setText(busy_text(pct))
+            b.setProperty("variant", "ghost")
+            b.setEnabled(True)
+            repolish(b)
+
     def install_games(self, keys):
-        pac_pkgs, fp_ids = [], []
+        pac_pkgs, fp_ids, run_keys = [], [], []
         for key, name, _, src, ident, needs_ml in GAMES:
-            if key not in keys or not self.game_rows[key].isEnabled():
+            if key not in keys or self.game_state.get(key, "install") != "install":
                 continue
             if key == "steam" and not getattr(self, "multilib", True):
                 fp_ids.append(STEAM_FLATHUB)
@@ -4419,6 +4613,7 @@ class SetupTab(Page):
                 pac_pkgs.append(ident)
             else:
                 fp_ids.append(ident)
+            run_keys.append(key)
         if "gamemode" in pac_pkgs and getattr(self, "multilib", False):
             pac_pkgs.append("lib32-gamemode")
         if not pac_pkgs and not fp_ids:
@@ -4441,10 +4636,15 @@ class SetupTab(Page):
                 return
             steps.append({"cmd": ["flatpak", "install", "-y", "flathub"] + fp_ids, "needs_sudo": True,
                           "interactive": True, "label": "flatpak install flathub " + " ".join(fp_ids)})
-        self._run(steps)
+        self._set_game_busy(run_keys, 0)
+        pct = monotone(lambda v: self._set_game_busy(run_keys, v))
+        for st in steps:
+            st["on_percent"] = pct
+        self._run(steps, [("game", k) for k in run_keys])
 
     def render_alternatives(self, *_):
         clear_layout(self.alt_box)
+        self.alt_btns = {}
         hits = find_alternatives(self.search.text())
         if not hits:
             self.alt_box.addWidget(Label("Dazu kenne ich noch keinen Ersatz. Im Tab „Software“ kannst du "
@@ -4476,20 +4676,32 @@ class SetupTab(Page):
                 ["xdg-open", ident], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
         if src == "tuxdex":
             return Button("Öffnen", "ghost", lambda: self.app.select([m[0] for m in MODULES].index(ident)))
+        key = (src, ident)
         have = ident in (self.pac if src == "pacman" else self.fp)
+        if key in self.installing:
+            b = Button(busy_text(self.installing[key]), "ghost")
+            self.alt_btns.setdefault(key, []).append(b)
+            return b
         if have:
+            cmd = launch_cmd(src, ident)
+            if cmd:
+                return Button("Starten", "launch", lambda: (start_app(cmd), self.app.set_status("Wird gestartet …")))
             b = Button("Installiert", "ghost")
             b.setEnabled(False)
             return b
         b = Button(install_text(src), "primary", lambda: self.install_alt(name, src, ident))
+        self.alt_btns.setdefault(key, []).append(b)
         if src == "flathub" and not which("flatpak"):
             b.setEnabled(False)
             b.setToolTip("Flatpak fehlt – im Tab „Flatpak“ einrichten.")
         return b
 
     # --- Aktionen --------------------------------------------------------
-    def _run(self, steps):
+    def _run(self, steps, busy=()):
         def all_done():
+            for k in busy:
+                self.installing.pop(k, None)
+            _LAUNCH_CACHE.clear()
             self.refresh()
             self.app.set_status("Fertig.")
         run_sequence(steps, self.log, on_all_done=all_done)
@@ -4504,12 +4716,30 @@ class SetupTab(Page):
             return
         steps = [{"cmd": ["pacman", "-S", "--needed", "--"] + missing, "needs_sudo": True, "interactive": True,
                   "label": "sudo pacman -S " + " ".join(missing)}]
+        btn = self.basic_rows[key][1]
+
+        def busy(v):
+            btn.setText(busy_text(v))
+        busy(0)
+        steps[0]["on_percent"] = monotone(busy)
         if key == "power":
             steps.append({"cmd": ["systemctl", "enable", "--now", "power-profiles-daemon"], "needs_sudo": True,
                           "label": "systemctl enable --now power-profiles-daemon"})
         self._run(steps)
 
+    def _set_alt_busy(self, key, pct):
+        self.installing[key] = pct
+        for b in self.alt_btns.get(key, []):
+            try:
+                b.setText(busy_text(pct))
+                b.setProperty("variant", "ghost")
+                repolish(b)
+            except RuntimeError:       # Knopf wurde beim Neuzeichnen schon entsorgt
+                pass
+
     def install_alt(self, name, src, ident):
+        if (src, ident) in self.installing:
+            return
         where = "aus den Arch-Paketquellen (pacman)" if src == "pacman" else "als Flatpak von Flathub"
         if not ask_confirm(self, name, f"{name} {where} installieren?", "Installieren"):
             return
@@ -4521,14 +4751,17 @@ class SetupTab(Page):
         else:
             step = {"cmd": ["flatpak", "install", "-y", "flathub", ident], "needs_sudo": True, "interactive": True,
                     "label": f"flatpak install flathub {ident}"}
-        self._run([step])
+        key = (src, ident)
+        self._set_alt_busy(key, 0)
+        step["on_percent"] = monotone(lambda v: self._set_alt_busy(key, v))
+        self._run([step], [key])
 
     def set_power(self, idx):
         prof = POWER_PROFILES[idx][0]
 
         def cb(rc, out, err):
             self.app.set_status(f"Energieprofil: {POWER_PROFILES[idx][1]}." if rc == 0
-                                else f"Energieprofil ließ sich nicht setzen: {err.strip()}")
+                                else f"Energieprofil ließ sich nicht setzen: {err.strip().splitlines()[-1] if err.strip() else rc}")
         run_capture_async(["powerprofilesctl", "set", prof], cb)
 
 
@@ -4536,15 +4769,253 @@ class SetupTab(Page):
 # Modul: Benutzer
 # --------------------------------------------------------------------------
 
+USER_NOTES_FILE = os.path.join(os.path.expanduser("~/.config"), "tuxdex", "user-notes.json")
+USERNAME_RE = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
+_LAST_DATE_RE = re.compile(r"([A-Z][a-z]{2} [A-Z][a-z]{2} +\d+ \d\d:\d\d:\d\d \d{4})")
+_LAST_DUR_RE = re.compile(r"\((?:(\d+)\+)?(\d+):(\d+)\)\s*$")
+
+
+def parse_last_durations(text, now=None):
+    """{benutzer: sekunden} – Summe aller Sitzungen aus `last -F` (laufende Sitzungen bis jetzt)."""
+    now = now or datetime.now()
+    res = {}
+    for line in text.splitlines():
+        parts = line.split()
+        if not parts or parts[0] in ("reboot", "shutdown", "runlevel", "wtmp", "btmp"):
+            continue
+        m = _LAST_DUR_RE.search(line)
+        if m:
+            sec = (int(m.group(1) or 0) * 24 + int(m.group(2))) * 3600 + int(m.group(3)) * 60
+        elif "still logged in" in line:
+            d = _LAST_DATE_RE.search(line)
+            if not d:
+                continue
+            try:
+                sec = max(0, int((now - datetime.strptime(d.group(1), "%a %b %d %H:%M:%S %Y")).total_seconds()))
+            except ValueError:
+                continue
+        else:
+            continue
+        res[parts[0]] = res.get(parts[0], 0) + sec
+    return res
+
+
+def parse_shadow(text):
+    """{benutzer: (Tage seit 1970 der letzten Passwortänderung oder None, gesperrt)} aus `getent shadow`."""
+    res = {}
+    for line in text.splitlines():
+        f = line.split(":")
+        if len(f) < 3:
+            continue
+        try:
+            days = int(f[2]) if f[2] != "" else None
+        except ValueError:
+            days = None
+        res[f[0]] = (days, f[1].startswith(("!", "*")))
+    return res
+
+
+def fmt_active(sec):
+    if sec is None:
+        return "—"
+    h, m = int(sec // 3600), int(sec // 60 % 60)
+    if h >= 48:
+        return f"{h // 24} Tage {h % 24} Std."
+    return f"{h} Std. {m} Min."
+
+
+def user_ram():
+    """{benutzer: Bytes im Arbeitsspeicher} über alle laufenden Prozesse."""
+    res = {}
+    try:
+        out = subprocess.run(["ps", "-eo", "user:32=,rss="], capture_output=True, text=True, timeout=10).stdout
+    except Exception:
+        return res
+    for line in out.splitlines():
+        p = line.split()
+        if len(p) == 2 and p[1].isdigit():
+            res[p[0]] = res.get(p[0], 0) + int(p[1]) * 1024
+    return res
+
+
+def dir_size(path, use_sudo=False):
+    """(Bytes, vollständig) – du über den Ordner; ohne Leserechte ist die Zahl nur eine Untergrenze."""
+    cmd = (["sudo", "-n"] if use_sudo else []) + ["du", "-sb", "-x", "--", path]
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        return int(p.stdout.split()[0]), p.returncode == 0
+    except Exception:
+        return None, False
+
+
+def sudo_run(args, input_text=None, timeout=60):
+    """Führt `sudo -n args` aus (Sitzung muss vorher per PrivilegeManager.ensure bestehen). (rc, out, err)"""
+    try:
+        p = subprocess.run(["sudo", "-n"] + args, input=input_text, capture_output=True, text=True, timeout=timeout)
+        return p.returncode, p.stdout, p.stderr
+    except Exception as e:
+        return 1, "", str(e)
+
+
+def load_user_notes():
+    d = _load_json(USER_NOTES_FILE, {})
+    return d if isinstance(d, dict) else {}
+
+
+def save_user_note(name, text):
+    d = load_user_notes()
+    if text.strip():
+        d[name] = text.strip()
+    else:
+        d.pop(name, None)
+    _save_json(USER_NOTES_FILE, d)
+
+
+class PasswordPairDialog(QDialog):
+    """Zwei Passwortfelder; für „Benutzer hinzufügen“ und „Passwort ändern“."""
+
+    def __init__(self, parent, title, heading, hint=""):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        lay = QVBoxLayout(self)
+        lay.setSizeConstraint(QLayout.SetMinimumSize)
+        spacer = QWidget()
+        spacer.setFixedSize(400, 0)
+        lay.addWidget(spacer)
+        lay.setContentsMargins(32, 28, 32, 24)
+        lay.setSpacing(12)
+        lay.addWidget(Label(heading, "DialogTitle"))
+        if hint:
+            lay.addWidget(Label(hint, "Small", wrap=True))
+        self.pw1 = LineEdit(placeholder="Neues Passwort")
+        self.pw2 = LineEdit(placeholder="Passwort wiederholen")
+        for pw in (self.pw1, self.pw2):
+            pw.setEchoMode(QLineEdit.Password)
+        lay.addLayout(Field("Passwort", self.pw1))
+        lay.addLayout(Field("Wiederholen", self.pw2))
+        self.force = QCheckBox("Beim nächsten Anmelden ein neues Passwort wählen lassen")
+        lay.addWidget(self.force)
+        self.err = Label("", "Error", wrap=True)
+        lay.addWidget(self.err)
+        btns = QHBoxLayout()
+        btns.addStretch(1)
+        btns.addWidget(Button("Abbrechen", "ghost", self.reject))
+        ok = Button("Übernehmen", "primary", self._check)
+        ok.setDefault(True)
+        btns.addWidget(ok)
+        lay.addLayout(btns)
+        self.pw1.setFocus()
+
+    def _check(self):
+        if len(self.pw1.text()) < 8:
+            self.err.setText("Das Passwort sollte mindestens 8 Zeichen haben.")
+        elif self.pw1.text() != self.pw2.text():
+            self.err.setText("Die Passwörter stimmen nicht überein.")
+        else:
+            self.accept()
+
+
+class NoteDialog(QDialog):
+    def __init__(self, parent, name, current):
+        super().__init__(parent)
+        self.setWindowTitle("Beschreibung bearbeiten")
+        lay = QVBoxLayout(self)
+        lay.setSizeConstraint(QLayout.SetMinimumSize)
+        spacer = QWidget()
+        spacer.setFixedSize(420, 0)
+        lay.addWidget(spacer)
+        lay.setContentsMargins(32, 28, 32, 24)
+        lay.setSpacing(12)
+        lay.addWidget(Label(f"Wofür ist {name} da?", "DialogTitle"))
+        self.entry = LineEdit(current, "z. B. Büro-PC, Kinderkonto, Gaming …")
+        self.entry.setMaxLength(200)
+        lay.addLayout(Field("Beschreibung", self.entry))
+        btns = QHBoxLayout()
+        btns.addStretch(1)
+        btns.addWidget(Button("Abbrechen", "ghost", self.reject))
+        ok = Button("Speichern", "primary", self.accept)
+        ok.setDefault(True)
+        btns.addWidget(ok)
+        lay.addLayout(btns)
+        self.entry.selectAll()
+        self.entry.setFocus()
+
+
+class AddUserDialog(QDialog):
+    def __init__(self, parent, has_wheel):
+        super().__init__(parent)
+        self.setWindowTitle("Benutzer hinzufügen")
+        lay = QVBoxLayout(self)
+        lay.setSizeConstraint(QLayout.SetMinimumSize)
+        spacer = QWidget()
+        spacer.setFixedSize(460, 0)
+        lay.addWidget(spacer)
+        lay.setContentsMargins(32, 28, 32, 24)
+        lay.setSpacing(12)
+        lay.addWidget(Label("Benutzer hinzufügen", "DialogTitle"))
+        self.name = LineEdit(placeholder="z. B. anna", mono=True)
+        self.name.setMaxLength(32)
+        lay.addLayout(Field("Benutzername (klein geschrieben, ohne Leerzeichen)", self.name))
+        self.full = LineEdit(placeholder="z. B. Anna Beispiel")
+        lay.addLayout(Field("Vollständiger Name (optional)", self.full))
+        self.note = LineEdit(placeholder="z. B. Büro-PC, Kinderkonto, Gaming …")
+        lay.addLayout(Field("Wofür ist der Nutzer da? (optional)", self.note))
+        self.pw1 = LineEdit(placeholder="Passwort")
+        self.pw2 = LineEdit(placeholder="Passwort wiederholen")
+        for pw in (self.pw1, self.pw2):
+            pw.setEchoMode(QLineEdit.Password)
+        lay.addLayout(Field("Passwort", self.pw1))
+        lay.addLayout(Field("Wiederholen", self.pw2))
+        self.admin = QCheckBox("Administrator (darf sudo nutzen, Gruppe „wheel“)")
+        self.admin.setVisible(has_wheel)
+        lay.addWidget(self.admin)
+        self.force = QCheckBox("Beim ersten Anmelden ein neues Passwort wählen lassen")
+        lay.addWidget(self.force)
+        self.err = Label("", "Error", wrap=True)
+        lay.addWidget(self.err)
+        btns = QHBoxLayout()
+        btns.addStretch(1)
+        btns.addWidget(Button("Abbrechen", "ghost", self.reject))
+        ok = Button("Anlegen", "primary", self._check)
+        ok.setDefault(True)
+        btns.addWidget(ok)
+        lay.addLayout(btns)
+        self.name.setFocus()
+
+    def _check(self):
+        import pwd
+        n = self.name.text().strip()
+        if not USERNAME_RE.match(n):
+            self.err.setText("Der Benutzername darf nur aus a–z, 0–9, _ und - bestehen und muss mit einem "
+                             "Buchstaben beginnen.")
+            return
+        try:
+            pwd.getpwnam(n)
+            self.err.setText("Diesen Benutzer gibt es schon.")
+            return
+        except KeyError:
+            pass
+        if len(self.pw1.text()) < 8:
+            self.err.setText("Das Passwort sollte mindestens 8 Zeichen haben.")
+        elif self.pw1.text() != self.pw2.text():
+            self.err.setText("Die Passwörter stimmen nicht überein.")
+        else:
+            self.accept()
+
+
 class UsersTab(Page):
-    COLS = [("Benutzer", 140), ("UID", 70), ("Home", 180), ("Shell", 150), ("Letzter Login", 240)]
+    COLS = [("Benutzer", 120), ("Beschreibung", 230), ("Passwort geändert", 150), ("Speicher (Home)", 130),
+            ("RAM", 90), ("Aktive Zeit", 130), ("Letzter Login", 200)]
 
     def __init__(self, app):
         super().__init__()
         self.app = app
+        self.gen = 0            # Zähler, damit späte Ergebnisse eines alten Ladevorgangs verworfen werden
+        self.info = {}          # name -> (uid, home, shell)
 
         self.lay.addLayout(page_header(
             "Registrierte Benutzer",
+            Button("Benutzer hinzufügen …", "primary", self.add_user),
             Button("Aktualisieren (mit Login-Zeiten)", "ghost", self.refresh_with_auth)))
 
         p = Panel()
@@ -4553,6 +5024,7 @@ class UsersTab(Page):
         self.tree.verticalHeader().setVisible(False)
         self.tree.setShowGrid(False)
         self.tree.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.tree.setSelectionMode(QAbstractItemView.SingleSelection)
         self.tree.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.tree.verticalHeader().setDefaultSectionSize(32)
         hh = self.tree.horizontalHeader()
@@ -4560,48 +5032,137 @@ class UsersTab(Page):
         for i, (_, w) in enumerate(self.COLS):
             self.tree.setColumnWidth(i, w)
         hh.setStretchLastSection(True)
-        self.tree.setMinimumHeight(320)
+        self.tree.setMinimumHeight(280)
+        self.tree.itemSelectionChanged.connect(self._show_details)
         p.body.addWidget(self.tree)
-        p.body.addWidget(Label("Login-Zeiten benötigen root-Rechte – Klick auf „Aktualisieren“ fragt "
-                               "bei Bedarf einmal nach dem Passwort.", "Small", wrap=True))
+        self.details = Label("Benutzer auswählen, um Passwort oder Beschreibung zu ändern.", "Muted", wrap=True)
+        p.body.addWidget(self.details)
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        row.addWidget(Button("Passwort ändern …", "ghost", self.change_password))
+        row.addWidget(Button("Beschreibung bearbeiten …", "ghost", self.edit_note))
+        row.addStretch(1)
+        p.body.addLayout(row)
+        p.body.addWidget(Label("Passwort-Datum, Speicherplatz fremder Ordner und Login-Zeiten brauchen root-Rechte – "
+                               "Klick auf „Aktualisieren“ fragt bei Bedarf einmal nach dem Passwort. „Aktive "
+                               "Zeit“ ist die Summe aller Anmeldungen aus dem Systemprotokoll (wtmp), „RAM“ der "
+                               "Arbeitsspeicher aller laufenden Prozesse des Benutzers. Die Beschreibung speichert "
+                               "Tuxdex nur für sich (~/.config/tuxdex), sie ändert nichts am System.",
+                               "Small", wrap=True))
         self.lay.addWidget(p, 1)
+
+        out = Panel("Ausgabe")
+        self.log = LogView(110)
+        out.body.addWidget(self.log)
+        self.lay.addWidget(out)
 
         self.load_users()
 
+    # ---- Laden --------------------------------------------------------------
+
+    def _set(self, r, c, text):
+        it = QTableWidgetItem(text)
+        self.tree.setItem(r, c, it)
+
+    def _row_of(self, name):
+        for r in range(self.tree.rowCount()):
+            if self.tree.item(r, 0) and self.tree.item(r, 0).text() == name:
+                return r
+        return -1
+
     def load_users(self):
+        self.gen += 1
+        gen = self.gen
         self.tree.setRowCount(0)
+        self.info = {}
         try:
             with open("/etc/passwd") as f:
                 lines = f.readlines()
         except Exception:
             return
-
+        notes = load_user_notes()
         users = []
         for line in lines:
             parts = line.strip().split(":")
             if len(parts) < 7:
                 continue
-            name, _, uid, _, _, home, shell = parts[:7]
+            name, _, uid, _, gecos, home, shell = parts[:7]
             try:
                 uid_i = int(uid)
             except ValueError:
                 continue
             if 1000 <= uid_i < 60000 and "nologin" not in shell and "false" not in shell:
-                users.append((name, uid, home, shell))
-
-        for name, uid, home, shell in users:
+                users.append((name, uid, home, shell, gecos.split(",")[0]))
+        for name, uid, home, shell, full in users:
+            self.info[name] = (uid, home, shell, full)
             r = self.tree.rowCount()
             self.tree.insertRow(r)
-            for c, v in enumerate((name, uid, home, shell, "—")):
-                self.tree.setItem(r, c, QTableWidgetItem(v))
+            for c, v in enumerate((name, notes.get(name, ""), "…", "…", "…", "…", "—")):
+                self._set(r, c, v)
+
+        ram = user_ram()
+        for name in self.info:
+            r = self._row_of(name)
+            self._set(r, 4, fmt_bytes(ram.get(name, 0)))
+
+        def worker():
+            try:
+                last = subprocess.run(["last", "-F", "-w"], capture_output=True, text=True, timeout=20).stdout
+                act = parse_last_durations(last)
+            except Exception:
+                act = None
+            ui(lambda: self._apply_active(gen, act))
+            use_sudo = self.app.priv.is_authenticated_nonblocking()
+            for name, (uid, home, shell, full) in list(self.info.items()):
+                if gen != self.gen:
+                    return
+                size, complete = dir_size(home, use_sudo)
+                ui(lambda n=name, s=size, c=complete: self._apply_size(gen, n, s, c))
+        threading.Thread(target=worker, daemon=True).start()
 
         # Unaufgefordert (ohne Passwort-Dialog!) versuchen - klappt nur,
         # wenn bereits eine sudo-Sitzung aus einer anderen Aktion aktiv ist.
         def cb(rc, out, err):
-            if rc != 0:
-                return
-            self._apply_lastlog(out)
+            if rc == 0 and gen == self.gen:
+                self._apply_lastlog(out)
         run_capture_async(["lastlog"], cb, needs_sudo=True)
+
+        def cb_shadow(rc, out, err):
+            if gen != self.gen:
+                return
+            sh = parse_shadow(out) if rc == 0 else {}
+            today = int(time.time() // 86400)
+            for name in self.info:
+                r = self._row_of(name)
+                if r < 0:
+                    continue
+                if name not in sh:
+                    self._set(r, 2, "root nötig")
+                    continue
+                days, locked = sh[name]
+                if days is None:
+                    txt = "nie gesetzt"
+                else:
+                    ago = today - days
+                    txt = datetime.fromtimestamp(days * 86400).strftime("%d.%m.%Y") + \
+                        (" (heute)" if ago <= 0 else f" (vor {ago} Tagen)")
+                self._set(r, 2, txt + (" · gesperrt" if locked else ""))
+        run_capture_async(["getent", "shadow"], cb_shadow, needs_sudo=True)
+
+    def _apply_active(self, gen, act):
+        if gen != self.gen:
+            return
+        for name in self.info:
+            r = self._row_of(name)
+            if r >= 0:
+                self._set(r, 5, fmt_active(act.get(name, 0)) if act is not None else "—")
+
+    def _apply_size(self, gen, name, size, complete):
+        if gen != self.gen:
+            return
+        r = self._row_of(name)
+        if r >= 0:
+            self._set(r, 3, "—" if size is None else ("" if complete else "≥ ") + fmt_bytes(size))
 
     def refresh_with_auth(self):
         self.app.priv.ensure(self)
@@ -4617,7 +5178,103 @@ class UsersTab(Page):
             logins[uname] = rest if rest else "nie"
         for r in range(self.tree.rowCount()):
             name = self.tree.item(r, 0).text()
-            self.tree.setItem(r, 4, QTableWidgetItem(logins.get(name, "unbekannt")))
+            self._set(r, 6, logins.get(name, "unbekannt"))
+
+    def _selected_user(self):
+        r = self.tree.currentRow()
+        if r < 0 or not self.tree.item(r, 0):
+            show_info(self, "Benutzer", "Bitte zuerst einen Benutzer in der Liste auswählen.")
+            return None
+        return self.tree.item(r, 0).text()
+
+    def _show_details(self):
+        r = self.tree.currentRow()
+        if r < 0 or not self.tree.item(r, 0):
+            return
+        name = self.tree.item(r, 0).text()
+        uid, home, shell, full = self.info.get(name, ("?", "?", "?", ""))
+        groups = _cmd_out(["id", "-nG", name]).strip().replace(" ", ", ") or "—"
+        self.details.setText(f"{full + ' · ' if full else ''}UID {uid} · Home {home} · Shell {shell} · "
+                             f"Gruppen: {groups}")
+
+    # ---- Aktionen -----------------------------------------------------------
+
+    def _run_steps(self, steps, then=None):
+        """steps: [(Anzeige, args, input_text)] nacheinander als root; Passwörter erscheinen nie im Log."""
+        self.log.set_text("")
+
+        def worker():
+            ok = True
+            for label, args, inp in steps:
+                ui(lambda l=label: self.log.append_text(f"$ sudo {l}\n"))
+                rc, out, err = sudo_run(args, inp)
+                msg = (out + err).strip()
+                ui(lambda m=msg, r=rc: self.log.append_text((m + "\n" if m else "") + f"[Exit-Code {r}]\n"))
+                if rc != 0:
+                    ok = False
+                    break
+            ui(lambda: (then(ok) if then else None, self.load_users()))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def add_user(self):
+        has_wheel = bool(_cmd_out(["getent", "group", "wheel"]).strip())
+        dlg = AddUserDialog(self, has_wheel)
+        if dlg.exec() != QDialog.Accepted:
+            return
+        name = dlg.name.text().strip()
+        full = re.sub(r"[:,\n\r]", " ", dlg.full.text()).strip()
+        note = dlg.note.text().strip()
+        pw = dlg.pw1.text()
+        if not self.app.priv.ensure(self):
+            return
+        shell = "/bin/bash" if os.path.exists("/bin/bash") else "/bin/sh"
+        cmd = ["useradd", "-m", "-s", shell]
+        if full:
+            cmd += ["-c", full]
+        if dlg.admin.isChecked() and has_wheel:
+            cmd += ["-G", "wheel"]
+        cmd.append(name)
+        steps = [(" ".join(shlex.quote(c) for c in cmd), cmd, None),
+                 (f"chpasswd  # Passwort für {name}", ["chpasswd"], f"{name}:{pw}\n")]
+        if dlg.force.isChecked():
+            steps.append((f"chage -d 0 {name}", ["chage", "-d", "0", name], None))
+
+        def then(ok):
+            if ok:
+                save_user_note(name, note)
+                self.log.append_text(f"Benutzer {name} wurde angelegt.\n")
+                if dlg.admin.isChecked():
+                    self.log.append_text("Hinweis: sudo klappt für „wheel“ nur, wenn die Zeile „%wheel ALL=(ALL:ALL) "
+                                         "ALL“ in /etc/sudoers aktiv ist (visudo).\n")
+        self._run_steps(steps, then)
+
+    def change_password(self):
+        name = self._selected_user()
+        if not name:
+            return
+        dlg = PasswordPairDialog(self, "Passwort ändern", f"Neues Passwort für {name}",
+                                 "Das Passwort wird nicht gespeichert und erscheint nicht im Ausgabefeld.")
+        if dlg.exec() != QDialog.Accepted:
+            return
+        if not self.app.priv.ensure(self):
+            return
+        steps = [(f"chpasswd  # Passwort für {name}", ["chpasswd"], f"{name}:{dlg.pw1.text()}\n")]
+        if dlg.force.isChecked():
+            steps.append((f"chage -d 0 {name}", ["chage", "-d", "0", name], None))
+        self._run_steps(steps)
+
+    def edit_note(self):
+        name = self._selected_user()
+        if not name:
+            return
+        dlg = NoteDialog(self, name, load_user_notes().get(name, ""))
+        if dlg.exec() == QDialog.Accepted:
+            save_user_note(name, dlg.entry.text())
+            r = self._row_of(name)
+            if r >= 0:
+                self._set(r, 1, dlg.entry.text().strip())
+
+
 
 
 # --------------------------------------------------------------------------
@@ -4777,6 +5434,148 @@ class FormatDialog(QDialog):
         self.label.setMaxLength(FORMATS[self.fs.currentData()][1])
 
 
+# --------------------------------------------------------------------------
+# Dauerhaft einhängen (/etc/fstab)
+# --------------------------------------------------------------------------
+
+FSTAB = "/etc/fstab"
+# Dateisysteme, die sich dauerhaft einhängen lassen: lsblk-Name → (fstab-Typ, Pass, Hinweis)
+FSTAB_FS = {
+    "ext4": ("ext4", 2, ""), "btrfs": ("btrfs", 0, ""), "xfs": ("xfs", 0, ""), "f2fs": ("f2fs", 0, ""),
+    "ntfs": ("ntfs3", 0, "Windows-Laufwerke: In Windows den „Schnellstart“ abschalten, sonst lässt sich die "
+                         "Platte unter Linux nicht schreibend einhängen."),
+    "exfat": ("exfat", 0, ""), "vfat": ("vfat", 0, ""),
+}
+FSTAB_DENY = ("/", "/boot", "/efi", "/usr", "/etc", "/var", "/proc", "/sys", "/dev", "/run", "/bin", "/sbin",
+              "/lib", "/lib64", "/root", "/tmp", "/home", "/opt", "/mnt", "/media", "/srv")
+OPTS_RE = re.compile(r"^[A-Za-z0-9_=,.:/+-]+$")
+
+
+def fstab_entries(text):
+    """[{spec, mount, fs, opts, line}] aller aktiven Zeilen einer fstab."""
+    out = []
+    for line in text.splitlines():
+        s = line.split("#", 1)[0].strip()
+        p = s.split()
+        if len(p) >= 3:
+            out.append({"spec": p[0], "mount": p[1], "fs": p[2], "opts": p[3] if len(p) > 3 else "",
+                        "line": line})
+    return out
+
+
+def fstab_default_options(fs, uid, gid):
+    """Passende Einhänge-Optionen je Dateisystem; nofail = der Start hängt nicht, wenn die Platte fehlt."""
+    if fs in ("ntfs", "exfat", "vfat"):
+        base = f"uid={uid},gid={gid},nofail"
+        return base + {"ntfs": ",windows_names", "exfat": ",umask=022", "vfat": ",umask=022"}[fs]
+    return "defaults,nofail"
+
+
+def fstab_mountpoint_problem(mp):
+    """Grund, warum mp als Einhängepunkt nicht geht (None = in Ordnung)."""
+    if not PATH_RE.match(mp or "") or mp != os.path.normpath(mp) or ".." in mp.split("/"):
+        return "Bitte einen einfachen absoluten Pfad angeben (Buchstaben, Ziffern, _ . - /), ohne Leerzeichen."
+    if mp == "/home" or (mp not in ("/mnt", "/media", "/srv") and mp in FSTAB_DENY):
+        return f"{mp} ist ein Systemordner. Besser z. B. /mnt/daten."
+    for d in FSTAB_DENY:
+        if d not in ("/", "/mnt", "/media", "/srv", "/home") and (mp == d or mp.startswith(d + "/")):
+            return f"{mp} liegt in einem Systemordner ({d})."
+    if mp in ("/mnt", "/media", "/srv"):
+        return f"Bitte einen Unterordner wählen, z. B. {mp}/daten."
+    if mp.startswith("/home/") and mp.count("/") < 3:
+        return "Bitte einen Ordner in deinem Home angeben, z. B. /home/name/daten."
+    return None
+
+
+def fstab_add_problem(node, mp, opts, text):
+    """Alle Prüfungen vor dem Eintragen. None = alles gut."""
+    fs, uid = node.get("fstype") or "", node.get("uuid") or ""
+    if fs not in FSTAB_FS:
+        return f"Das Dateisystem „{fs or 'unbekannt'}“ lässt sich hier nicht dauerhaft einhängen."
+    if not uid or not re.fullmatch(r"[A-Za-z0-9-]+", uid):
+        return "Das Gerät hat keine UUID – dauerhaftes Einhängen braucht eine."
+    if any(m in SYSTEM_MOUNTS for m in _all_mounts(node)):
+        return "Das ist ein System-Datenträger."
+    p = fstab_mountpoint_problem(mp)
+    if p:
+        return p
+    if not OPTS_RE.match(opts or ""):
+        return "Die Optionen dürfen nur Buchstaben, Ziffern und , = _ . : / + - enthalten (keine Leerzeichen)."
+    for e in fstab_entries(text):
+        if e["spec"] in (f"UUID={uid}", node.get("path")):
+            return f"Dieses Laufwerk ist schon dauerhaft eingetragen (unter {e['mount']})."
+        if e["mount"].rstrip("/") == mp:
+            return f"Der Einhängepunkt {mp} wird in der fstab schon verwendet."
+    return None
+
+
+def fstab_add_script(node, mp, opts, owner=None):
+    """Shell-Skript (als root): Sicherung, Eintrag, Einhängen – bei Fehlschlag wird alles zurückgenommen."""
+    fstype, pas, _ = FSTAB_FS[node["fstype"]]
+    line = f"UUID={node['uuid']} {mp} {fstype} {opts} 0 {pas}"
+    q = shlex.quote
+    chown = f"chown {int(owner[0])}:{int(owner[1])} {q(mp)} && " if owner else ""
+    return (f"set -e; cp -a {FSTAB} {FSTAB}.tuxdex.bak; mkdir -p {q(mp)}; "
+            f"printf '%s\\n' {q(line)} >> {FSTAB}; systemctl daemon-reload 2>/dev/null || true; "
+            f"if mount {q(mp)}; then {chown}echo 'Eingehängt: {mp}'; "
+            f"else cp -a {FSTAB}.tuxdex.bak {FSTAB}; systemctl daemon-reload 2>/dev/null || true; "
+            f"echo 'FEHLER: Einhängen ist fehlgeschlagen – die fstab wurde zurückgesetzt.'; exit 1; fi; "
+            f"findmnt --verify --tab-file {FSTAB} 2>&1 | tail -n 5 || true")
+
+
+def fstab_remove_script(spec):
+    """Shell-Skript (als root): entfernt alle Zeilen, deren erstes Feld genau spec ist (mit Sicherung)."""
+    q = shlex.quote
+    return (f"set -e; cp -a {FSTAB} {FSTAB}.tuxdex.bak; awk -v s={q(spec)} '$1!=s' {FSTAB} > {FSTAB}.tuxdex.tmp; "
+            f"cat {FSTAB}.tuxdex.tmp > {FSTAB}; rm -f {FSTAB}.tuxdex.tmp; "
+            f"systemctl daemon-reload 2>/dev/null || true; echo 'Eintrag entfernt (Sicherung: {FSTAB}.tuxdex.bak)'")
+
+
+def fstab_entry_for(node, text):
+    """Der fstab-Eintrag, der zu diesem Gerät gehört (nach UUID, Pfad oder Bezeichnung) – sonst None."""
+    specs = {f"UUID={node.get('uuid')}", node.get("path"), f"LABEL={node.get('label')}",
+             f"PARTUUID={node.get('partuuid')}"} - {"UUID=None", "LABEL=None", "PARTUUID=None", None}
+    return next((e for e in fstab_entries(text) if e["spec"] in specs), None)
+
+
+class PermMountDialog(QDialog):
+    def __init__(self, parent, dev, fs, mp, opts, note=""):
+        super().__init__(parent)
+        self.setWindowTitle("Dauerhaft einhängen")
+        self.setMinimumWidth(500)
+        lay = QVBoxLayout(self)
+        lay.setSizeConstraint(QLayout.SetMinimumSize)
+        spacer = QWidget()
+        spacer.setFixedSize(420, 0)
+        lay.addWidget(spacer)
+        lay.setContentsMargins(32, 28, 32, 24)
+        lay.setSpacing(12)
+        lay.addWidget(Label("Dauerhaft einhängen", "DialogTitle"))
+        lay.addWidget(Label(f"{dev} ({fs}) wird bei jedem Start automatisch eingehängt. Dafür trägt Tuxdex "
+                            "eine Zeile in /etc/fstab ein (mit UUID, vorher wird eine Sicherung angelegt).",
+                            "Small", wrap=True))
+        self.mp = LineEdit(mp, mono=True)
+        lay.addLayout(Field("Einhängepunkt (Ordner)", self.mp))
+        self.opts = LineEdit(opts, mono=True)
+        lay.addLayout(Field("Optionen", self.opts))
+        lay.addWidget(Label("nofail sorgt dafür, dass der Start nicht hängen bleibt, wenn die Platte mal fehlt.",
+                            "Hint", wrap=True))
+        self.own = QCheckBox("Ordner mir zuweisen (damit ich darin schreiben darf)")
+        self.own.setChecked(fs in ("ext4", "btrfs", "xfs", "f2fs"))
+        self.own.setVisible(fs in ("ext4", "btrfs", "xfs", "f2fs"))
+        lay.addWidget(self.own)
+        if note:
+            lay.addWidget(Label(note, "Hint", wrap=True))
+        btns = QHBoxLayout()
+        btns.addStretch(1)
+        btns.addWidget(Button("Abbrechen", "ghost", self.reject))
+        ok = Button("Eintragen && einhängen", "primary", self.accept)
+        ok.setDefault(True)
+        btns.addWidget(ok)
+        lay.addLayout(btns)
+        self.mp.setFocus()
+
+
 class DisksTab(Page):
     COLS = [("Gerät", 200), ("Bezeichnung", 150), ("Dateisystem", 110), ("Größe", 90),
             ("Belegt", 90), ("Eingehängt unter", 200)]
@@ -4832,7 +5631,12 @@ class DisksTab(Page):
         self.b_check = Button("Prüfen (nur lesen)", "ghost", self.check_fs)
         self.b_eject = Button("Sicher entfernen", "ghost", self.eject)
         self.b_format = Button("Formatieren …", "danger", self.format)
-        for b in (self.b_mount, self.b_umount, self.b_rename, self.b_check, self.b_eject):
+        self.b_perm = Button("Dauerhaft einhängen …", "ghost", self.perm_mount,
+                             "Bei jedem Start automatisch einhängen (Eintrag in /etc/fstab)")
+        self.b_unperm = Button("Dauerhaft entfernen", "ghost", self.perm_remove,
+                               "Eintrag aus /etc/fstab löschen – das Laufwerk wird dann nicht mehr automatisch eingehängt")
+        for b in (self.b_mount, self.b_umount, self.b_perm, self.b_unperm, self.b_rename, self.b_check,
+                  self.b_eject):
             acts.addWidget(b)
         acts.addStretch(1)
         acts.addWidget(self.b_format)
@@ -4851,7 +5655,7 @@ class DisksTab(Page):
 
     def refresh(self):
         keep = self.current.get("path") if self.current else None
-        cols = "NAME,PATH,TYPE,SIZE,FSTYPE,LABEL,MOUNTPOINTS,MODEL,RM,HOTPLUG,FSUSED,FSSIZE,TRAN,RO,UUID"
+        cols = "NAME,PATH,TYPE,SIZE,FSTYPE,LABEL,MOUNTPOINTS,MODEL,RM,HOTPLUG,FSUSED,FSSIZE,TRAN,RO,UUID,PARTUUID"
 
         def done(rc, out, err):
             if rc != 0 and "MOUNTPOINTS" in cols:
@@ -4967,7 +5771,8 @@ class DisksTab(Page):
                 w.deleteLater()
         node = self.nodes.get(item.data(0, Qt.UserRole)) if item else None
         self.current = node
-        for b in (self.b_mount, self.b_umount, self.b_rename, self.b_check, self.b_eject, self.b_format):
+        for b in (self.b_mount, self.b_umount, self.b_rename, self.b_check, self.b_eject, self.b_format,
+                  self.b_perm, self.b_unperm):
             b.setEnabled(False)
         if not node:
             self.det_title.setText("Kein Gerät ausgewählt")
@@ -5000,6 +5805,17 @@ class DisksTab(Page):
         self.b_eject.setEnabled(self._removable(node) and not system)
         self.b_format.setEnabled(not system and not _all_mounts(node) and not (typ == "disk" and has_children)
                                  and typ in ("part", "disk"))
+        entry = fstab_entry_for(node, _read(FSTAB))
+        if entry:
+            keep = entry["mount"] in SYSTEM_MOUNTS or entry["fs"] == "swap"
+            self.b_unperm.setEnabled(not keep and not system)
+            notes.append(f"Wird bei jedem Start automatisch eingehängt: {entry['mount']} (/etc/fstab).")
+        else:
+            self.b_perm.setEnabled(mountable and not system and typ in ("part", "lvm", "crypt")
+                                   and fs in FSTAB_FS and bool(node.get("uuid")))
+            if fs in FSTAB_FS and typ in ("part", "lvm", "crypt") and not system and node.get("uuid"):
+                notes.append("Nicht automatisch eingehängt – mit „Dauerhaft einhängen“ geht es nach jedem Start "
+                             "von allein.")
         if system:
             notes.append("System-Datenträger – Aushängen, Umbenennen und Formatieren sind gesperrt.")
         elif typ == "disk" and has_children:
@@ -5065,6 +5881,45 @@ class DisksTab(Page):
             opts = ["-o", f"uid={os.getuid()},gid={os.getgid()}"]
         script = f"mkdir -p {shlex.quote(target)} && mount {' '.join(opts)} {shlex.quote(dev)} {shlex.quote(target)}"
         self._root(["bash", "-c", script], f"mount {dev} {target}")
+
+    def perm_mount(self):
+        n = self.current
+        fs = n.get("fstype") or ""
+        name = re.sub(r"[^A-Za-z0-9_.-]", "_", n.get("label") or "daten").strip("._-") or "daten"
+        dlg = PermMountDialog(self, n["path"], fs, f"/mnt/{name.lower()}",
+                              fstab_default_options(fs, os.getuid(), os.getgid()), FSTAB_FS[fs][2])
+        if not dlg.exec():
+            return
+        mp, opts = dlg.mp.text().strip(), dlg.opts.text().strip()
+        problem = fstab_add_problem(n, mp, opts, _read(FSTAB))
+        if problem:
+            show_warning(self, "Dauerhaft einhängen", problem)
+            return
+        extra = ""
+        if "nofail" not in opts.split(","):
+            extra += "\n\nOhne „nofail“ kann der Start hängen bleiben, wenn die Platte mal fehlt."
+        try:
+            if os.path.isdir(mp) and os.listdir(mp):
+                extra += f"\n\n{mp} enthält schon Dateien – sie sind unsichtbar, solange das Laufwerk darauf liegt."
+        except OSError:
+            pass
+        if not ask_confirm(self, "Dauerhaft einhängen", f"Diese Zeile wird in /etc/fstab eingetragen:\n\n"
+                           f"UUID={n['uuid']}  {mp}  {FSTAB_FS[fs][0]}  {opts}{extra}", "Eintragen"):
+            return
+        owner = (os.getuid(), os.getgid()) if dlg.own.isChecked() and dlg.own.isVisible() else None
+        self._root(["bash", "-c", fstab_add_script(n, mp, opts, owner)], f"fstab-Eintrag für {n['path']} → {mp}")
+
+    def perm_remove(self):
+        n = self.current
+        e = fstab_entry_for(n, _read(FSTAB))
+        if not e or e["mount"] in SYSTEM_MOUNTS or e["fs"] == "swap":
+            return
+        if not ask_confirm(self, "Dauerhaften Eintrag entfernen",
+                           f"Der Eintrag für {e['mount']} wird aus /etc/fstab gelöscht (Sicherung als "
+                           f"/etc/fstab.tuxdex.bak). Das Laufwerk bleibt eingehängt, wird aber nach dem "
+                           f"nächsten Start nicht mehr automatisch eingehängt.", "Entfernen", danger=True):
+            return
+        self._root(["bash", "-c", fstab_remove_script(e["spec"])], f"fstab-Eintrag {e['spec']} entfernen")
 
     def umount(self):
         n = self.current
@@ -7168,8 +8023,14 @@ def ip_reputation():
     """Wie Webseiten deine IP einstufen (ipapi.is): dict(ip, org, country, city, vpn, vpn_name, proxy, tor,
     hosting)."""
     d = _get_json("https://api.ipapi.is/")
-    comp, asn, loc = d.get("company") or {}, d.get("asn") or {}, d.get("location") or {}
-    vpn = d.get("vpn") or {}
+    if not isinstance(d, dict) or not d.get("ip"):
+        # z. B. Fehlertext, Ratenlimit oder Weiterleitungsseite statt JSON-Objekt
+        raise ValueError("unerwartete Antwort" + (f": {d[:60]}" if isinstance(d, str) else ""))
+
+    def sub(k):
+        v = d.get(k)
+        return v if isinstance(v, dict) else {}
+    comp, asn, loc, vpn = sub("company"), sub("asn"), sub("location"), sub("vpn")
     return {"ip": d.get("ip", "?"), "org": comp.get("name") or asn.get("org") or "",
             "asn": f"AS{asn.get('asn')}" if asn.get("asn") else "", "country": loc.get("country", ""),
             "city": loc.get("city", ""), "vpn": bool(d.get("is_vpn")),
@@ -8820,6 +9681,8 @@ class AntivirusTab(Page):
         self.b_auto = Button("Automatische Updates aktivieren", "ghost", self.enable_auto)
         for x in (self.b_fresh, self.b_auto):
             b.addWidget(x)
+        self.b_install = Button(install_text("pacman"), "primary", self.install_clamav)
+        b.addWidget(self.b_install)
         b.addStretch(1)
         st.body.addLayout(b)
         self.lay.addWidget(st)
@@ -9007,12 +9870,14 @@ class AntivirusTab(Page):
             x.setVisible(self.installed)
         self.scan_panel.setVisible(self.installed)
         self.found_panel.setVisible(self.installed)
+        self.b_install.setVisible(not self.installed)
         if not self.installed:
+            self.b_install.setText(install_text("pacman"))
             self.badge.set("off", "Nicht installiert")
             self._st_item(0, "ClamAV", "nicht installiert")
             self.st_note.setText(f'<span style="color:{COLORS["muted"]}">ClamAV ist nicht installiert. Tuxdex '
                                  f'funktioniert auch ohne. Sobald ClamAV auf dem System vorhanden ist, lässt es sich '
-                                 f'hier bedienen.</span>')
+                                 f'hier bedienen – oder unten gleich installieren.</span>')
             return
         # "ClamAV 1.4.1/27411/Wed Sep 25 08:34:07 2026"
         ver = res.get("version", "")
@@ -9059,12 +9924,32 @@ class AntivirusTab(Page):
         if not fresh:
             notes.append(f'<span style="color:{COLORS["muted"]}">Tipp: Automatische Updates halten die '
                          f'Signaturen täglich aktuell (Dienst clamav-freshclam).</span>')
-        self.b_auto.setVisible(not fresh)
+        self.auto_on = fresh
+        self.b_auto.setText("Automatische Updates deaktivieren" if fresh else "Automatische Updates aktivieren")
+        self.b_auto.setVisible(True)
         self.b_scan.setEnabled(age_days is not None)
         self.b_scan.setToolTip("" if age_days is not None else "Erst Signaturen laden – ohne sie kann ClamAV nichts erkennen.")
         self.b_fresh.setProperty("variant", "primary" if (age_days is None or age_days > 3) else "ghost")
         repolish(self.b_fresh)
         self.st_note.setText("<br>".join(notes))
+
+    def install_clamav(self):
+        if not ask_confirm(self, "ClamAV installieren", "ClamAV installieren?\n\npacman: clamav", "Installieren (pacman)"):
+            return
+        if not self.app.priv.ensure(self):
+            return
+        self.log.set_text("$ sudo pacman -S --needed clamav\n")
+        busy = monotone(lambda v: self.b_install.setText(busy_text(v)))
+        self.b_install.setText(busy_text(0))
+
+        def done(rc):
+            self.log.append_text(f"[Exit-Code {rc}]\n")
+            if rc == 0:
+                self.log.append_text("ClamAV ist installiert. Als Nächstes „Signaturen aktualisieren“ und "
+                                     "„Automatische Updates aktivieren“.\n")
+            self.refresh_status()
+        run_streaming(["pacman", "-S", "--needed", "--noconfirm", "clamav"], self.log, needs_sudo=True,
+                      clear_first=False, interactive=True, on_done=done, on_percent=busy)
 
     def update_signatures(self):
         if not self.app.priv.ensure(self):
@@ -9138,10 +10023,17 @@ class AntivirusTab(Page):
         run_capture_async(args, cb, needs_sudo=True)
 
     def enable_auto(self):
+        on = not getattr(self, "auto_on", False)
+        if not on and not ask_confirm(self, "Automatische Updates", "Automatische Signatur-Updates ausschalten?\n\n"
+                                      "Die Virensignaturen veralten dann, bis du sie von Hand aktualisierst.",
+                                      "Ausschalten"):
+            return
         if not self.app.priv.ensure(self):
             return
-        self.log.set_text("$ sudo systemctl enable --now clamav-freshclam\n")
-        run_streaming(["systemctl", "enable", "--now", "clamav-freshclam"], self.log, needs_sudo=True,
+        cmd = ["systemctl", "enable", "--now", "clamav-freshclam"] if on else \
+            ["systemctl", "disable", "--now", "clamav-freshclam"]
+        self.log.set_text(f"$ sudo {' '.join(cmd)}\n")
+        run_streaming(cmd, self.log, needs_sudo=True,
                       clear_first=False, on_done=lambda rc: (self.log.append_text(f"[Exit-Code {rc}]\n"),
                                                              self.refresh_status()))
 
@@ -10021,6 +10913,7 @@ def show_text(parent, title, heading, text):
     box.setReadOnly(True)
     box.setFont(QFont(FONTS["mono"], 9))
     box.setMinimumSize(760, 360)
+    attach_copy_button(box)
     lay.addWidget(box)
     row = QHBoxLayout()
     row.addStretch(1)
@@ -10279,7 +11172,7 @@ class SecurityTab(Page):
         rl.setContentsMargins(0, 0, 0, 0)
         rl.setSpacing(8)
         self.rule_table = QTableWidget(0, 2)
-        self.rule_table.setHorizontalHeaderLabels(["NR.", "REGEL"])
+        self.rule_table.setHorizontalHeaderLabels(["NR.", "REGEL · NAME"])
         self.rule_table.verticalHeader().setVisible(False)
         self.rule_table.setShowGrid(False)
         self.rule_table.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -10291,13 +11184,17 @@ class SecurityTab(Page):
         rl.addWidget(self.rule_table)
         add = QHBoxLayout()
         add.setSpacing(8)
-        self.r_port = LineEdit(placeholder="z. B. 22 oder 8000:8100", mono=True)
+        self.r_ip = LineEdit(placeholder="leer = alle · z. B. 192.168.1.20 oder 10.0.0.0/24", mono=True)
+        self.r_name = LineEdit(placeholder="z. B. SSH vom Laptop")
+        self.r_port = LineEdit(placeholder="leer = alle · z. B. 22 oder 8000:8100", mono=True)
         self.r_proto = QComboBox()
         self.r_proto.addItems(["tcp", "udp", "tcp+udp"])
         self.r_proto.setMinimumHeight(38)
         self.r_act = QComboBox()
         self.r_act.addItems(["erlauben", "sperren"])
         self.r_act.setMinimumHeight(38)
+        add.addLayout(Field("Name (optional)", self.r_name), 1)
+        add.addLayout(Field("Von IP-Adresse (optional)", self.r_ip), 1)
         add.addLayout(Field("Port", self.r_port), 1)
         add.addLayout(Field("Protokoll", self.r_proto))
         add.addLayout(Field("Aktion", self.r_act))
@@ -11544,14 +12441,36 @@ class SecurityTab(Page):
                       on_line=on_line, on_done=done)
 
     def fw_add_rule(self):
+        import ipaddress
         port = self.r_port.text().strip()
-        if not re.match(r"^\d{1,5}(:\d{1,5})?$", port):
+        ip = self.r_ip.text().strip()
+        if port and not re.match(r"^\d{1,5}(:\d{1,5})?$", port):
             show_warning(self, "Port", "Bitte einen Port (z. B. 22) oder Bereich (8000:8100) angeben.")
+            return
+        if ip:
+            try:
+                ip = str(ipaddress.ip_network(ip, strict=False)) if "/" in ip else str(ipaddress.ip_address(ip))
+            except ValueError:
+                show_warning(self, "IP-Adresse", "Bitte eine gültige IP-Adresse (z. B. 192.168.1.20) oder ein "
+                             "Netz (z. B. 10.0.0.0/24) angeben.")
+                return
+        if not ip and not port:
+            show_warning(self, "Regel", "Bitte einen Port, eine IP-Adresse oder beides angeben.")
             return
         proto = self.r_proto.currentText()
         act = "allow" if self.r_act.currentIndex() == 0 else "deny"
-        spec = port if proto == "tcp+udp" and ":" not in port else f"{port}/{proto.split('+')[0]}"
-        self._root(["ufw", act, spec], then=lambda rc: self.fw_status())
+        if not ip:
+            spec = [port if proto == "tcp+udp" and ":" not in port else f"{port}/{proto.split('+')[0]}"]
+        else:
+            spec = ["from", ip]
+            if port:
+                spec += ["to", "any", "port", port]
+                if proto != "tcp+udp":
+                    spec += ["proto", proto]
+        name = re.sub(r"[\x00-\x1f'\"\\]", "", self.r_name.text()).strip()[:60]
+        if name:
+            spec += ["comment", name]
+        self._root(["ufw", act] + spec, then=lambda rc: self.fw_status())
 
     def fw_del_rule(self):
         rows = sorted({i.row() for i in self.rule_table.selectedIndexes()}, reverse=True)
@@ -11854,13 +12773,28 @@ class BackupJob:
         self.on_progress, self.on_log, self.on_done = on_progress, on_log, on_done
         self.passphrase, self.use_sudo = passphrase, use_sudo
         self.procs, self.cancelled = [], False
+        self.partial = False       # Dateien waren nicht lesbar (Sicherung ohne root-Rechte)
         self.now = datetime.now()
         self.ts = self.now.strftime(BACKUP_TS)
         self.label = backup_label(cfg.get("name_pattern"), self.now)
         self.results = {}
 
     def start(self):
-        threading.Thread(target=self._run, daemon=True).start()
+        threading.Thread(target=self._run_guarded, daemon=True).start()
+
+    def _run_guarded(self):
+        # sudo-Ticket während des Backups frisch halten: Sonst scheitern bei langen Läufen am Ende das
+        # Umbenennen des Snapshots und das Aufräumen alter Versionen (sudo -n braucht ein gültiges Ticket).
+        stop = threading.Event()
+        if self.use_sudo:
+            def keep():
+                while not stop.wait(60):
+                    self._run_quiet(["sudo", "-n", "-v"])
+            threading.Thread(target=keep, daemon=True).start()
+        try:
+            self._run()
+        finally:
+            stop.set()
 
     def cancel(self):
         self.cancelled = True
@@ -11919,12 +12853,15 @@ class BackupJob:
         dur = int(time.time() - t0)
         summary = (f"{len(ok)} von {len(self.targets)} Zielen erfolgreich · {fmt_bytes(self.total)} · "
                    f"Dauer {dur // 3600}:{dur // 60 % 60:02d}:{dur % 60:02d}")
+        if self.partial and ok:
+            summary = "Unvollständig (Dateien nicht lesbar) · " + summary + \
+                " · für Systemordner wie /etc „Mit root-Rechten“ anhaken"
         if not self.cancelled:
             cfg = backup_load()
             cfg["history"] = ([{"at": time.time(), "mode": self.cfg["mode"], "targets": self.targets,
                                 "ok": len(ok), "size": self.total, "dur": dur}] + cfg.get("history", []))[:30]
             backup_save(cfg)
-        self.on_done(bool(ok) and len(ok) == len(self.targets) and not self.cancelled,
+        self.on_done(bool(ok) and len(ok) == len(self.targets) and not self.cancelled and not self.partial,
                      "Abgebrochen" if self.cancelled else summary)
 
     # ---- Snapshot / Spiegel (rsync, je Ziel ein Prozess) ----
@@ -12003,12 +12940,17 @@ class BackupJob:
             return
         note = ""
         if rc == 23:
+            self.partial = True
             note = " · einige Dateien nicht lesbar (ggf. mit root-Rechten sichern)"
         elif rc == 24:
             note = " · einige Dateien verschwanden während des Backups"
         if mode == "snapshot":
             final = dest[:-len(".partial")]
-            self._run_quiet(self._sudo() + ["mv", dest, final])
+            if self._run_quiet(self._sudo() + ["mv", dest, final]) != 0:
+                self.results[target] = "error"
+                self._prog(target, state="error", msg="Snapshot konnte nicht abgeschlossen werden (umbenennen "
+                           "fehlgeschlagen – root-Rechte abgelaufen?). Daten liegen als .partial im Ziel.")
+                return
             link = os.path.join(base, "latest")
             try:
                 if os.path.islink(link):
@@ -12191,6 +13133,8 @@ class BackupJob:
         rcs = [s.wait() for s in stages]
         for e in errs[:30]:
             self.on_log(f"tar: {e}\n")
+        if any("Permission denied" in e for e in errs):
+            self.partial = True
         broken = self.cancelled or rc_tar not in (0, 1) or any(rcs)
         digest = h.hexdigest()
         ok_targets = []
@@ -12806,6 +13750,16 @@ class BackupTab(Page):
             if pw != self.pw2.text():
                 show_warning(self, "Passwort", "Die Passwörter stimmen nicht überein.")
                 return
+        sysdirs = ("/etc", "/var", "/usr", "/root", "/boot", "/opt", "/srv")
+        needs_root = [s for s in cfg["sources"] if _expand(s) in sysdirs or _expand(s).startswith(
+            tuple(d + "/" for d in sysdirs))]
+        if needs_root and not cfg["root"] and os.geteuid() != 0:
+            if ask_confirm(self, "Root-Rechte nötig", "Diese Ordner kann nur root komplett lesen:\n\n"
+                           + "\n".join(short_path(_expand(s)) for s in needs_root)
+                           + "\n\nOhne root-Rechte fehlen Dateien im Backup. Mit root-Rechten sichern?",
+                           "Mit root-Rechten"):
+                self.o_root.setChecked(True)
+                cfg = self._collect()
         use_sudo = cfg["root"]
         if use_sudo and not self.app.priv.ensure(self):
             return
@@ -13401,6 +14355,11 @@ class UpdatePanel(QWidget):
         self.b_check.setEnabled(True)
         if err:
             self.badge.set("danger", "Prüfen fehlgeschlagen")
+            if silent and getattr(self, "_start_retries", 0) < 4:
+                # direkt nach dem Anmelden ist das Netzwerk oft noch nicht da – später noch einmal versuchen,
+                # sonst käme das Update-Fenster nie
+                self._start_retries = getattr(self, "_start_retries", 0) + 1
+                QTimer.singleShot(20000, lambda: self.check(silent=True))
             if not silent:
                 self.changes.setText(f"GitHub nicht erreichbar oder Repository falsch: {err}")
                 self.changes.show()
@@ -13657,6 +14616,28 @@ class UpdatePanel(QWidget):
         if not self._need_admin():
             self._prog_fail("Keine Admin-Rechte")
             return
+        missing = [t for t in ("fakeroot", "debugedit") if not which(t)]
+        if missing:
+            if not ask_confirm(self, "Bauwerkzeuge fehlen",
+                               f"Zum Bauen fehlt: {', '.join(missing)}.\n\nJetzt die Gruppe base-devel "
+                               "installieren?\n\npacman: base-devel", "Installieren (pacman)"):
+                self._prog_fail("Bauwerkzeuge fehlen")
+                return
+            self.log.show()
+            self.badge.set("info", "Installiere Bauwerkzeuge …")
+            self._prog(20, "Installiere base-devel …")
+            self.log.append_text("\n$ sudo pacman -S --needed base-devel\n")
+
+            def tools_done(rc):
+                self.log.append_text(f"[Exit-Code {rc}]\n")
+                if rc != 0:
+                    self.badge.set("danger", "Bauwerkzeuge fehlgeschlagen")
+                    self._prog_fail("Bauwerkzeuge fehlgeschlagen")
+                    return
+                self._build(src)
+            run_streaming(["pacman", "-S", "--needed", "--noconfirm", "base-devel"], self.log, needs_sudo=True,
+                          clear_first=False, interactive=True, on_done=tools_done)
+            return
         self.log.show()
         self.badge.set("info", "Baue Paket …")
         self._prog(28, "Baue Paket …")
@@ -13846,7 +14827,7 @@ class SettingsPage(Page):
             "tasks": "Prozesse, Leistung, Hardware- und Netzwerkinfos",
             "antivirus": "ClamAV: Signaturen, Scans, Quarantäne",
             "security": "Sicherheits-Check, offene Ports, Mullvad VPN, Firewall",
-            "users": "Benutzerkonten und letzte Anmeldung",
+            "users": "Benutzerkonten: anlegen, Passwort, Speicher, aktive Zeit, Beschreibung",
         }
         for i, (key, name, color) in enumerate(MODULES):
             row = QHBoxLayout()
@@ -14317,6 +15298,40 @@ class MainWindow(QWidget):
 # --------------------------------------------------------------------------
 
 EN = {
+    'ja': 'yes',
+    'Dauerhaft einhängen': 'Mount permanently',
+    'Dauerhaft einhängen …': 'Mount permanently …',
+    'Dauerhaft entfernen': 'Remove permanent mount',
+    'Bei jedem Start automatisch einhängen (Eintrag in /etc/fstab)': 'Mount automatically at every start (entry in /etc/fstab)',
+    'Eintrag aus /etc/fstab löschen – das Laufwerk wird dann nicht mehr automatisch eingehängt': 'Delete the entry from /etc/fstab – the drive is then no longer mounted automatically',
+    '{} ({}) wird bei jedem Start automatisch eingehängt. Dafür trägt Tuxdex eine Zeile in /etc/fstab ein (mit UUID, vorher wird eine Sicherung angelegt).': '{} ({}) will be mounted automatically at every start. For that, Tuxdex adds a line to /etc/fstab (using the UUID; a backup is made first).',
+    'Einhängepunkt (Ordner)': 'Mount point (folder)',
+    'Optionen': 'Options',
+    'nofail sorgt dafür, dass der Start nicht hängen bleibt, wenn die Platte mal fehlt.': "nofail makes sure the boot doesn't hang if the drive is ever missing.",
+    'Ordner mir zuweisen (damit ich darin schreiben darf)': 'Give me ownership of the folder (so I can write to it)',
+    'Eintragen & einhängen': 'Add & mount',
+    'Windows-Laufwerke: In Windows den „Schnellstart“ abschalten, sonst lässt sich die Platte unter Linux nicht schreibend einhängen.': "Windows drives: turn off “Fast Startup” in Windows, otherwise the drive can't be mounted writable on Linux.",
+    'Wird bei jedem Start automatisch eingehängt: {} (/etc/fstab).': 'Is mounted automatically at every start: {} (/etc/fstab).',
+    'Nicht automatisch eingehängt – mit „Dauerhaft einhängen“ geht es nach jedem Start von allein.': 'Not mounted automatically – with “Mount permanently” it happens by itself after every start.',
+    'Bitte einen einfachen absoluten Pfad angeben (Buchstaben, Ziffern, _ . - /), ohne Leerzeichen.': 'Please enter a simple absolute path (letters, digits, _ . - /), without spaces.',
+    '{} ist ein Systemordner. Besser z. B. /mnt/daten.': '{} is a system folder. Better e.g. /mnt/data.',
+    '{} liegt in einem Systemordner ({}).': '{} is inside a system folder ({}).',
+    'Bitte einen Unterordner wählen, z. B. {}/daten.': 'Please choose a subfolder, e.g. {}/data.',
+    'Bitte einen Ordner in deinem Home angeben, z. B. /home/name/daten.': 'Please enter a folder in your home, e.g. /home/name/data.',
+    'Das Dateisystem „{}“ lässt sich hier nicht dauerhaft einhängen.': "The file system “{}” can't be mounted permanently here.",
+    'Das Gerät hat keine UUID – dauerhaftes Einhängen braucht eine.': 'The device has no UUID – permanent mounting needs one.',
+    'Das ist ein System-Datenträger.': 'This is a system drive.',
+    'Die Optionen dürfen nur Buchstaben, Ziffern und , = _ . : / + - enthalten (keine Leerzeichen).': 'The options may only contain letters, digits and , = _ . : / + - (no spaces).',
+    'Dieses Laufwerk ist schon dauerhaft eingetragen (unter {}).': 'This drive is already set up permanently (at {}).',
+    'Der Einhängepunkt {} wird in der fstab schon verwendet.': 'The mount point {} is already used in the fstab.',
+    'Ohne „nofail“ kann der Start hängen bleiben, wenn die Platte mal fehlt.': 'Without “nofail” the boot can hang if the drive is ever missing.',
+    '{} enthält schon Dateien – sie sind unsichtbar, solange das Laufwerk darauf liegt.': '{} already contains files – they are hidden as long as the drive is mounted there.',
+    'Diese Zeile wird in /etc/fstab eingetragen:\n\nUUID={}  {}  {}  {}{}': 'This line will be added to /etc/fstab:\n\nUUID={}  {}  {}  {}{}',
+    'Eintragen': 'Add',
+    'fstab-Eintrag für {} → {}': 'fstab entry for {} → {}',
+    'Dauerhaften Eintrag entfernen': 'Remove permanent entry',
+    'Der Eintrag für {} wird aus /etc/fstab gelöscht (Sicherung als /etc/fstab.tuxdex.bak). Das Laufwerk bleibt eingehängt, wird aber nach dem nächsten Start nicht mehr automatisch eingehängt.': "The entry for {} will be deleted from /etc/fstab (backup as /etc/fstab.tuxdex.bak). The drive stays mounted but won't be mounted automatically after the next start.",
+    'fstab-Eintrag {} entfernen': 'Remove fstab entry {}',
     'Woraus besteht der belegte Platz?': 'What is taking up the space?',
     'Neu berechnen': 'Recalculate',
     'Anwendungen': 'Applications',
@@ -15295,6 +16310,52 @@ EN = {
     'Mainboard unbekannt': 'Mainboard unknown',
     'makepkg (Paket pacman, Gruppe base-devel) wird benötigt.': 'makepkg (package pacman, group base-devel) is required.',
     'makepkg fehlt': 'makepkg missing',
+    'Bauwerkzeuge fehlen': 'Build tools missing',
+    'Automatische Updates deaktivieren': 'Disable automatic updates',
+    'Automatische Updates': 'Automatic updates',
+    'Ausschalten': 'Turn off',
+    'Automatische Signatur-Updates ausschalten?\n\nDie Virensignaturen veralten dann, bis du sie von Hand aktualisierst.': 'Turn off automatic signature updates?\n\nThe virus signatures will become outdated until you update them by hand.',
+    'Benutzer hinzufügen …': 'Add user …',
+    'Benutzer hinzufügen': 'Add user',
+    'Passwort ändern …': 'Change password …',
+    'Beschreibung bearbeiten …': 'Edit description …',
+    'Beschreibung bearbeiten': 'Edit description',
+    'Passwort geändert': 'Password changed',
+    'Speicher (Home)': 'Storage (home)',
+    'RAM': 'RAM',
+    'Benutzer auswählen, um Passwort oder Beschreibung zu ändern.': 'Select a user to change the password or description.',
+    'Passwort-Datum, Speicherplatz fremder Ordner und Login-Zeiten brauchen root-Rechte – Klick auf „Aktualisieren“ fragt bei Bedarf einmal nach dem Passwort. „Aktive Zeit“ ist die Summe aller Anmeldungen aus dem Systemprotokoll (wtmp), „RAM“ der Arbeitsspeicher aller laufenden Prozesse des Benutzers. Die Beschreibung speichert Tuxdex nur für sich (~/.config/tuxdex), sie ändert nichts am System.': 'Password date, storage of other users\' folders and login times need root rights – clicking "Refresh" asks for the password once if needed. "Active time" is the sum of all logins from the system log (wtmp), "RAM" the memory of all running processes of the user. Tuxdex stores the description only for itself (~/.config/tuxdex); it changes nothing on the system.',
+    'Neues Passwort': 'New password',
+    'Wiederholen': 'Repeat',
+    'Beim nächsten Anmelden ein neues Passwort wählen lassen': 'Ask for a new password at the next login',
+    'Beim ersten Anmelden ein neues Passwort wählen lassen': 'Ask for a new password at the first login',
+    'Das Passwort sollte mindestens 8 Zeichen haben.': 'The password should have at least 8 characters.',
+    'Benutzername (klein geschrieben, ohne Leerzeichen)': 'User name (lower case, no spaces)',
+    'Vollständiger Name (optional)': 'Full name (optional)',
+    'Wofür ist der Nutzer da? (optional)': 'What is the user for? (optional)',
+    'z. B. Büro-PC, Kinderkonto, Gaming …': 'e.g. office PC, child account, gaming …',
+    'Administrator (darf sudo nutzen, Gruppe „wheel“)': 'Administrator (may use sudo, group "wheel")',
+    'root nötig': 'root needed',
+    'nie gesetzt': 'never set',
+    'Der Benutzername darf nur aus a–z, 0–9, _ und - bestehen und muss mit einem Buchstaben beginnen.': 'The user name may only contain a–z, 0–9, _ and - and must start with a letter.',
+    'Diesen Benutzer gibt es schon.': 'This user already exists.',
+    'Bitte zuerst einen Benutzer in der Liste auswählen.': 'Please select a user in the list first.',
+    'Das Passwort wird nicht gespeichert und erscheint nicht im Ausgabefeld.': 'The password is not stored and does not appear in the output field.',
+    'Neues Passwort für {}': 'New password for {}',
+    'Wofür ist {} da?': 'What is {} for?',
+    'leer = alle · z. B. 22 oder 8000:8100': 'empty = all · e.g. 22 or 8000:8100',
+    'leer = alle · z. B. 192.168.1.20 oder 10.0.0.0/24': 'empty = all · e.g. 192.168.1.20 or 10.0.0.0/24',
+    'Bitte eine gültige IP-Adresse (z. B. 192.168.1.20) oder ein Netz (z. B. 10.0.0.0/24) angeben.': 'Please enter a valid IP address (e.g. 192.168.1.20) or a network (e.g. 10.0.0.0/24).',
+    'Bitte einen Port, eine IP-Adresse oder beides angeben.': 'Please enter a port, an IP address or both.',
+    'IP-Adresse': 'IP address',
+    'Von IP-Adresse (optional)': 'From IP address (optional)',
+    'Kopieren': 'Copy',
+    'Kopiert ✓': 'Copied ✓',
+    'Root-Rechte nötig': 'Root rights needed',
+    'Mit root-Rechten': 'With root rights',
+    'Bauwerkzeuge fehlgeschlagen': 'Build tools failed',
+    'Installiere Bauwerkzeuge …': 'Installing build tools …',
+    'Installiere base-devel …': 'Installing base-devel …',
     'manuell': 'manual',
     'Max. Geschwindigkeit': 'Max. speed',
     'Max. PCI-Express-Geschwindigkeit': 'Max. PCI Express speed',
@@ -15627,6 +16688,8 @@ EN = {
     'stark': 'strong',
     'Start fehlgeschlagen: {}': 'Start failed: {}',
     'Starten': 'Start',
+    'Wird installiert …': 'Installing …',
+    'Wird gestartet …': 'Starting …',
     'startet': 'starting',
     'Startet …': 'Starting …',
     'Startet … Signaturen werden geladen': 'Starting … loading signatures',

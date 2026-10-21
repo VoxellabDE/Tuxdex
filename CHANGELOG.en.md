@@ -2,6 +2,50 @@
 
 English version of [CHANGELOG.md](CHANGELOG.md). Entries before 1.0.0 are only available in German.
 
+## 1.5.2
+Bug fix.
+
+- **Pop-ups**: checkboxes in dialogs no longer sit on a black box either.
+
+## 1.5.1
+Bug fix.
+
+- **Antivirus**: automatic signature updates can be **turned off** again – the button switches between "enable" and "disable".
+
+## 1.5.0
+User management.
+
+- **Add user**: name, full name, password, optionally administrator (group "wheel") and "change password at first login". The user name is validated, the password never shows up in the output field.
+- **Change password** for any user, optionally forcing a change at the next login. The list shows **when the password was last changed** (and whether the account is locked).
+- **Storage per user**: size of the home folder and memory of all running processes of the user.
+- **Active time**: sum of all logins from the system log (wtmp); running sessions count too.
+- **Description**: what the user is for (e.g. "office PC", "child account") – when creating or later. Tuxdex stores it only for itself under `~/.config/tuxdex`; nothing changes on the system.
+
+## 1.4.2
+Small improvements and bug fixes.
+
+- **Firewall (ufw)**: rules get a name/label (stored as a ufw comment, shown in the rule list).
+- **Power profile**: only profiles the machine really supports are offered – "Performance" is missing on many devices and caused an error message.
+- **Prompts and text windows**: a "Copy" button for the whole output here too.
+- **Pop-ups**: labels and icons no longer sit on a black box (also on KDE).
+- **Antivirus**: ClamAV can be installed right in the tab (pacman), with progress in %.
+
+## 1.4.1
+Bug fixes and small improvements.
+
+- **Firewall rules with IP address**: rules can now be limited to an IP address or network (e.g. allow SSH only from 192.168.1.20). Port and IP are both optional, at least one is required.
+- **Install buttons**: show progress in % ("Installing … 42%") while installing and then turn into a blue **"Start"** button – so you see right away what is already installed (for programs with a window; console tools stay "Installed").
+- **Backup**: on long runs with root rights the sudo ticket no longer expires (snapshots weren't completed otherwise). System folders like /etc: Tuxdex asks for root rights, incomplete backups are marked "Incomplete".
+- **Output fields**: a "Copy" button copies the whole output.
+- **Updater**: missing build tools (`base-devel`) are offered for installation; the update check at startup retries if the network isn't up yet.
+- **Leak test**: an invalid reply from ipapi.is no longer causes a crash.
+
+## 1.4.0
+Mount drives permanently.
+
+- **Drives → "Mount permanently …"**: a drive is mounted automatically at every start – without editing `/etc/fstab` by hand. Tuxdex adds the entry **by UUID**, picks suitable options per file system (ext4, btrfs, xfs, f2fs, NTFS, exFAT, FAT32) and sets `nofail` so the boot doesn't hang if the drive is ever missing. A backup is made first (`/etc/fstab.tuxdex.bak`); if mounting fails, the `fstab` is reset automatically. For Linux file systems the folder can be assigned to you so you can write to it.
+- **"Remove permanent mount"** deletes the entry again. System entries (/, /boot, /home, swap) stay protected; mount points inside system folders (/etc, /usr, /var …) are rejected.
+
 ## 1.3.0
 System restore and setup for switchers.
 
