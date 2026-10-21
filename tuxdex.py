@@ -431,7 +431,7 @@ def module_enabled(key, settings=None):
 FONTS = {"sans": "Sans Serif", "mono": "Monospace"}
 
 APP_ID = "tuxdex"
-APP_VERSION = "1.5.12"
+APP_VERSION = "1.5.13"
 APP_STAGE = ""             # früher „alpha“ – das Namensschild kommt jetzt vom Kanal (Stabil ohne Zusatz, Beta mit „-beta“)
 
 
@@ -985,7 +985,7 @@ def run_capture_async(args, callback, needs_sudo=False, timeout=60):
     Sitzung existiert."""
     full_args = (["sudo", "-n"] + args) if needs_sudo else args
     if needs_sudo and not alpha_accepted():
-        QTimer.singleShot(0, lambda: callback(1, "", "Alpha-Hinweis nicht bestätigt – keine root-Aktion."))
+        QTimer.singleShot(0, lambda: callback(1, "", "Beta-Hinweis nicht bestätigt – keine root-Aktion."))
         return
 
     def worker():
@@ -1107,7 +1107,7 @@ class ProcessRun:
             inner = cmd
         self.full_cmd = (["sudo", "-n"] + inner) if needs_sudo else inner
         if needs_sudo and not alpha_accepted():
-            log.append_text("Abgebrochen: Der Alpha-Hinweis wurde nicht bestätigt – keine Aktion mit root-Rechten.\n")
+            log.append_text("Abgebrochen: Der Beta-Hinweis wurde nicht bestätigt – keine Aktion mit root-Rechten.\n")
             if on_done:
                 QTimer.singleShot(0, lambda: on_done(1))
             return
@@ -1637,7 +1637,7 @@ def show_error(parent, title, text):
 
 
 ALPHA_FILE = os.path.join(os.path.expanduser("~/.config"), "tuxdex", "settings.json")
-ALPHA_TEXT = ("Tuxdex ist in der <b>Alpha-Phase</b>. Aktionen mit Administrator-Rechten (root) ändern dein System "
+ALPHA_TEXT = ("Tuxdex ist in der <b>Beta-Phase</b>. Aktionen mit Administrator-Rechten (root) ändern dein System "
               "direkt – z. B. Pakete, Datenträger, Swap, Firewall, Systemdateien. Trotz Rückfragen und Prüfungen "
               "können Fehler passieren, bis hin zu Datenverlust oder einem System, das nicht mehr startet.<br><br>"
               "<b>Nutzung auf eigenes Risiko.</b> Es gibt keine Gewährleistung (MIT-Lizenz). Lege vorher ein Backup "
@@ -1653,7 +1653,7 @@ class AlphaDialog(QDialog):
 
     def __init__(self, parent):
         super().__init__(parent)
-        self.setWindowTitle("Alpha-Version – Hinweis")
+        self.setWindowTitle("Beta-Version – Hinweis")
         self.setModal(True)
         lay = QVBoxLayout(self)
         lay.setSizeConstraint(QLayout.SetMinimumSize)
@@ -1664,7 +1664,7 @@ class AlphaDialog(QDialog):
         lay.addWidget(spacer)
         head = QHBoxLayout()
         head.setSpacing(12)
-        head.addWidget(StatusBadge("warn", "ALPHA"))
+        head.addWidget(StatusBadge("warn", "BETA"))
         head.addWidget(Label("Aktionen mit root-Rechten", "DialogTitle"), 1)
         lay.addLayout(head)
         txt = Label(ALPHA_TEXT, wrap=True)
@@ -1683,7 +1683,7 @@ class AlphaDialog(QDialog):
 
 
 def ask_alpha_consent(parent):
-    """True, wenn der Alpha-Hinweis schon bestätigt ist oder jetzt bestätigt wird. Wird gespeichert."""
+    """True, wenn der Beta-Hinweis schon bestätigt ist oder jetzt bestätigt wird. Wird gespeichert."""
     if alpha_accepted():
         return True
     if AlphaDialog(parent).exec() != QDialog.Accepted:
@@ -1716,7 +1716,7 @@ class PasswordDialog(QDialog):
         lay.addWidget(Label(heading, "DialogTitle"))
         lay.addWidget(Label(note, "Small", wrap=True))
         if heading == "sudo-Passwort eingeben":
-            lay.addWidget(Label("▲  Alpha-Version: Aktionen mit root-Rechten auf eigenes Risiko.", "Warn", wrap=True))
+            lay.addWidget(Label("▲  Beta-Version: Aktionen mit root-Rechten auf eigenes Risiko.", "Warn", wrap=True))
         self.entry = LineEdit()
         self.entry.setEchoMode(QLineEdit.Password)
         self.entry.setMinimumHeight(42)
@@ -15985,8 +15985,8 @@ class MainWindow(QWidget):
         tl.addWidget(logo)
         tl.addSpacing(4)
         tl.addWidget(Label("Tuxdex", "AppTitle"))
-        self.alpha_badge = StatusBadge("warn", "ALPHA")
-        self.alpha_badge.setToolTip("Alpha-Version: Aktionen mit root-Rechten auf eigenes Risiko. "
+        self.alpha_badge = StatusBadge("warn", "BETA")
+        self.alpha_badge.setToolTip("Beta-Version: Aktionen mit root-Rechten auf eigenes Risiko. "
                                     "Vor der ersten root-Aktion fragt Tuxdex einmal nach deiner Zustimmung.")
         tl.addWidget(self.alpha_badge)
         tl.addStretch(1)
@@ -16632,7 +16632,7 @@ EN = {
     'Abbrechen': 'Cancel',
     'Abgebrochen': 'Cancelled',
     'Abgebrochen – Admin-Rechte nötig': 'Cancelled – admin rights needed',
-    'Abgebrochen: Der Alpha-Hinweis wurde nicht bestätigt – keine Aktion mit root-Rechten.': 'Cancelled: the alpha notice was not confirmed – no action with root rights.',
+    'Abgebrochen: Der Beta-Hinweis wurde nicht bestätigt – keine Aktion mit root-Rechten.': 'Cancelled: the beta notice was not confirmed – no action with root rights.',
     'Abgeschaltet': 'Disabled',
     'abgeschlossen': 'finished',
     'Abgestürzte Programme hinterlassen keine Speicherabbilder.': "Crashed programs don't leave memory dumps.",
@@ -16683,9 +16683,9 @@ EN = {
     'Alles gut': 'All good',
     'Alles in Ordnung': 'All good',
     'Alles neu prüfen': 'Check everything again',
-    'Alpha-Hinweis nicht bestätigt – keine root-Aktion.': 'Alpha notice not confirmed – no root action.',
-    'Alpha-Version – Hinweis': 'Alpha version – notice',
-    'Alpha-Version: Aktionen mit root-Rechten auf eigenes Risiko. Vor der ersten root-Aktion fragt Tuxdex einmal nach deiner Zustimmung.': 'Alpha version: actions with root rights at your own risk. Before the first root action, Tuxdex asks once for your consent.',
+    'Beta-Hinweis nicht bestätigt – keine root-Aktion.': 'Alpha notice not confirmed – no root action.',
+    'Beta-Version – Hinweis': 'Beta version – notice',
+    'Beta-Version: Aktionen mit root-Rechten auf eigenes Risiko. Vor der ersten root-Aktion fragt Tuxdex einmal nach deiner Zustimmung.': 'Beta version: actions with root rights at your own risk. Before the first root action, Tuxdex asks once for your consent.',
     'als Abhängigkeit': 'as dependency',
     'als Paket (pacman)': 'as package (pacman)',
     'als Paket installiert': 'installed as package',
@@ -17918,7 +17918,7 @@ EN = {
     'Tuxdex auf Version {} aktualisieren?\n\nQuelle: github.com/{} ({})': 'Update Tuxdex to version {}?\n\nSource: github.com/{} ({})',
     'Tuxdex beenden': 'Quit Tuxdex',
     'Tuxdex ist als Paket installiert – bitte das Archiv (tuxdex-X.Y.Z.tar.gz) oder den Ordner mit PKGBUILD wählen.': 'Tuxdex is installed as a package – please choose the archive (tuxdex-X.Y.Z.tar.gz) or the folder with the PKGBUILD.',
-    'Tuxdex ist in der <b>Alpha-Phase</b>. Aktionen mit Administrator-Rechten (root) ändern dein System direkt – z. B. Pakete, Datenträger, Swap, Firewall, Systemdateien. Trotz Rückfragen und Prüfungen können Fehler passieren, bis hin zu Datenverlust oder einem System, das nicht mehr startet.<br><br><b>Nutzung auf eigenes Risiko.</b> Es gibt keine Gewährleistung (MIT-Lizenz). Lege vorher ein Backup an und lies bei jeder Rückfrage, welcher Befehl ausgeführt wird – er steht immer im Ausgabefeld.': 'Tuxdex is in the <b>alpha stage</b>. Actions with administrator rights (root) change your system directly – e.g. packages, drives, swap, firewall, system files. Despite confirmations and checks, errors can happen, up to data loss or a system that no longer boots.<br><br><b>Use at your own risk.</b> There is no warranty (MIT license). Make a backup first and read which command will run at every confirmation – it is always shown in the output box.',
+    'Tuxdex ist in der <b>Beta-Phase</b>. Aktionen mit Administrator-Rechten (root) ändern dein System direkt – z. B. Pakete, Datenträger, Swap, Firewall, Systemdateien. Trotz Rückfragen und Prüfungen können Fehler passieren, bis hin zu Datenverlust oder einem System, das nicht mehr startet.<br><br><b>Nutzung auf eigenes Risiko.</b> Es gibt keine Gewährleistung (MIT-Lizenz). Lege vorher ein Backup an und lies bei jeder Rückfrage, welcher Befehl ausgeführt wird – er steht immer im Ausgabefeld.': 'Tuxdex is in the <b>beta stage</b>. Actions with administrator rights (root) change your system directly – e.g. packages, drives, swap, firewall, system files. Despite confirmations and checks, errors can happen, up to data loss or a system that no longer boots.<br><br><b>Use at your own risk.</b> There is no warranty (MIT license). Make a backup first and read which command will run at every confirmation – it is always shown in the output box.',
     'Tuxdex jetzt neu starten?': 'Restart Tuxdex now?',
     'Tuxdex {} aus {} installieren?': 'Install Tuxdex {} from {}?',
     'Tuxdex-Update wählen': 'Choose Tuxdex update',
@@ -18280,7 +18280,7 @@ EN = {
     '… {} weitere': '… {} more',
     '← Zurück': '← Back',
     '↑ {}/s · gesamt ↓ {} ↑ {}': '↑ {}/s · total ↓ {} ↑ {}',
-    '▲  Alpha-Version: Aktionen mit root-Rechten auf eigenes Risiko.': '▲  Alpha version: actions with root rights at your own risk.',
+    '▲  Beta-Version: Aktionen mit root-Rechten auf eigenes Risiko.': '▲  Beta version: actions with root rights at your own risk.',
     '▲ Die Signaturen sind {} Tage alt. Aktualisieren oder automatische Updates aktivieren.': '▲ The signatures are {} days old. Update them or enable automatic updates.',
     '▲ Major-Version': '▲ Major version',
     '▲ Noch keine Signaturen nach 10 Minuten – Meldungen oben prüfen.': '▲ Still no signatures after 10 minutes – check the messages above.',

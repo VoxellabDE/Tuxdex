@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.5.12--beta-2fb3a3">
+  <img alt="Version" src="https://img.shields.io/badge/version-1.5.13--beta-2fb3a3">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-2fb3a3">
   <img alt="For Arch Linux" src="https://img.shields.io/badge/for-Arch%20Linux-1793d1">
   <img alt="Python" src="https://img.shields.io/badge/python-3.11%2B-3776ab">
@@ -24,7 +24,7 @@
 </p>
 
 > [!WARNING]
-> **Alpha version.** Actions with administrator rights (root) change your system directly. Tuxdex asks for your consent once before the first such action. Use at your own risk – make a backup first.
+> **Beta version.** Actions with administrator rights (root) change your system directly. Tuxdex asks for your consent once before the first such action. Use at your own risk – make a backup first.
 
 ---
 

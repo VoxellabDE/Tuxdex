@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.13
+Beta-Kennzeichnung.
+
+- **Reifegrad**: Das Kennzeichen oben in der Leiste heißt jetzt **BETA** statt ALPHA – ebenso der Hinweis vor der ersten root-Aktion, README, SECURITY.md und der Installer. Die bereits gegebene Zustimmung bleibt gültig.
+
 ## 1.5.12
 Versionsnamen (Beta).
 

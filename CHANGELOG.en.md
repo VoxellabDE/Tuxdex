@@ -2,6 +2,11 @@
 
 English version of [CHANGELOG.md](CHANGELOG.md). Entries before 1.0.0 are only available in German.
 
+## 1.5.13
+Beta label.
+
+- **Maturity**: the badge at the top of the bar now says **BETA** instead of ALPHA – likewise the notice before the first root action, README, SECURITY.md and the installer. A consent already given stays valid.
+
 ## 1.5.12
 Version names (beta).
 
