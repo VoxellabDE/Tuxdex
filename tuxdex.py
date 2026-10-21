@@ -396,7 +396,7 @@ MODULES = [
     ("software", "Software", "#5aa6f0"),
     ("flatpak", "Flatpak", "#8fa8ff"),
     ("disks", "Datenträger", "#d9b95c"),
-    ("flash", "USB-Stick", "#ffb86b"),
+    ("flash", "Flash-Stick", "#ffb86b"),
     ("storage", "Speicher", "#56c2d6"),
     ("backup", "Backup", "#e9c46a"),
     ("restore", "Wiederherstellung", "#7fd1b9"),
@@ -440,7 +440,7 @@ def module_enabled(key, settings=None):
 FONTS = {"sans": "Sans Serif", "mono": "Monospace"}
 
 APP_ID = "tuxdex"
-APP_VERSION = "1.5.15"
+APP_VERSION = "1.5.16"
 APP_STAGE = ""             # früher „alpha“ – das Namensschild kommt jetzt vom Kanal (Stabil ohne Zusatz, Beta mit „-beta“)
 
 
@@ -5343,7 +5343,7 @@ class FlashTab(Page):
         self.targets = []
 
         self.badge = StatusBadge("off", "Bereit")
-        self.lay.addLayout(page_header("USB-Stick beschreiben", self.badge))
+        self.lay.addLayout(page_header("Stick flashen", self.badge))
         self.lay.addWidget(Label("Bootfähige Sticks erstellen – z. B. zum Installieren von Arch Linux oder für einen "
                                  "Home-Assistant-Rechner. Windows-ISOs lassen sich so nicht einfach schreiben, dafür "
                                  "braucht es spezielle Werkzeuge.", "Hint", wrap=True))
@@ -17476,8 +17476,9 @@ EN = {
     'Mathematik und Numerik (ähnlich MATLAB)': 'Mathematics and numerics (similar to MATLAB)',
     'Minecraft mit mehreren Instanzen und Mods': 'Minecraft with multiple instances and mods',
     'Archive packen und entpacken (ZIP, 7z, RAR …)': 'Pack and unpack archives (ZIP, 7z, RAR …)',
+    'Flash-Stick': 'Flash stick',
     'USB-Stick': 'USB stick',
-    'USB-Stick beschreiben': 'Write USB stick',
+    'Stick flashen': 'Flash stick',
     'Bootfähige Sticks erstellen – z. B. zum Installieren von Arch Linux oder für einen Home-Assistant-Rechner. Windows-ISOs lassen sich so nicht einfach schreiben, dafür braucht es spezielle Werkzeuge.': "Create bootable sticks – e.g. to install Arch Linux or for a Home Assistant machine. Windows ISOs can't simply be written this way; that needs special tools.",
     '1 · Abbild wählen': '1 · Choose image',
     '2 · USB-Stick wählen': '2 · Choose USB stick',

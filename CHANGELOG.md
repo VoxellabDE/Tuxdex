@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.16
+Umbenennung (Beta).
+
+- Das Modul „USB-Stick“ heißt jetzt **„Flash-Stick“** (Seitenüberschrift „Stick flashen“) – „flashen“ ist der übliche Begriff dafür, ein Abbild auf einen Stick zu schreiben.
+
 ## 1.5.15
 Tab-Leiste (Beta).
 

@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.5.15--beta-2fb3a3">
+  <img alt="Version" src="https://img.shields.io/badge/version-1.5.16--beta-2fb3a3">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-2fb3a3">
   <img alt="For Arch Linux" src="https://img.shields.io/badge/for-Arch%20Linux-1793d1">
   <img alt="Python" src="https://img.shields.io/badge/python-3.11%2B-3776ab">
@@ -61,7 +61,7 @@ Tuxdex is a **toolkit**: under **Settings → Modules** you choose which tools a
 | **Software** | **Popular programs** by category to install directly (Discord, Signal, Thunderbird, OBS, Obsidian, KeePassXC, VS Code …) with progress and "Start" · All packages with icon, version, size, source/location and install date · select with checkboxes and uninstall together · install from pacman, AUR (paru) or Flathub |
 | **Flatpak** | Permissions of every Flatpak app with switches – network, files & folders, devices, sound, display, environment variables, portal permissions · rules for all apps · risky permissions are marked, changes highlighted · set up Flathub, start, update and uninstall apps |
 | **Drives** | Drives and partitions as a tree · mount, unmount, **mount permanently** (fstab by UUID, with backup), rename, check, **format** (ext4, btrfs, xfs, exFAT, FAT32, NTFS), safely remove · detects new USB sticks automatically · system partitions are protected |
-| **USB stick** | Create bootable sticks: **Arch Linux** and **Home Assistant OS** (PC, Raspberry Pi, Green) with download and checksum – or an **own image file** (.iso, .img, .img.xz). Only removable drives are offered, never the system disk; the stick is verified afterwards |
+| **Flash stick** | "Flash" bootable sticks: **Arch Linux** and **Home Assistant OS** (PC, Raspberry Pi, Green) with download and checksum – or an **own image file** (.iso, .img, .img.xz). Only removable drives are offered, never the system disk; the stick is verified afterwards |
 | **Storage** | Usage per drive · **pie chart**: operating system, applications, system data, photos & videos, personal files · “What is using the space?” with drill-down into folders · cleanup: package cache, orphaned packages, journal, trash, Flatpak |
 | **Backup** | Snapshots (versioned, space-saving), mirror or compressed archives (zstd/xz/gzip, optionally with password) · **several targets at once** · verification after writing · custom names with date ([how it works](#naming-backups)) · old versions cleaned up automatically · restore · daily/weekly schedule |
 | **Restore** | System snapshots with snapper (btrfs) or Timeshift · **snapshot before every update** · list, create, delete · **roll back to a state** with one click |

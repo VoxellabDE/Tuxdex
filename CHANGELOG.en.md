@@ -2,6 +2,11 @@
 
 English version of [CHANGELOG.md](CHANGELOG.md). Entries before 1.0.0 are only available in German.
 
+## 1.5.16
+Renaming (beta).
+
+- The "USB stick" module is now called **"Flash stick"** (page heading "Flash stick") – "flashing" is the usual term for writing an image to a stick.
+
 ## 1.5.15
 Tab bar (beta).
 

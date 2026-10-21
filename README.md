@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.5.15--beta-2fb3a3">
+  <img alt="Version" src="https://img.shields.io/badge/version-1.5.16--beta-2fb3a3">
   <img alt="Lizenz" src="https://img.shields.io/badge/lizenz-MIT-2fb3a3">
   <img alt="Für Arch Linux" src="https://img.shields.io/badge/f%C3%BCr-Arch%20Linux-1793d1">
   <img alt="Python" src="https://img.shields.io/badge/python-3.11%2B-3776ab">
@@ -61,7 +61,7 @@ Tuxdex ist ein **Baukasten**: Unter **Einstellungen → Module** wählst du selb
 | **Software** | **Beliebte Programme** nach Kategorie zum direkten Installieren (Discord, Signal, Thunderbird, OBS, Obsidian, KeePassXC, VS Code …) mit Fortschritt und „Starten“ · Alle Pakete mit Icon, Version, Größe, Quelle/Ort und Installationsdatum · per Kästchen auswählen und gemeinsam deinstallieren · installieren aus pacman, AUR (paru) oder Flathub |
 | **Flatpak** | Rechte jeder Flatpak-App per Schalter – Netzwerk, Dateien & Ordner, Geräte, Ton, Bildschirm, Umgebungsvariablen, Portal-Freigaben · Regeln für alle Apps · riskante Rechte sind markiert, Änderungen hervorgehoben · Flathub einrichten, Apps starten, aktualisieren, deinstallieren |
 | **Datenträger** | Laufwerke und Partitionen als Baum · Einhängen, Aushängen, **dauerhaft einhängen** (fstab per UUID, mit Sicherung), Umbenennen, Prüfen, **Formatieren** (ext4, btrfs, xfs, exFAT, FAT32, NTFS), sicher entfernen · erkennt neue USB-Sticks automatisch · System-Partitionen sind geschützt |
-| **USB-Stick** | Bootfähige Sticks erstellen: **Arch Linux** und **Home Assistant OS** (PC, Raspberry Pi, Green) mit Download und Prüfsumme – oder **eigene Abbild-Datei** (.iso, .img, .img.xz). Es werden nur Wechseldatenträger angeboten, nie die Systemplatte; danach Prüfung des Sticks |
+| **Flash-Stick** | Bootfähige Sticks „flashen“: **Arch Linux** und **Home Assistant OS** (PC, Raspberry Pi, Green) mit Download und Prüfsumme – oder **eigene Abbild-Datei** (.iso, .img, .img.xz). Es werden nur Wechseldatenträger angeboten, nie die Systemplatte; danach Prüfung des Sticks |
 | **Speicher** | Belegung je Festplatte · **Tortendiagramm**: Betriebssystem, Anwendungen, Systemdaten, Fotos & Videos, eigene Dateien · „Was belegt den Platz?“ mit Drill-down in Ordner · Aufräumen: Paket-Cache, verwaiste Pakete, Journal, Papierkorb, Flatpak |
 | **Backup** | Snapshots (versioniert, platzsparend), Spiegel oder komprimierte Archive (zstd/xz/gzip, optional mit Passwort) · **mehrere Ziele gleichzeitig** · Prüfung nach dem Schreiben · eigene Namen mit Datum ([so geht’s](#backups-benennen)) · alte Versionen automatisch aufräumen · wiederherstellen · Zeitplan täglich/wöchentlich |
 | **Wiederherstellung** | System-Snapshots mit snapper (btrfs) oder Timeshift · **Snapshot vor jedem Update** · Liste, erstellen, löschen · **auf einen Stand zurücksetzen** per Klick |
