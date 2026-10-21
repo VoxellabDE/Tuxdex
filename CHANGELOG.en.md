@@ -2,6 +2,11 @@
 
 English version of [CHANGELOG.md](CHANGELOG.md). Entries before 1.0.0 are only available in German.
 
+## 1.5.2
+Bug fix.
+
+- **Pop-ups**: checkboxes in dialogs no longer sit on a black box either.
+
 ## 1.5.1
 Bug fix.
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.2
+Fehlerbehebung.
+
+- **Pop-ups**: Auch Häkchen-Felder in Dialogen liegen nicht mehr auf einem schwarzen Kasten.
+
 ## 1.5.1
 Fehlerbehebung.
 

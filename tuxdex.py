@@ -429,7 +429,7 @@ def module_enabled(key, settings=None):
 FONTS = {"sans": "Sans Serif", "mono": "Monospace"}
 
 APP_ID = "tuxdex"
-APP_VERSION = "1.5.1"
+APP_VERSION = "1.5.2"
 APP_STAGE = "alpha"        # Reifegrad – wird nur angezeigt, die Versionsnummer selbst bleibt ohne Zusatz
 
 
@@ -696,7 +696,7 @@ QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
 /* Dialoge */
 QDialog, QMessageBox { background: $bg2; }
 /* Feste Fläche statt transparent – sonst malen manche Plattform-Themes (KDE) die Labels schwarz */
-QDialog QLabel { background: $bg2; }
+QDialog QLabel, QDialog QCheckBox, QDialog QRadioButton { background: $bg2; }
 QDialogButtonBox { background: $bg2; }
 QMessageBox QPushButton { min-width: 88px; }
 /* Reihenfolge wie in den eigenen Dialogen: Abbrechen links, Aktion rechts */
@@ -786,7 +786,7 @@ class DialogFlattener(QObject):
             obj.setProperty("tdx_flat", True)
             bg = COLORS["bg2"]
             import PySide6.QtWidgets as _W      # Qt-eigene Klasse: QLabel heißt hier die Übersetzungs-Unterklasse
-            for lbl in obj.findChildren(_W.QLabel):
+            for lbl in obj.findChildren(_W.QLabel) + obj.findChildren(_W.QCheckBox) + obj.findChildren(_W.QRadioButton):
                 if lbl.property("tdx_flat") or lbl.objectName() in ("Badge",):
                     continue
                 pal = lbl.palette()
