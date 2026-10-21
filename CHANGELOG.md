@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.3
+Gruppenverwaltung (Beta).
+
+- **Benutzer → „Gruppen zuweisen …“**: Gruppen eines Benutzers per Häkchen hinzufügen oder entziehen. Bekannte Gruppen (wheel, video, audio, docker, libvirt …) sind erklärt, mit Suche und der Option „Alle Systemgruppen zeigen“. Die Hauptgruppe bleibt geschützt; bei Gruppen mit Administrator-Rechten (wheel, sudo, docker) fragt Tuxdex nach. Die Änderung gilt ab der nächsten Anmeldung.
+
 ## 1.5.2
 Fehlerbehebung.
 

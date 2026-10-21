@@ -2,6 +2,11 @@
 
 English version of [CHANGELOG.md](CHANGELOG.md). Entries before 1.0.0 are only available in German.
 
+## 1.5.3
+Group management (beta).
+
+- **Users → "Assign groups …"**: add or remove a user's groups with checkboxes. Well-known groups (wheel, video, audio, docker, libvirt …) are explained, with search and the option "Show all system groups". The primary group stays protected; for groups with administrator rights (wheel, sudo, docker) Tuxdex asks first. The change applies from the next login.
+
 ## 1.5.2
 Bug fix.
 

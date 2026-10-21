@@ -110,7 +110,7 @@ try:
     from PySide6.QtWidgets import (
         QApplication, QWidget, QFrame, QLabel, QPushButton, QHBoxLayout, QVBoxLayout,
         QGridLayout, QStackedWidget, QPlainTextEdit, QLineEdit, QCheckBox, QComboBox,
-        QListWidget, QAbstractItemView, QTableWidget, QTableWidgetItem, QHeaderView,
+        QListWidget, QListWidgetItem, QAbstractItemView, QTableWidget, QTableWidgetItem, QHeaderView,
         QTreeWidget, QTreeWidgetItem, QLayout,
         QSlider, QDialog, QMessageBox, QScrollArea, QSizePolicy, QFileDialog,
     )
@@ -429,7 +429,7 @@ def module_enabled(key, settings=None):
 FONTS = {"sans": "Sans Serif", "mono": "Monospace"}
 
 APP_ID = "tuxdex"
-APP_VERSION = "1.5.2"
+APP_VERSION = "1.5.3"
 APP_STAGE = "alpha"        # Reifegrad – wird nur angezeigt, die Versionsnummer selbst bleibt ohne Zusatz
 
 
@@ -4941,6 +4941,133 @@ class NoteDialog(QDialog):
         self.entry.setFocus()
 
 
+# Gruppen, die man als Anwender kennen sollte: Name → Erklärung. „Gefährlich“ = praktisch root-Rechte.
+KNOWN_GROUPS = {
+    "wheel": "Administrator: darf sudo nutzen (praktisch root-Rechte)",
+    "sudo": "Administrator: darf sudo nutzen (praktisch root-Rechte)",
+    "docker": "Docker nutzen (praktisch root-Rechte)",
+    "video": "Grafikkarte, Kamera und Bildschirm-Helligkeit nutzen",
+    "audio": "Audiogeräte direkt nutzen",
+    "input": "Eingabegeräte direkt lesen (Tastatur, Maus, Gamepad)",
+    "storage": "Wechseldatenträger einhängen",
+    "optical": "CD/DVD-Laufwerke nutzen",
+    "scanner": "Scanner nutzen",
+    "lp": "Drucker nutzen",
+    "network": "Netzwerkverbindungen verwalten",
+    "power": "Energie-Einstellungen ändern",
+    "games": "Spielstände und Spiele-Zubehör",
+    "uucp": "Serielle Schnittstellen (USB-Seriell, Arduino)",
+    "kvm": "Virtuelle Maschinen mit KVM beschleunigen",
+    "libvirt": "Virtuelle Maschinen verwalten (libvirt)",
+    "users": "Normale Benutzergruppe",
+    "adm": "Systemprotokolle lesen",
+    "systemd-journal": "Systemprotokolle lesen",
+}
+DANGEROUS_GROUPS = {"wheel", "sudo", "docker"}
+
+
+def list_groups():
+    """[(name, gid, [mitglieder])] aus `getent group`, nach Name sortiert."""
+    res = []
+    for line in _cmd_out(["getent", "group"]).splitlines():
+        f = line.split(":")
+        if len(f) >= 4 and f[2].isdigit():
+            res.append((f[0], int(f[2]), [m for m in f[3].split(",") if m]))
+    return sorted(res)
+
+
+class GroupsDialog(QDialog):
+    """Gruppen eines Benutzers per Häkchen zuweisen oder entziehen."""
+
+    def __init__(self, parent, user, groups, primary_gid):
+        super().__init__(parent)
+        self.setWindowTitle("Gruppen zuweisen")
+        self.user, self.groups = user, groups
+        self.primary = next((g[0] for g in groups if g[1] == primary_gid), "")
+        self.orig = {g[0] for g in groups if user in g[2]} | ({self.primary} if self.primary else set())
+        self.state = {g[0]: g[0] in self.orig for g in groups}
+        lay = QVBoxLayout(self)
+        lay.setSizeConstraint(QLayout.SetMinimumSize)
+        spacer = QWidget()
+        spacer.setFixedSize(520, 0)
+        lay.addWidget(spacer)
+        lay.setContentsMargins(32, 28, 32, 24)
+        lay.setSpacing(12)
+        lay.addWidget(Label(f"Gruppen von {user}", "DialogTitle"))
+        lay.addWidget(Label("Häkchen setzen = zur Gruppe hinzufügen, entfernen = aus der Gruppe nehmen. Die "
+                            "Änderung gilt ab der nächsten Anmeldung des Benutzers. Die Hauptgruppe lässt sich hier "
+                            "nicht entfernen.", "Small", wrap=True))
+        row = QHBoxLayout()
+        row.setSpacing(12)
+        self.filter = LineEdit(placeholder="Gruppe suchen …")
+        self.filter.textChanged.connect(self._fill)
+        row.addWidget(self.filter, 1)
+        self.cb_sys = QCheckBox("Alle Systemgruppen zeigen")
+        self.cb_sys.toggled.connect(self._fill)
+        row.addWidget(self.cb_sys)
+        lay.addLayout(row)
+        self.list = QListWidget()
+        self.list.setMinimumHeight(280)
+        self.list.itemChanged.connect(self._changed)
+        lay.addWidget(self.list)
+        self.err = Label("", "Warn", wrap=True)
+        lay.addWidget(self.err)
+        btns = QHBoxLayout()
+        btns.addStretch(1)
+        btns.addWidget(Button("Abbrechen", "ghost", self.reject))
+        self.ok = Button("Übernehmen", "primary", self._apply)
+        self.ok.setDefault(True)
+        btns.addWidget(self.ok)
+        lay.addLayout(btns)
+        self._fill()
+
+    def _fill(self, *_):
+        q = self.filter.text().strip().lower()
+        show_all = self.cb_sys.isChecked()
+        self.list.blockSignals(True)
+        self.list.clear()
+        for name, gid, _m in self.groups:
+            # Normalfall: eigene Gruppen (ab 1000), bekannte Gruppen und Gruppen des Benutzers
+            if not show_all and not (gid >= 1000 or name in KNOWN_GROUPS or self.state[name]):
+                continue
+            if gid == 65534 or name == "nobody" and not show_all:
+                continue
+            if q and q not in name.lower() and q not in tr(KNOWN_GROUPS.get(name, "")).lower():
+                continue
+            txt = name + (f"  –  {tr(KNOWN_GROUPS[name])}" if name in KNOWN_GROUPS else "")
+            if name == self.primary:
+                txt += "  –  " + tr("Hauptgruppe")
+            it = QListWidgetItem(txt)
+            it.setData(Qt.UserRole, name)
+            flags = it.flags() | Qt.ItemIsUserCheckable
+            if name == self.primary:
+                flags &= ~Qt.ItemIsEnabled
+            it.setFlags(flags)
+            it.setCheckState(Qt.Checked if self.state[name] else Qt.Unchecked)
+            self.list.addItem(it)
+        self.list.blockSignals(False)
+
+    def _changed(self, it):
+        self.state[it.data(Qt.UserRole)] = it.checkState() == Qt.Checked
+
+    def changes(self):
+        add = sorted(n for n, v in self.state.items() if v and n not in self.orig)
+        rem = sorted(n for n, v in self.state.items() if not v and n in self.orig and n != self.primary)
+        return add, rem
+
+    def _apply(self):
+        add, rem = self.changes()
+        if not add and not rem:
+            self.reject()
+            return
+        risky = [g for g in add if g in DANGEROUS_GROUPS]
+        if risky and not ask_confirm(self, "Gruppen zuweisen",
+                                     f"{', '.join(risky)} gibt {self.user} praktisch volle Administrator-Rechte "
+                                     "(root). Wirklich hinzufügen?", "Hinzufügen", danger=True):
+            return
+        self.accept()
+
+
 class AddUserDialog(QDialog):
     def __init__(self, parent, has_wheel):
         super().__init__(parent)
@@ -5040,6 +5167,7 @@ class UsersTab(Page):
         row = QHBoxLayout()
         row.setSpacing(8)
         row.addWidget(Button("Passwort ändern …", "ghost", self.change_password))
+        row.addWidget(Button("Gruppen zuweisen …", "ghost", self.edit_groups))
         row.addWidget(Button("Beschreibung bearbeiten …", "ghost", self.edit_note))
         row.addStretch(1)
         p.body.addLayout(row)
@@ -5262,6 +5390,31 @@ class UsersTab(Page):
         if dlg.force.isChecked():
             steps.append((f"chage -d 0 {name}", ["chage", "-d", "0", name], None))
         self._run_steps(steps)
+
+    def edit_groups(self):
+        import pwd
+        name = self._selected_user()
+        if not name:
+            return
+        try:
+            gid = pwd.getpwnam(name).pw_gid
+        except KeyError:
+            return
+        dlg = GroupsDialog(self, name, list_groups(), gid)
+        if dlg.exec() != QDialog.Accepted:
+            return
+        add, rem = dlg.changes()
+        if not add and not rem:
+            return
+        if not self.app.priv.ensure(self):
+            return
+        steps = []
+        if add:
+            steps.append((f"usermod -aG {','.join(add)} {name}", ["usermod", "-aG", ",".join(add), name], None))
+        for g in rem:
+            steps.append((f"gpasswd -d {name} {g}", ["gpasswd", "-d", name, g], None))
+        self._run_steps(steps, lambda ok: ok and self.log.append_text(
+            f"Gruppen von {name} geändert – gilt ab der nächsten Anmeldung.\n"))
 
     def edit_note(self):
         name = self._selected_user()
@@ -16311,6 +16464,30 @@ EN = {
     'makepkg (Paket pacman, Gruppe base-devel) wird benötigt.': 'makepkg (package pacman, group base-devel) is required.',
     'makepkg fehlt': 'makepkg missing',
     'Bauwerkzeuge fehlen': 'Build tools missing',
+    'Gruppen zuweisen …': 'Assign groups …',
+    'Gruppen zuweisen': 'Assign groups',
+    'Gruppe suchen …': 'Search group …',
+    'Alle Systemgruppen zeigen': 'Show all system groups',
+    'Hauptgruppe': 'Primary group',
+    'Gruppen von {}': 'Groups of {}',
+    'Häkchen setzen = zur Gruppe hinzufügen, entfernen = aus der Gruppe nehmen. Die Änderung gilt ab der nächsten Anmeldung des Benutzers. Die Hauptgruppe lässt sich hier nicht entfernen.': "Tick = add to the group, untick = remove from the group. The change applies from the user's next login. The primary group can't be removed here.",
+    'Administrator: darf sudo nutzen (praktisch root-Rechte)': 'Administrator: may use sudo (practically root rights)',
+    'Docker nutzen (praktisch root-Rechte)': 'Use Docker (practically root rights)',
+    'Grafikkarte, Kamera und Bildschirm-Helligkeit nutzen': 'Use graphics card, camera and screen brightness',
+    'Audiogeräte direkt nutzen': 'Use audio devices directly',
+    'Eingabegeräte direkt lesen (Tastatur, Maus, Gamepad)': 'Read input devices directly (keyboard, mouse, gamepad)',
+    'Wechseldatenträger einhängen': 'Mount removable drives',
+    'CD/DVD-Laufwerke nutzen': 'Use CD/DVD drives',
+    'Scanner nutzen': 'Use scanners',
+    'Drucker nutzen': 'Use printers',
+    'Netzwerkverbindungen verwalten': 'Manage network connections',
+    'Energie-Einstellungen ändern': 'Change power settings',
+    'Spielstände und Spiele-Zubehör': 'Game saves and accessories',
+    'Serielle Schnittstellen (USB-Seriell, Arduino)': 'Serial ports (USB serial, Arduino)',
+    'Virtuelle Maschinen mit KVM beschleunigen': 'Accelerate virtual machines with KVM',
+    'Virtuelle Maschinen verwalten (libvirt)': 'Manage virtual machines (libvirt)',
+    'Normale Benutzergruppe': 'Normal user group',
+    'Systemprotokolle lesen': 'Read system logs',
     'Automatische Updates deaktivieren': 'Disable automatic updates',
     'Automatische Updates': 'Automatic updates',
     'Ausschalten': 'Turn off',
