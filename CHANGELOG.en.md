@@ -5,6 +5,7 @@ English version of [CHANGELOG.md](CHANGELOG.md). Entries before 1.0.0 are only a
 ## 1.5.9
 Install display (beta).
 
+- **"Version … available"** (bottom right): one click opens the settings and jumps straight to the update panel – no scrolling. A second click closes the settings again.
 - **Progress in %**: the display no longer jumps to 99% after a few seconds. Tuxdex now calculates a real overall progress from the output of pacman (download, checks, installation package by package) and Flatpak (package i of n). The number never jumps back; 100% only comes when the operation is finished.
 - **Own bar per row**: while an installation runs, the program's row is framed and shows a progress bar below the description – so it's immediately clear which program is being installed. Applies to "Popular programs" and "Replacements for Windows programs".
 

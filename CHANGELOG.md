@@ -3,6 +3,7 @@
 ## 1.5.9
 Installations-Anzeige (Beta).
 
+- **„Version … verfügbar“** (unten rechts): Ein Klick öffnet die Einstellungen und springt direkt zum Update-Feld – ohne Scrollen. Ein zweiter Klick schließt die Einstellungen wieder.
 - **Fortschritt in %**: Die Anzeige springt nicht mehr nach wenigen Sekunden auf 99 %. Tuxdex rechnet jetzt einen echten Gesamtfortschritt aus der Ausgabe von pacman (Download, Prüfungen, Installation Paket für Paket) und Flatpak (Paket i von n). Die Zahl springt nie zurück; 100 % gibt es erst, wenn der Vorgang fertig ist.
 - **Eigene Leiste je Zeile**: Läuft eine Installation, wird die Zeile des Programms umrahmt und zeigt unter der Beschreibung eine Fortschrittsleiste – so ist sofort klar, welches Programm gerade installiert. Gilt für „Beliebte Programme“ und „Ersatz für Windows-Programme“.
 

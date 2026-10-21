@@ -16009,7 +16009,7 @@ class MainWindow(QWidget):
         sl.addWidget(self.sys_hint)
         sl.addSpacing(8)
         self._sys_updates = (0, 0)
-        self.upd_hint = Button("", "ghost", self.open_settings)
+        self.upd_hint = Button("", "ghost", self.open_update)
         self.upd_hint.setObjectName("UpdHint")
         self.upd_hint.hide()
         sl.addWidget(self.upd_hint)
@@ -16235,6 +16235,22 @@ class MainWindow(QWidget):
         self.gear.setChecked(True)
         for t in self.tabs:
             t.set_selected(False)
+
+    def open_update(self):
+        """Klick auf „Version … verfügbar“: Einstellungen öffnen und direkt zum Update-Feld springen; ein zweiter
+        Klick schließt die Einstellungen wieder."""
+        if self.stack.currentWidget() is self.settings_page:
+            self.back_from_settings()
+            return
+        self.open_settings()
+
+        def jump():
+            sp = self.settings_page
+            panel = sp.update_panel
+            y = panel.mapTo(sp.widget(), panel.rect().topLeft()).y()
+            sp.verticalScrollBar().setValue(max(0, y - 12))
+        QTimer.singleShot(0, jump)
+        QTimer.singleShot(120, jump)       # nach dem ersten Layout nochmals, falls sich Höhen geändert haben
 
     def back_from_settings(self):
         self.select(self._last_tab)
