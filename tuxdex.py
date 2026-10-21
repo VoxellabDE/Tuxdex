@@ -7524,8 +7524,14 @@ def ip_reputation():
     """Wie Webseiten deine IP einstufen (ipapi.is): dict(ip, org, country, city, vpn, vpn_name, proxy, tor,
     hosting)."""
     d = _get_json("https://api.ipapi.is/")
-    comp, asn, loc = d.get("company") or {}, d.get("asn") or {}, d.get("location") or {}
-    vpn = d.get("vpn") or {}
+    if not isinstance(d, dict) or not d.get("ip"):
+        # z. B. Fehlertext, Ratenlimit oder Weiterleitungsseite statt JSON-Objekt
+        raise ValueError("unerwartete Antwort" + (f": {d[:60]}" if isinstance(d, str) else ""))
+
+    def sub(k):
+        v = d.get(k)
+        return v if isinstance(v, dict) else {}
+    comp, asn, loc, vpn = sub("company"), sub("asn"), sub("location"), sub("vpn")
     return {"ip": d.get("ip", "?"), "org": comp.get("name") or asn.get("org") or "",
             "asn": f"AS{asn.get('asn')}" if asn.get("asn") else "", "country": loc.get("country", ""),
             "city": loc.get("city", ""), "vpn": bool(d.get("is_vpn")),
