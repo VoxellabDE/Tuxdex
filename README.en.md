@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.5.17.2--beta-2fb3a3">
+  <img alt="Version" src="https://img.shields.io/badge/version-1.5.17.2-2fb3a3">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-2fb3a3">
   <img alt="For Arch Linux" src="https://img.shields.io/badge/for-Arch%20Linux-1793d1">
   <img alt="Python" src="https://img.shields.io/badge/python-3.11%2B-3776ab">
