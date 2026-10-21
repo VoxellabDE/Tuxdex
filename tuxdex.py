@@ -554,7 +554,7 @@ def module_enabled(key, settings=None):
 FONTS = {"sans": "Sans Serif", "mono": "Monospace"}
 
 APP_ID = "tuxdex"
-APP_VERSION = "1.6.1.4"
+APP_VERSION = "1.6.1.5"
 APP_STAGE = ""             # früher „alpha“ – das Namensschild kommt jetzt vom Kanal (Stabil ohne Zusatz, Beta mit „-beta“)
 
 
@@ -5986,6 +5986,116 @@ def diag_disk():
     return f
 
 
+def pacman_repos():
+    """Repos aus /etc/pacman.conf (auch Include-Dateien) mit dem ersten Server: [(repo, url)]."""
+    out, repo = [], None
+    arch_vars = {"$arch_v3": "x86_64_v3", "$arch_v4": "x86_64_v4", "$arch": "x86_64"}
+
+    def servers(path):
+        res = []
+        for l in _read(path).splitlines():
+            l = l.split("#", 1)[0].strip()
+            if l.startswith("Server") and "=" in l:
+                res.append(l.split("=", 1)[1].strip())
+        return res
+
+    for line in _read("/etc/pacman.conf").splitlines():
+        line = line.split("#", 1)[0].strip()
+        m = re.match(r"\[(.+)\]$", line)
+        if m:
+            repo = None if m.group(1) == "options" else m.group(1)
+            first = None
+            continue
+        if not repo or "=" not in line:
+            continue
+        key, val = [x.strip() for x in line.split("=", 1)]
+        url = None
+        if key == "Server":
+            url = val
+        elif key == "Include":
+            s = servers(val)
+            url = s[0] if s else None
+        if url and not any(r == repo for r, _ in out):
+            for k, v in arch_vars.items():
+                url = url.replace(k, v)
+            out.append((repo, url.replace("$repo", repo)))
+    return out
+
+
+def url_ok(url, timeout=6, family=None):
+    """True, wenn die URL antwortet (HTTP < 400). family: socket.AF_INET erzwingt IPv4."""
+    import socket
+    import urllib.request
+    import urllib.error
+    old = socket.getaddrinfo
+    if family:
+        socket.getaddrinfo = lambda h, p, fam=0, *a, **k: old(h, p, family, *a, **k)
+    try:
+        req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": "tuxdex"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.status < 400
+    except urllib.error.HTTPError as e:
+        return e.code < 400
+    except Exception:
+        return False
+    finally:
+        socket.getaddrinfo = old
+
+
+def diag_repos():
+    """Prüft jedes Repo aus pacman.conf: antwortet der Spiegel, ist die Datenbank aktuell, klappt IPv6?"""
+    import socket
+    f = []
+    repos = pacman_repos()
+    bad = []
+    for repo, base in repos:
+        if base.startswith("http") and not url_ok(f"{base.rstrip('/')}/{repo}.db"):
+            bad.append(repo)
+    if bad:
+        if shutil.which("cachyos-rate-mirrors"):
+            fix = ("Spiegel neu ermitteln", [sudo_step(["cachyos-rate-mirrors"])])
+        elif shutil.which("reflector"):
+            fix = ("Spiegel neu ermitteln", [sudo_step(["reflector", "--latest", "20", "--protocol", "https",
+                                                         "--sort", "rate", "--save", "/etc/pacman.d/mirrorlist"])])
+        else:
+            fix = ("reflector installieren", [pacman_step(["reflector"])])
+        f.append(finding("danger", ", ".join(bad), "Repos nicht erreichbar",
+                         f"Von diesen Repos lässt sich die Datenbank nicht laden: {', '.join(bad)}. Das ist die "
+                         "Ursache für „Datenbanken konnten nicht synchronisiert werden“ und fehlende Dateien beim "
+                         "Installieren. Meist ist der erste Spiegel in der Spiegelliste ausgefallen.", fix))
+    elif repos:
+        f.append(finding("ok", f"{len(repos)} Repos", "Repos erreichbar",
+                         "Alle Repos aus der pacman.conf antworten."))
+    sync = "/var/lib/pacman/sync"
+    try:
+        dbs = [os.path.join(sync, n) for n in os.listdir(sync) if n.endswith(".db")]
+        age = (time.time() - min(os.path.getmtime(d) for d in dbs)) / 86400 if dbs else 0
+        if age > 7:
+            f.append(finding("warn", f"{int(age)} Tage alt", "Paketlisten",
+                             "Die Paketlisten sind veraltet. Dadurch schlagen Installationen mit 404-Fehlern fehl. "
+                             "Führe zuerst ein vollständiges Update durch.",
+                             ("Paketlisten aktualisieren", [{"cmd": ["pacman", "-Sy"], "needs_sudo": True,
+                                                              "interactive": True, "label": "sudo pacman -Sy"}])))
+    except (OSError, ValueError):
+        pass
+    # IPv6: gibt es eine IPv6-Adresse für github.com, aber keine Verbindung (Tuxdex-Repo liegt dort)?
+    try:
+        v6 = socket.getaddrinfo("github.com", 443, socket.AF_INET6)
+    except OSError:
+        v6 = []
+    if v6:
+        try:
+            with socket.create_connection(v6[0][4][:2], timeout=4):
+                pass
+        except OSError:
+            f.append(finding("warn", "IPv6 defekt", "IPv6-Verbindung",
+                             "Dein System bekommt für github.com eine IPv6-Adresse, kommt darüber aber nicht durch. "
+                             "Daher schlagen Downloads (z. B. tuxdex.db) mit „bad address“ fehl. Lösung: IPv6 im "
+                             "Router/NetworkManager reparieren oder abschalten, oder pacman auf IPv4 zwingen "
+                             "(in /etc/pacman.conf unter [options]: XferCommand = /usr/bin/curl -4 -L -C - -f -o %o %u)."))
+    return f
+
+
 def diag_updates():
     f = []
     lock = "/var/lib/pacman/db.lck"
@@ -6014,6 +6124,7 @@ def diag_updates():
             f.append(finding("warn", "Antwortet nicht", "Erster Spiegelserver",
                              f"{host} antwortet nicht. Ein schnellerer Spiegel lässt sich mit dem Paket reflector "
                              "auswählen."))
+    f += diag_repos()
     try:
         st = os.statvfs("/")
         free = st.f_bavail * st.f_frsize
@@ -7047,7 +7158,9 @@ class KernelTab(Page):
                            + ("neu erzeugt" if menu else "geprüft")
                            + ". Der laufende Kernel bleibt erhalten, du kannst beim Start den neuen wählen "
                            "(oder er ist je nach Bootloader schon vorausgewählt).\n\nHinweis: Das Modul ist noch nicht "
-                           "offiziell getestet – am besten zuerst in einer VM ausprobieren.", "Installieren (pacman)"):
+                           "offiziell getestet – am besten zuerst in einer VM ausprobieren.\n\nFalls „Datenbanken konnten "
+                           "nicht synchronisiert werden“ erscheint: Diagnose → „Updates schlagen fehl“ ausführen und "
+                           "vorher ein vollständiges Update machen.", "Installieren (pacman)"):
             return
         steps = [{"cmd": ["pacman", "-S", "--needed", "--"] + pk, "needs_sudo": True, "interactive": True,
                   "label": "sudo pacman -S " + " ".join(pk)}] + (menu or [])
@@ -19639,6 +19752,20 @@ EN = {
     'Antwortet nicht': "Doesn't respond",
     '{} ist erreichbar.': '{} is reachable.',
     '{} antwortet nicht. Ein schnellerer Spiegel lässt sich mit dem Paket reflector auswählen.': "{} doesn't respond. A faster mirror can be selected with the package reflector.",
+    'Spiegel neu ermitteln': 'Find new mirrors',
+    'reflector installieren': 'Install reflector',
+    'Repos nicht erreichbar': 'Repos not reachable',
+    'Repos erreichbar': 'Repos reachable',
+    '{} Repos': '{} repos',
+    'Alle Repos aus der pacman.conf antworten.': 'All repos from pacman.conf respond.',
+    'Von diesen Repos lässt sich die Datenbank nicht laden: {}. Das ist die Ursache für „Datenbanken konnten nicht synchronisiert werden“ und fehlende Dateien beim Installieren. Meist ist der erste Spiegel in der Spiegelliste ausgefallen.': 'The database of these repos can\'t be loaded: {}. This is the cause of "failed to synchronize all databases" and missing files when installing. Usually the first mirror in the mirror list is down.',
+    'Paketlisten': 'Package lists',
+    '{} Tage alt': '{} days old',
+    'Die Paketlisten sind veraltet. Dadurch schlagen Installationen mit 404-Fehlern fehl. Führe zuerst ein vollständiges Update durch.': 'The package lists are outdated, so installations fail with 404 errors. Run a full update first.',
+    'Paketlisten aktualisieren': 'Refresh package lists',
+    'IPv6 defekt': 'IPv6 broken',
+    'IPv6-Verbindung': 'IPv6 connection',
+    'Dein System bekommt für github.com eine IPv6-Adresse, kommt darüber aber nicht durch. Daher schlagen Downloads (z. B. tuxdex.db) mit „bad address“ fehl. Lösung: IPv6 im Router/NetworkManager reparieren oder abschalten, oder pacman auf IPv4 zwingen (in /etc/pacman.conf unter [options]: XferCommand = /usr/bin/curl -4 -L -C - -f -o %o %u).': 'Your system gets an IPv6 address for github.com but can\'t connect over it. That is why downloads (e.g. tuxdex.db) fail with "bad address". Fix: repair or disable IPv6 in the router/NetworkManager, or force pacman to IPv4 (in /etc/pacman.conf under [options]: XferCommand = /usr/bin/curl -4 -L -C - -f -o %o %u).',
     'Platz auf /': 'Space on /',
     'Uhrzeit': 'Time',
     'Zeitabgleich einschalten': 'Turn on time sync',

@@ -2,6 +2,13 @@
 
 English version of [CHANGELOG.md](CHANGELOG.md). Entries before 1.0.0 are only available in German.
 
+## 1.6.1.5
+
+- The "Updates fail" diagnosis now checks every repo in pacman.conf (including CachyOS) and shows which mirrors are down – with a fix via `cachyos-rate-mirrors` or `reflector`.
+- New: warning for outdated package lists (404 errors when installing) with one-click refresh.
+- New: detects broken IPv6 ("bad address" when loading `tuxdex.db`) and names the fix (force IPv4).
+- Kernel installation points to the diagnosis if the databases can't be synchronized.
+
 ## 1.6.1.4
 Kernel module (beta).
 

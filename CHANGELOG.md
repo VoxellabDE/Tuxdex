@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.1.5
+
+- Diagnose „Updates schlagen fehl“ prüft jetzt jedes Repo aus der pacman.conf (auch CachyOS) und zeigt, welche Spiegel ausgefallen sind – mit Behebung per `cachyos-rate-mirrors` bzw. `reflector`.
+- Neu: Warnung bei veralteten Paketlisten (404-Fehler beim Installieren) mit Aktualisierung per Klick.
+- Neu: Erkennt defektes IPv6 („bad address“ beim Laden von `tuxdex.db`) und nennt die Lösung (IPv4 erzwingen).
+- Kernel-Installation weist auf die Diagnose hin, falls die Datenbanken nicht synchronisiert werden können.
+
 ## 1.6.1.4
 Kernel-Modul (Beta).
 
