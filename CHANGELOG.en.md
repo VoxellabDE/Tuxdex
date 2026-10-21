@@ -2,6 +2,11 @@
 
 English version of [CHANGELOG.md](CHANGELOG.md). Entries before 1.0.0 are only available in German.
 
+## 1.5.11
+Bug fix (beta).
+
+- **Settings → Updating**: the installed version was always labelled "(Stable)", even on the beta. Tuxdex now shows the correct channel – "Stable", "Beta" or "development build" (newer than the beta) – by comparing with the versions on GitHub.
+
 ## 1.5.10
 Language (beta).
 

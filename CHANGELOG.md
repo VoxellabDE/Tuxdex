@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.11
+Fehlerbehebung (Beta).
+
+- **Einstellungen → Aktualisierung**: Hinter der installierten Version stand immer „(Stabil)“, auch bei der Beta. Jetzt zeigt Tuxdex den richtigen Kanal – „Stabil“, „Beta“ oder „Entwicklungsstand“ (neuer als die Beta) –, ermittelt durch Vergleich mit den Versionen auf GitHub.
+
 ## 1.5.10
 Sprache (Beta).
 

@@ -431,7 +431,7 @@ def module_enabled(key, settings=None):
 FONTS = {"sans": "Sans Serif", "mono": "Monospace"}
 
 APP_ID = "tuxdex"
-APP_VERSION = "1.5.10"
+APP_VERSION = "1.5.11"
 APP_STAGE = "alpha"        # Reifegrad – wird nur angezeigt, die Versionsnummer selbst bleibt ohne Zusatz
 
 
@@ -15256,12 +15256,30 @@ class UpdatePanel(QWidget):
     def _show_channel_info(self):
         """Welche Version gibt es in welchem Zweig – und was ist installiert?"""
         rv = self.remote_versions
-        inst = "Beta" if "beta" in APP_VERSION or "rc" in APP_VERSION else tr("Stabil")
+        inst = self._installed_channel(rv)
         parts = []
         for b, name in (("main", "Stabil"), ("beta", "Beta")):
             v = rv.get(b)
             parts.append(f"{name}: <b>{vlabel(v)}</b>" if v else f"{name}: {'…' if b not in rv else '—'}")
-        self.channel_info.setText(" · ".join(parts) + f"<br>Installiert: <b>{vlabel()}</b> ({inst})")
+        self.channel_info.setText(" · ".join(parts) + f"<br>Installiert: <b>{vlabel()}</b>" + (f" ({inst})" if inst else ""))
+
+    @staticmethod
+    def _installed_channel(rv):
+        """Zu welchem Kanal die installierte Version gehört – nach dem Vergleich mit den Versionen auf GitHub,
+        nicht nach der Einstellung (wer die Beta installiert hat, steht trotzdem auf „Stabil“ als Suchkanal)."""
+        me = version_tuple(APP_VERSION)
+        stable, beta = rv.get("main"), rv.get("beta")
+        if stable and me == version_tuple(stable):
+            return tr("Stabil")
+        if beta and me == version_tuple(beta):
+            return "Beta"
+        if beta and me > version_tuple(beta):
+            return tr("Entwicklungsstand")
+        if stable and me < version_tuple(stable):
+            return tr("veraltet")
+        if beta and me > (version_tuple(stable) if stable else (0,)):
+            return "Beta"
+        return ""
 
     def _auto_changed(self, on):
         self.settings["auto_check"] = on
@@ -17318,6 +17336,8 @@ EN = {
     'makepkg (Paket pacman, Gruppe base-devel) wird benötigt.': 'makepkg (package pacman, group base-devel) is required.',
     'makepkg fehlt': 'makepkg missing',
     'Bauwerkzeuge fehlen': 'Build tools missing',
+    'Entwicklungsstand': 'development build',
+    'veraltet': 'outdated',
     'Beliebte Programme': 'Popular programs',
     'Alle Kategorien': 'All categories',
     'Kategorie': 'Category',
