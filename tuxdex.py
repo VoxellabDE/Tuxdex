@@ -10653,13 +10653,15 @@ class SecurityTab(Page):
         rl.addWidget(self.rule_table)
         add = QHBoxLayout()
         add.setSpacing(8)
-        self.r_port = LineEdit(placeholder="z. B. 22 oder 8000:8100", mono=True)
+        self.r_ip = LineEdit(placeholder="leer = alle · z. B. 192.168.1.20 oder 10.0.0.0/24", mono=True)
+        self.r_port = LineEdit(placeholder="leer = alle · z. B. 22 oder 8000:8100", mono=True)
         self.r_proto = QComboBox()
         self.r_proto.addItems(["tcp", "udp", "tcp+udp"])
         self.r_proto.setMinimumHeight(38)
         self.r_act = QComboBox()
         self.r_act.addItems(["erlauben", "sperren"])
         self.r_act.setMinimumHeight(38)
+        add.addLayout(Field("Von IP-Adresse (optional)", self.r_ip), 1)
         add.addLayout(Field("Port", self.r_port), 1)
         add.addLayout(Field("Protokoll", self.r_proto))
         add.addLayout(Field("Aktion", self.r_act))
@@ -11906,14 +11908,33 @@ class SecurityTab(Page):
                       on_line=on_line, on_done=done)
 
     def fw_add_rule(self):
+        import ipaddress
         port = self.r_port.text().strip()
-        if not re.match(r"^\d{1,5}(:\d{1,5})?$", port):
+        ip = self.r_ip.text().strip()
+        if port and not re.match(r"^\d{1,5}(:\d{1,5})?$", port):
             show_warning(self, "Port", "Bitte einen Port (z. B. 22) oder Bereich (8000:8100) angeben.")
+            return
+        if ip:
+            try:
+                ip = str(ipaddress.ip_network(ip, strict=False)) if "/" in ip else str(ipaddress.ip_address(ip))
+            except ValueError:
+                show_warning(self, "IP-Adresse", "Bitte eine gültige IP-Adresse (z. B. 192.168.1.20) oder ein "
+                             "Netz (z. B. 10.0.0.0/24) angeben.")
+                return
+        if not ip and not port:
+            show_warning(self, "Regel", "Bitte einen Port, eine IP-Adresse oder beides angeben.")
             return
         proto = self.r_proto.currentText()
         act = "allow" if self.r_act.currentIndex() == 0 else "deny"
-        spec = port if proto == "tcp+udp" and ":" not in port else f"{port}/{proto.split('+')[0]}"
-        self._root(["ufw", act, spec], then=lambda rc: self.fw_status())
+        if not ip:
+            spec = [port if proto == "tcp+udp" and ":" not in port else f"{port}/{proto.split('+')[0]}"]
+        else:
+            spec = ["from", ip]
+            if port:
+                spec += ["to", "any", "port", port]
+                if proto != "tcp+udp":
+                    spec += ["proto", proto]
+        self._root(["ufw", act] + spec, then=lambda rc: self.fw_status())
 
     def fw_del_rule(self):
         rows = sorted({i.row() for i in self.rule_table.selectedIndexes()}, reverse=True)
@@ -15749,6 +15770,12 @@ EN = {
     'makepkg (Paket pacman, Gruppe base-devel) wird benötigt.': 'makepkg (package pacman, group base-devel) is required.',
     'makepkg fehlt': 'makepkg missing',
     'Bauwerkzeuge fehlen': 'Build tools missing',
+    'leer = alle · z. B. 22 oder 8000:8100': 'empty = all · e.g. 22 or 8000:8100',
+    'leer = alle · z. B. 192.168.1.20 oder 10.0.0.0/24': 'empty = all · e.g. 192.168.1.20 or 10.0.0.0/24',
+    'Bitte eine gültige IP-Adresse (z. B. 192.168.1.20) oder ein Netz (z. B. 10.0.0.0/24) angeben.': 'Please enter a valid IP address (e.g. 192.168.1.20) or a network (e.g. 10.0.0.0/24).',
+    'Bitte einen Port, eine IP-Adresse oder beides angeben.': 'Please enter a port, an IP address or both.',
+    'IP-Adresse': 'IP address',
+    'Von IP-Adresse (optional)': 'From IP address (optional)',
     'Kopieren': 'Copy',
     'Kopiert ✓': 'Copied ✓',
     'Root-Rechte nötig': 'Root rights needed',
