@@ -81,6 +81,24 @@ fi
 
 # 2. Installieren (immer zusammen mit einem System-Update, nie nur -Sy)
 say "$(t "Updating the system and installing Tuxdex" "System aktualisieren und Tuxdex installieren")"
-run $SUDO pacman -Syu --needed tuxdex
+PACCONF=""
+# Kaputtes IPv6 (typisch: "bad address") automatisch umgehen: pacman lädt dann per IPv4
+if command -v curl >/dev/null && ! curl -6 -fsI --max-time 6 https://github.com >/dev/null 2>&1 \
+   && curl -4 -fsI --max-time 6 https://github.com >/dev/null 2>&1; then
+    say "$(t "IPv6 does not work here – downloading via IPv4 instead" "IPv6 funktioniert hier nicht – Download läuft über IPv4")"
+    PACCONF="$(mktemp)"
+    sed 's#^\[options\]#[options]\nXferCommand = /usr/bin/curl -4 -L -C - -f -o %o %u#' "$CONF" > "$PACCONF"
+    trap 'rm -f "$PACCONF"' EXIT
+fi
+# CachyOS: Spiegelliste vorher erneuern, falls möglich (vermeidet "Datenbanken konnten nicht synchronisiert werden")
+if command -v cachyos-rate-mirrors >/dev/null && [ "$DRY" -eq 0 ]; then
+    say "$(t "Refreshing mirrors" "Spiegelserver werden erneuert")"
+    $SUDO cachyos-rate-mirrors || true
+fi
+if [ -n "$PACCONF" ]; then
+    run $SUDO pacman --config "$PACCONF" -Syu --needed tuxdex
+else
+    run $SUDO pacman -Syu --needed tuxdex
+fi
 
 say "$(t "Done! Start Tuxdex from the application menu or with:  tuxdex" "Fertig! Starte Tuxdex im Anwendungsmenü oder mit:  tuxdex")"
