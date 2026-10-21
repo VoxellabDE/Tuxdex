@@ -2,6 +2,12 @@
 
 English version of [CHANGELOG.md](CHANGELOG.md). Entries before 1.0.0 are only available in German.
 
+## 1.5.7
+Programs and USB sticks (beta).
+
+- **Software → "Popular programs"**: 23 programs by category to install directly – Discord, Signal, Thunderbird, Obsidian, Super Productivity, KeePassXC, Bitwarden, VeraCrypt, Cryptomator, Brave, qBittorrent, FileZilla, LocalSend, OBS Studio, Spotify, fre:ac, Visual Studio Code, Wireshark, FreeCAD, KiCad, GNU Octave, Prism Launcher, PeaZip. With category filter, search, source on the button (pacman/Flatpak), progress in % and then "Start".
+- **New module "USB stick"**: create bootable sticks. Choose **Arch Linux** (current ISO) and **Home Assistant OS** (PC, Raspberry Pi 5/4/3, Green) – or an **own file** (.iso, .img, .img.xz, .img.gz). Downloads are checked against their checksum, then the stick is read back and compared. Only removable drives are offered, never the disk with the system; a clear confirmation comes before overwriting.
+
 ## 1.5.6
 Settings (beta).
 

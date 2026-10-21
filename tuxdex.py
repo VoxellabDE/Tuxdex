@@ -387,6 +387,7 @@ MODULES = [
     ("software", "Software", "#5aa6f0"),
     ("flatpak", "Flatpak", "#8fa8ff"),
     ("disks", "Datenträger", "#d9b95c"),
+    ("flash", "USB-Stick", "#ffb86b"),
     ("storage", "Speicher", "#56c2d6"),
     ("backup", "Backup", "#e9c46a"),
     ("restore", "Wiederherstellung", "#7fd1b9"),
@@ -405,6 +406,7 @@ MODULE_INFO = {
     "software": "Programme suchen, installieren und entfernen (pacman und AUR).",
     "flatpak": "Flatpak-Apps verwalten und ihre Rechte per Schalter einstellen.",
     "disks": "USB-Sticks und Festplatten einhängen, formatieren und prüfen.",
+    "flash": "Bootfähige USB-Sticks erstellen (Arch Linux, Home Assistant OS oder eigene Abbild-Datei).",
     "storage": "Sehen, was Platz belegt, und typische Platzfresser aufräumen.",
     "backup": "Sicherungen auf externe Laufwerke – mit Zeitplan und Wiederherstellen.",
     "restore": "System-Snapshots vor Updates und Zurücksetzen per Klick (snapper oder Timeshift).",
@@ -429,7 +431,7 @@ def module_enabled(key, settings=None):
 FONTS = {"sans": "Sans Serif", "mono": "Monospace"}
 
 APP_ID = "tuxdex"
-APP_VERSION = "1.5.6"
+APP_VERSION = "1.5.7"
 APP_STAGE = "alpha"        # Reifegrad – wird nur angezeigt, die Versionsnummer selbst bleibt ohne Zusatz
 
 
@@ -2450,6 +2452,185 @@ class DateItem(QTableWidgetItem):
         return (self.data(Qt.UserRole) or 0) < (other.data(Qt.UserRole) or 0)
 
 
+# Beliebte Programme zum direkten Installieren, nach Kategorie. (Name, Beschreibung, Quelle, Kennung)
+# Quelle: pacman = Arch-Paketquellen, flathub = Flatpak von Flathub
+SOFT_CATALOG = [
+    ("Kommunikation", [
+        ("Discord", "Chat, Sprache und Video für Communities und Freunde", "pacman", "discord"),
+        ("Signal", "Verschlüsselter Messenger", "pacman", "signal-desktop"),
+        ("Thunderbird", "E-Mail, Kalender und Kontakte", "pacman", "thunderbird"),
+    ]),
+    ("Notizen & Organisation", [
+        ("Obsidian", "Notizen mit Verknüpfungen, alles als Textdateien", "pacman", "obsidian"),
+        ("Super Productivity", "Aufgabenliste mit Zeiterfassung", "flathub", "com.super_productivity.SuperProductivity"),
+    ]),
+    ("Sicherheit & Passwörter", [
+        ("KeePassXC", "Passwort-Manager, Daten bleiben auf deinem Rechner", "pacman", "keepassxc"),
+        ("Bitwarden", "Passwort-Manager mit Cloud-Abgleich", "pacman", "bitwarden"),
+        ("VeraCrypt", "Verschlüsselte Container und Laufwerke", "pacman", "veracrypt"),
+        ("Cryptomator", "Cloud-Ordner (Dropbox, Drive …) verschlüsseln", "flathub", "org.cryptomator.Cryptomator"),
+    ]),
+    ("Internet & Übertragen", [
+        ("Brave", "Browser mit eingebautem Werbeblocker", "flathub", "com.brave.Browser"),
+        ("qBittorrent", "Torrent-Client", "pacman", "qbittorrent"),
+        ("FileZilla", "FTP- und SFTP-Client", "pacman", "filezilla"),
+        ("LocalSend", "Dateien im WLAN an andere Geräte schicken (wie AirDrop)", "flathub", "org.localsend.localsend_app"),
+    ]),
+    ("Audio & Video", [
+        ("OBS Studio", "Bildschirm aufnehmen und streamen", "pacman", "obs-studio"),
+        ("Spotify", "Musik-Streaming", "flathub", "com.spotify.Client"),
+        ("fre:ac", "Audio-Konverter und CD-Ripper", "flathub", "org.freac.freac"),
+    ]),
+    ("Entwicklung & Netzwerk", [
+        ("Visual Studio Code", "Code-Editor von Microsoft", "flathub", "com.visualstudio.code"),
+        ("Wireshark", "Netzwerkverkehr mitschneiden und analysieren", "pacman", "wireshark-qt"),
+    ]),
+    ("Konstruktion & Wissenschaft", [
+        ("FreeCAD", "3D-Konstruktion (CAD)", "pacman", "freecad"),
+        ("KiCad", "Platinen und Schaltpläne entwerfen", "pacman", "kicad"),
+        ("GNU Octave", "Mathematik und Numerik (ähnlich MATLAB)", "pacman", "octave"),
+    ]),
+    ("Spiele", [
+        ("Prism Launcher", "Minecraft mit mehreren Instanzen und Mods", "pacman", "prismlauncher"),
+    ]),
+    ("Werkzeuge", [
+        ("PeaZip", "Archive packen und entpacken (ZIP, 7z, RAR …)", "flathub", "io.github.peazip.PeaZip"),
+    ]),
+]
+
+
+class CatalogPanel(Panel):
+    """„Beliebte Programme“: nach Kategorie sortiert, mit Quelle am Knopf, Fortschritt in % und danach „Starten“."""
+
+    def __init__(self, tab):
+        super().__init__("Beliebte Programme")
+        self.tab = tab
+        self.pac, self.fp = set(), set()
+        self.installing = {}        # (Quelle, Kennung) -> Prozent
+        self.btns = {}
+        self.body.addWidget(Label("Direkt installieren – gleich unter dem Namen steht, woher das Programm kommt "
+                                  "(pacman = Arch-Paketquellen, Flatpak = Flathub).", "Hint", wrap=True))
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        self.cat_cb = QComboBox()
+        self.cat_cb.addItem("Alle Kategorien", "")
+        for cat, _ in SOFT_CATALOG:
+            self.cat_cb.addItem(cat, cat)
+        self.cat_cb.setMinimumWidth(240)
+        self.cat_cb.setMinimumHeight(38)
+        self.cat_cb.currentIndexChanged.connect(lambda _=0: self.render())
+        row.addLayout(Field("Kategorie", self.cat_cb))
+        self.search = LineEdit("", "Programm suchen …")
+        self.search.textChanged.connect(lambda _=None: self.render())
+        row.addLayout(Field("Suche", self.search), 1)
+        self.body.addLayout(row)
+        self.box = QVBoxLayout()
+        self.box.setSpacing(6)
+        self.body.addLayout(self.box)
+        self.refresh()
+
+    def refresh(self):
+        def worker():
+            pac, fp = installed_pacman(), installed_flatpaks()
+            _LAUNCH_CACHE.clear()
+            ui(lambda: self._apply(pac, fp))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _apply(self, pac, fp):
+        self.pac, self.fp = pac, fp
+        self.render()
+
+    def render(self):
+        clear_layout(self.box)
+        self.btns = {}
+        cat = self.cat_cb.currentData()
+        q = self.search.text().strip().lower()
+        shown = 0
+        for c, apps in SOFT_CATALOG:
+            if cat and c != cat:
+                continue
+            hits = [a for a in apps if not q or q in a[0].lower() or q in tr(a[1]).lower()]
+            if not hits:
+                continue
+            if not cat:
+                head = Label(c.upper(), "FieldLabel")
+                self.box.addSpacing(6)
+                self.box.addWidget(head)
+            for name, desc, src, ident in hits:
+                r = QHBoxLayout()
+                r.setSpacing(10)
+                col = QVBoxLayout()
+                col.setSpacing(0)
+                nm = Label(name)
+                nm.setStyleSheet("font-weight:600;")
+                col.addWidget(nm)
+                col.addWidget(Label(desc, "Hint", wrap=True))
+                r.addLayout(col, 1)
+                b = self._button(name, src, ident)
+                b.setMinimumWidth(170)
+                r.addWidget(b, 0, Qt.AlignVCenter)
+                self.box.addLayout(r)
+                shown += 1
+        if not shown:
+            self.box.addWidget(Label("Nichts gefunden.", "Muted"))
+
+    def _button(self, name, src, ident):
+        key = (src, ident)
+        have = ident in (self.pac if src == "pacman" else self.fp)
+        if key in self.installing:
+            b = Button(busy_text(self.installing[key]), "ghost")
+            self.btns.setdefault(key, []).append(b)
+            return b
+        if have:
+            cmd = launch_cmd(src, ident)
+            if cmd:
+                return Button("Starten", "launch", lambda: (start_app(cmd), self.tab.app.set_status("Wird gestartet …")))
+            b = Button("Installiert", "ghost")
+            b.setEnabled(False)
+            return b
+        b = Button(install_text(src), "primary", lambda: self.install(name, src, ident))
+        self.btns.setdefault(key, []).append(b)
+        if src == "flathub" and not which("flatpak"):
+            b.setEnabled(False)
+            b.setToolTip("Flatpak fehlt – im Tab „Flatpak“ einrichten.")
+        return b
+
+    def _set_busy(self, key, pct):
+        self.installing[key] = pct
+        for b in self.btns.get(key, []):
+            try:
+                b.setText(busy_text(pct))
+                b.setProperty("variant", "ghost")
+                repolish(b)
+            except RuntimeError:
+                pass
+
+    def install(self, name, src, ident):
+        key = (src, ident)
+        if key in self.installing:
+            return
+        where = "aus den Arch-Paketquellen (pacman)" if src == "pacman" else "als Flatpak von Flathub"
+        if not ask_confirm(self, name, f"{name} {where} installieren?", "Installieren"):
+            return
+        if not self.tab.app.priv.ensure(self):
+            return
+        if src == "pacman":
+            step = {"cmd": ["pacman", "-S", "--needed", "--", ident], "needs_sudo": True, "interactive": True,
+                    "label": f"sudo pacman -S {ident}"}
+        else:
+            step = {"cmd": ["flatpak", "install", "-y", "flathub", ident], "needs_sudo": True, "interactive": True,
+                    "label": f"flatpak install flathub {ident}"}
+        self._set_busy(key, 0)
+        step["on_percent"] = monotone(lambda v: self._set_busy(key, v))
+
+        def all_done():
+            self.installing.pop(key, None)
+            self.refresh()
+            if hasattr(self.tab, "refresh_list"):
+                self.tab.refresh_list()
+        run_sequence([step], self.tab.log, on_all_done=all_done)
+
+
 class SoftwareTab(Page):
     CATEGORIES = ["Programme (selbst installiert)", "AUR / Fremd-Pakete", "Flatpak",
                   "Alle Pakete (inkl. Abhängigkeiten)"]
@@ -2523,6 +2704,9 @@ class SoftwareTab(Page):
         self.details.setTextInteractionFlags(Qt.TextBrowserInteraction)
         pk.body.addWidget(self.details)
         self.lay.addWidget(pk, 2)
+
+        self.catalog = CatalogPanel(self)
+        self.lay.addWidget(self.catalog)
 
         act = Panel("Installieren")
         row = QHBoxLayout()
@@ -4763,6 +4947,401 @@ class SetupTab(Page):
             self.app.set_status(f"Energieprofil: {POWER_PROFILES[idx][1]}." if rc == 0
                                 else f"Energieprofil ließ sich nicht setzen: {err.strip().splitlines()[-1] if err.strip() else rc}")
         run_capture_async(["powerprofilesctl", "set", prof], cb)
+
+
+# --------------------------------------------------------------------------
+# Modul: USB-Stick (Abbilder auf einen Stick schreiben)
+# --------------------------------------------------------------------------
+
+FLASH_DIR = os.path.join(os.path.expanduser("~/.cache"), "tuxdex", "images")
+ARCH_ISO_BASE = "https://geo.mirror.pkgbuild.com/iso/latest/"
+HAOS_API = "https://api.github.com/repos/home-assistant/operating-system/releases/latest"
+FLASH_PRESETS = [
+    ("arch", "Arch Linux – aktuelle ISO (ca. 1,3 GB)"),
+    ("haos:generic-x86-64", "Home Assistant OS – PC / Mini-PC (x86-64)"),
+    ("haos:rpi5-64", "Home Assistant OS – Raspberry Pi 5"),
+    ("haos:rpi4-64", "Home Assistant OS – Raspberry Pi 4"),
+    ("haos:rpi3-64", "Home Assistant OS – Raspberry Pi 3 (64 Bit)"),
+    ("haos:green", "Home Assistant OS – Home Assistant Green"),
+]
+FLASH_CUSTOM = "__file__"
+FLASH_EXTS = (".iso", ".img", ".raw", ".img.xz", ".img.gz", ".iso.xz", ".iso.gz")
+DEV_RE = re.compile(r"^/dev/[A-Za-z0-9_/-]+$")
+
+
+def resolve_image(key):
+    """Offizielle Quelle eines Abbilds: dict(url, name, sha256 oder None)."""
+    if key == "arch":
+        name = "archlinux-x86_64.iso"
+        sums = _http_get(ARCH_ISO_BASE + "sha256sums.txt", timeout=20).decode(errors="replace")
+        m = re.search(r"^([0-9a-f]{64})\s+\*?" + re.escape(name) + r"\s*$", sums, re.M)
+        return {"url": ARCH_ISO_BASE + name, "name": name, "sha256": m.group(1) if m else None}
+    board = key.split(":", 1)[1]
+    data = json.loads(_http_get(HAOS_API, timeout=20).decode(errors="replace"))
+    for a in data.get("assets", []):
+        if re.fullmatch(r"haos_" + re.escape(board) + r"-[\w.]+\.img\.xz", a.get("name", "")):
+            dig = a.get("digest") or ""
+            return {"url": a["browser_download_url"], "name": a["name"],
+                    "sha256": dig.split(":", 1)[1] if dig.startswith("sha256:") else None}
+    raise ValueError("Für diese Plattform wurde kein Abbild gefunden.")
+
+
+def _sha256_file(path):
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for ch in iter(lambda: f.read(1 << 20), b""):
+            h.update(ch)
+    return h.hexdigest()
+
+
+def download_image(info, on_progress, cancel, directory=FLASH_DIR):
+    """Lädt das Abbild in den Zwischenspeicher und prüft die Prüfsumme (falls bekannt). Gibt den Pfad zurück.
+    on_progress(fertig, gesamt) · cancel: threading.Event"""
+    import urllib.request
+    import hashlib
+    os.makedirs(directory, exist_ok=True)
+    path = os.path.join(directory, os.path.basename(info["name"]))
+    if os.path.exists(path) and info.get("sha256") and _sha256_file(path) == info["sha256"]:
+        return path                                     # schon vorhanden und unverändert
+    req = urllib.request.Request(info["url"], headers={"User-Agent": f"tuxdex/{APP_VERSION}"})
+    h = hashlib.sha256()
+    done = 0
+    with urllib.request.urlopen(req, timeout=30) as r, open(path + ".part", "wb") as out:
+        total = int(r.headers.get("Content-Length") or 0)
+        while True:
+            if cancel.is_set():
+                out.close()
+                os.remove(path + ".part")
+                raise InterruptedError("Abgebrochen")
+            ch = r.read(1 << 20)
+            if not ch:
+                break
+            out.write(ch)
+            h.update(ch)
+            done += len(ch)
+            on_progress(done, total)
+    if info.get("sha256") and h.hexdigest() != info["sha256"]:
+        os.remove(path + ".part")
+        raise ValueError("Die Prüfsumme des Downloads stimmt nicht – bitte erneut versuchen.")
+    os.replace(path + ".part", path)
+    return path
+
+
+def _open_image(path):
+    """(Rohdatei, lesbarer Strom) – .xz und .gz werden beim Schreiben entpackt."""
+    import lzma
+    import gzip
+    raw = open(path, "rb")
+    low = path.lower()
+    if low.endswith(".xz"):
+        return raw, lzma.LZMAFile(raw)
+    if low.endswith(".gz"):
+        return raw, gzip.GzipFile(fileobj=raw)
+    return raw, raw
+
+
+def flash_image(path, dev, on_progress, cancel, verify=True, sudo=("sudo", "-n")):
+    """Schreibt das Abbild auf dev (dd über sudo, Daten kommen über die Eingabe) und prüft es auf Wunsch zurück.
+    on_progress(phase, Anteil 0..1) · Rückgabe (ok, geschriebene_Bytes, Meldung)"""
+    import hashlib
+    size = max(1, os.path.getsize(path))
+    raw, src = _open_image(path)
+    h = hashlib.sha256()
+    written = 0
+    dd = subprocess.Popen(list(sudo) + ["dd", f"of={dev}", "bs=4M", "iflag=fullblock", "conv=fsync"],
+                          stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    try:
+        while True:
+            if cancel.is_set():
+                dd.kill()
+                return False, written, "Abgebrochen"
+            ch = src.read(4 << 20)
+            if not ch:
+                break
+            try:
+                dd.stdin.write(ch)
+            except (BrokenPipeError, OSError):
+                break
+            h.update(ch)
+            written += len(ch)
+            on_progress("write", min(1.0, raw.tell() / size))
+        try:
+            dd.stdin.close()
+        except OSError:
+            pass
+        on_progress("sync", 1.0)
+        err = dd.stderr.read().decode(errors="replace").strip()
+        rc = dd.wait()
+    finally:
+        try:
+            src.close()
+            raw.close()
+        except Exception:
+            pass
+    if rc != 0:
+        return False, written, err.splitlines()[-1] if err else f"dd-Fehler (Code {rc})"
+    if verify and written:
+        rd = subprocess.Popen(list(sudo) + ["head", "-c", str(written), dev], stdout=subprocess.PIPE,
+                              stderr=subprocess.DEVNULL)
+        hv, got = hashlib.sha256(), 0
+        while True:
+            if cancel.is_set():
+                rd.kill()
+                return False, written, "Abgebrochen"
+            ch = rd.stdout.read(4 << 20)
+            if not ch:
+                break
+            hv.update(ch)
+            got += len(ch)
+            on_progress("verify", min(1.0, got / written))
+        rd.wait()
+        if hv.hexdigest() != h.hexdigest():
+            return False, written, "Prüfung fehlgeschlagen: Der Stick enthält nicht dieselben Daten (Stick defekt?)."
+    return True, written, "Fertig"
+
+
+def usb_targets():
+    """Wechseldatenträger, auf die geschrieben werden darf: [{path, size, model, mounts}] – nie ein Laufwerk,
+    auf dem das System liegt."""
+    try:
+        data = json.loads(subprocess.run(
+            ["lsblk", "-J", "-b", "-o", "PATH,SIZE,TYPE,RM,HOTPLUG,TRAN,MODEL,VENDOR,RO,MOUNTPOINTS"],
+            capture_output=True, text=True, timeout=10).stdout or "{}")
+    except Exception:
+        return []
+    yes = (True, "1", 1)
+    res = []
+    for d in data.get("blockdevices", []):
+        if d.get("type") != "disk" or d.get("ro") in yes or not DEV_RE.match(d.get("path") or ""):
+            continue
+        if not (d.get("rm") in yes or d.get("hotplug") in yes or d.get("tran") == "usb"):
+            continue
+        mounts = _all_mounts(d)
+        if any(m == "/" or m in SYSTEM_MOUNTS or m.startswith(("/boot", "/efi", "/usr", "/var", "/etc", "/home"))
+               for m in mounts):
+            continue
+        try:
+            size = int(d.get("size") or 0)
+        except (TypeError, ValueError):
+            size = 0
+        if size <= 0:
+            continue
+        model = f"{d.get('vendor') or ''} {d.get('model') or ''}".strip() or "USB-Datenträger"
+        res.append({"path": d["path"], "size": size, "model": model, "mounts": mounts})
+    return res
+
+
+class FlashTab(Page):
+    def __init__(self, app):
+        super().__init__()
+        self.app = app
+        self.custom = ""
+        self.cancel_ev = None
+        self.running = False
+        self.targets = []
+
+        self.badge = StatusBadge("off", "Bereit")
+        self.lay.addLayout(page_header("USB-Stick beschreiben", self.badge))
+        self.lay.addWidget(Label("Bootfähige Sticks erstellen – z. B. zum Installieren von Arch Linux oder für einen "
+                                 "Home-Assistant-Rechner. Windows-ISOs lassen sich so nicht einfach schreiben, dafür "
+                                 "braucht es spezielle Werkzeuge.", "Hint", wrap=True))
+
+        src = Panel("1 · Abbild wählen")
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        self.src_cb = QComboBox()
+        self.src_cb.setMinimumHeight(38)
+        self.src_cb.setMinimumWidth(380)
+        for key, text in FLASH_PRESETS:
+            self.src_cb.addItem(text, key)
+        self.src_cb.addItem("Eigene Datei …", FLASH_CUSTOM)
+        self.src_cb.activated.connect(self._src_chosen)
+        row.addLayout(Field("Abbild", self.src_cb), 1)
+        src.body.addLayout(row)
+        self.src_info = Label("", "Hint", wrap=True)
+        src.body.addWidget(self.src_info)
+        self.lay.addWidget(src)
+
+        dst = Panel("2 · USB-Stick wählen", [Button("↻", "icon", self.refresh_targets, "Sticks neu einlesen")])
+        self.dev_cb = QComboBox()
+        self.dev_cb.setMinimumHeight(38)
+        dst.body.addWidget(self.dev_cb)
+        dst.body.addWidget(Label("Alles auf dem Stick wird gelöscht. Es werden nur Wechseldatenträger angeboten – "
+                                 "nie die Platte, auf der dein System liegt.", "Warn", wrap=True))
+        self.cb_verify = QCheckBox("Nach dem Schreiben prüfen (liest den Stick zurück und vergleicht)")
+        self.cb_verify.setChecked(True)
+        dst.body.addWidget(self.cb_verify)
+        self.lay.addWidget(dst)
+
+        go = Panel("3 · Schreiben")
+        brow = QHBoxLayout()
+        brow.setSpacing(8)
+        self.b_go = Button("Auf Stick schreiben", "primary", self.start)
+        self.b_cancel = Button("Abbrechen", "danger", self.cancel)
+        self.b_cancel.hide()
+        brow.addWidget(self.b_go)
+        brow.addWidget(self.b_cancel)
+        brow.addStretch(1)
+        go.body.addLayout(brow)
+        self.bar = ProgressBar()
+        self.bar.hide()
+        go.body.addWidget(self.bar)
+        self.status = Label("", "Hint", wrap=True)
+        go.body.addWidget(self.status)
+        self.lay.addWidget(go)
+
+        out = Panel("Ausgabe")
+        self.log = LogView(130)
+        out.body.addWidget(self.log)
+        self.lay.addWidget(out)
+
+        self._src_chosen()
+        self.refresh_targets()
+
+    # ---- Auswahl ------------------------------------------------------------
+    def _src_chosen(self, *_):
+        key = self.src_cb.currentData()
+        if key == FLASH_CUSTOM:
+            from PySide6.QtWidgets import QFileDialog
+            f, _ = QFileDialog.getOpenFileName(self, "Abbild wählen", os.path.expanduser("~"),
+                                               "Abbilder (*.iso *.img *.raw *.xz *.gz);;Alle Dateien (*)")
+            if f:
+                self.custom = f
+            elif not self.custom:
+                self.src_cb.setCurrentIndex(0)
+                key = "arch"
+        if self.src_cb.currentData() == FLASH_CUSTOM:
+            self.src_info.setText(f"{short_path(self.custom)} · {fmt_bytes(os.path.getsize(self.custom))}"
+                                  if self.custom and os.path.exists(self.custom) else "")
+            self.b_go.setText("Auf Stick schreiben")
+        elif self.src_cb.currentData() == "arch":
+            self.src_info.setText("Wird von mirror.pkgbuild.com geladen und mit der Prüfsumme der Arch-Webseite "
+                                  "verglichen.")
+            self.b_go.setText("Herunterladen und schreiben")
+        else:
+            self.src_info.setText("Offizielles Abbild von github.com/home-assistant/operating-system (neueste "
+                                  "Version), mit Prüfsumme.")
+            self.b_go.setText("Herunterladen und schreiben")
+
+    def refresh_targets(self):
+        self.targets = usb_targets()
+        self.dev_cb.clear()
+        if not self.targets:
+            self.dev_cb.addItem("Kein USB-Stick gefunden – Stick einstecken und ↻ klicken", None)
+            return
+        for t in self.targets:
+            self.dev_cb.addItem(f"{t['model']} · {fmt_bytes(t['size'])} · {t['path']}", t["path"])
+
+    # ---- Ablauf -------------------------------------------------------------
+    def _phase(self, text, pct=None):
+        self.status.setText(text)
+        self.bar.show()
+        self.bar.set(pct, "" if pct is None else f"{pct} %")
+
+    def start(self):
+        if self.running:
+            return
+        key = self.src_cb.currentData()
+        if key == FLASH_CUSTOM and not (self.custom and os.path.isfile(self.custom)):
+            show_info(self, "Abbild", "Bitte zuerst eine Abbild-Datei wählen.")
+            return
+        if key == FLASH_CUSTOM and not self.custom.lower().endswith(FLASH_EXTS):
+            show_warning(self, "Abbild", "Diese Datei sieht nicht wie ein Abbild aus (.iso, .img, .img.xz, .img.gz).")
+            return
+        self.refresh_targets()
+        dev = self.dev_cb.currentData()
+        t = next((x for x in self.targets if x["path"] == dev), None)
+        if not t:
+            show_info(self, "USB-Stick", "Bitte einen USB-Stick einstecken und auswählen.")
+            return
+        label = self.src_cb.currentText() if key != FLASH_CUSTOM else short_path(self.custom)
+        if key == FLASH_CUSTOM and not self.custom.lower().endswith((".xz", ".gz")) \
+                and os.path.getsize(self.custom) > t["size"]:
+            show_warning(self, "USB-Stick", "Der Stick ist kleiner als das Abbild.")
+            return
+        if not ask_confirm(self, "Stick überschreiben",
+                           f"ALLE Daten auf diesem Stick werden gelöscht:\n\n{t['model']} · {fmt_bytes(t['size'])} "
+                           f"· {t['path']}\n\nGeschrieben wird: {label}\n\nWirklich fortfahren?",
+                           "Stick überschreiben", danger=True):
+            return
+        if not self.app.priv.ensure(self):
+            return
+        self.running = True
+        self.cancel_ev = threading.Event()
+        self.b_go.hide()
+        self.b_cancel.show()
+        self.badge.set("info", "Läuft")
+        self.log.set_text("")
+        verify = self.cb_verify.isChecked()
+        custom = self.custom
+        cancel = self.cancel_ev
+
+        def log(s):
+            ui(lambda: self.log.append_text(s))
+
+        def worker():
+            ok, msg = False, ""
+            try:
+                if key == FLASH_CUSTOM:
+                    path = custom
+                else:
+                    ui(lambda: self._phase("Suche das aktuelle Abbild …"))
+                    info = resolve_image(key)
+                    log(f"Quelle: {info['url']}\n" + (f"Prüfsumme (SHA-256): {info['sha256']}\n" if info.get("sha256")
+                                                      else "Hinweis: Für dieses Abbild gibt es keine Prüfsumme.\n"))
+                    last = [0]
+
+                    def prog(done, total):
+                        pct = int(done * 100 / total) if total else None
+                        if pct is None or pct != last[0]:
+                            last[0] = pct
+                            ui(lambda: self._phase(f"Lade herunter … {fmt_bytes(done)}"
+                                                   + (f" von {fmt_bytes(total)}" if total else ""), pct))
+                    path = download_image(info, prog, cancel)
+                    log(f"Abbild: {short_path(path)}\n")
+                # eingehängte Partitionen des Sticks aushängen
+                for mp in t["mounts"]:
+                    rc, _o, e = sudo_run(["umount", "--", mp])
+                    log(f"$ sudo umount {mp}\n" + (e if rc else ""))
+                    if rc:
+                        raise OSError(f"{mp} ließ sich nicht aushängen: {e.strip()}")
+                log(f"$ sudo dd of={dev} bs=4M conv=fsync  (Daten aus {os.path.basename(path)})\n")
+
+                def wprog(phase, frac):
+                    pct = int(frac * 100)
+                    txt = {"write": "Schreibe auf den Stick …", "sync": "Schließe das Schreiben ab (kann dauern) …",
+                           "verify": "Prüfe den Stick …"}[phase]
+                    ui(lambda: self._phase(txt, None if phase == "sync" else pct))
+                ok, written, msg = flash_image(path, dev, wprog, cancel, verify)
+                if ok:
+                    log(f"{fmt_bytes(written)} geschrieben" + (" und geprüft" if verify else "") + ".\n")
+                    sudo_run(["sync"])
+            except InterruptedError:
+                msg = "Abgebrochen"
+            except Exception as e:
+                msg = str(e) or type(e).__name__
+            ui(lambda: self._finished(ok, msg))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def cancel(self):
+        if self.cancel_ev and ask_confirm(self, "Abbrechen", "Vorgang abbrechen? Der Stick ist dann unvollständig "
+                                          "beschrieben und nicht bootfähig.", "Abbrechen", danger=True):
+            self.cancel_ev.set()
+
+    def _finished(self, ok, msg):
+        self.running = False
+        self.b_cancel.hide()
+        self.b_go.show()
+        self.badge.set("ok" if ok else "danger", "Fertig" if ok else "Fehlgeschlagen")
+        if ok:
+            self._phase("Fertig – der Stick kann entfernt werden.", 100)
+        else:
+            self.bar.hide()
+            self.status.setText(msg)
+        self.log.append_text(("\n" if ok else "error: ") + (msg if not ok else "Stick fertig – du kannst ihn jetzt "
+                                                                              "sicher entfernen.") + "\n")
+        self.refresh_targets()
 
 
 # --------------------------------------------------------------------------
@@ -15064,6 +15643,7 @@ class SettingsPage(Page):
             "software": "Pakete mit Icons, Größe, Version und Datum – per Kästchen auswählen und entfernen",
             "flatpak": "Flatpak-Apps und ihre Rechte (Dateien, Geräte, Netzwerk …) wie mit Flatseal",
             "disks": "Laufwerke einhängen, umbenennen, prüfen, formatieren, sicher entfernen",
+            "flash": "Bootfähige USB-Sticks mit Arch Linux, Home Assistant OS oder eigener Datei erstellen",
             "storage": "Belegung je Festplatte, größte Ordner, Aufräumen",
             "backup": "Snapshots, Spiegel und komprimierte Archive – auf mehrere Ziele gleichzeitig",
             "swap": "Fallback-Speicher (Swapfile) und Swappiness",
@@ -15268,7 +15848,7 @@ class MainWindow(QWidget):
         # bis dahin steht ein leerer Platzhalter im Stack, damit die Indizes stimmen.
         self.page_classes = {
             "update": UpdaterTab, "software": SoftwareTab, "flatpak": FlatpakTab, "swap": SwapTab, "restore": RestoreTab, "setup": SetupTab,
-            "disks": DisksTab, "storage": StorageTab, "backup": BackupTab, "tasks": TaskTab, "antivirus": AntivirusTab,
+            "disks": DisksTab, "flash": FlashTab, "storage": StorageTab, "backup": BackupTab, "tasks": TaskTab, "antivirus": AntivirusTab,
             "security": SecurityTab, "users": UsersTab,
         }
         self.tabs = []
@@ -16554,6 +17134,80 @@ EN = {
     'makepkg (Paket pacman, Gruppe base-devel) wird benötigt.': 'makepkg (package pacman, group base-devel) is required.',
     'makepkg fehlt': 'makepkg missing',
     'Bauwerkzeuge fehlen': 'Build tools missing',
+    'Beliebte Programme': 'Popular programs',
+    'Alle Kategorien': 'All categories',
+    'Kategorie': 'Category',
+    'Programm suchen …': 'Search program …',
+    'Nichts gefunden.': 'Nothing found.',
+    'Direkt installieren – gleich unter dem Namen steht, woher das Programm kommt (pacman = Arch-Paketquellen, Flatpak = Flathub).': 'Install directly – the button shows where the program comes from (pacman = Arch repositories, Flatpak = Flathub).',
+    'Kommunikation': 'Communication',
+    'Notizen & Organisation': 'Notes & organisation',
+    'Sicherheit & Passwörter': 'Security & passwords',
+    'Internet & Übertragen': 'Internet & transfer',
+    'Audio & Video': 'Audio & video',
+    'Entwicklung & Netzwerk': 'Development & network',
+    'Konstruktion & Wissenschaft': 'Engineering & science',
+    'Werkzeuge': 'Tools',
+    'Chat, Sprache und Video für Communities und Freunde': 'Chat, voice and video for communities and friends',
+    'Verschlüsselter Messenger': 'Encrypted messenger',
+    'E-Mail, Kalender und Kontakte': 'Email, calendar and contacts',
+    'Notizen mit Verknüpfungen, alles als Textdateien': 'Linked notes, all stored as text files',
+    'Aufgabenliste mit Zeiterfassung': 'Task list with time tracking',
+    'Passwort-Manager, Daten bleiben auf deinem Rechner': 'Password manager, data stays on your computer',
+    'Passwort-Manager mit Cloud-Abgleich': 'Password manager with cloud sync',
+    'Verschlüsselte Container und Laufwerke': 'Encrypted containers and drives',
+    'Cloud-Ordner (Dropbox, Drive …) verschlüsseln': 'Encrypt cloud folders (Dropbox, Drive …)',
+    'Browser mit eingebautem Werbeblocker': 'Browser with built-in ad blocker',
+    'Torrent-Client': 'Torrent client',
+    'FTP- und SFTP-Client': 'FTP and SFTP client',
+    'Dateien im WLAN an andere Geräte schicken (wie AirDrop)': 'Send files to other devices over Wi-Fi (like AirDrop)',
+    'Bildschirm aufnehmen und streamen': 'Record and stream your screen',
+    'Musik-Streaming': 'Music streaming',
+    'Audio-Konverter und CD-Ripper': 'Audio converter and CD ripper',
+    'Code-Editor von Microsoft': 'Code editor from Microsoft',
+    'Netzwerkverkehr mitschneiden und analysieren': 'Capture and analyse network traffic',
+    '3D-Konstruktion (CAD)': '3D design (CAD)',
+    'Platinen und Schaltpläne entwerfen': 'Design circuit boards and schematics',
+    'Mathematik und Numerik (ähnlich MATLAB)': 'Mathematics and numerics (similar to MATLAB)',
+    'Minecraft mit mehreren Instanzen und Mods': 'Minecraft with multiple instances and mods',
+    'Archive packen und entpacken (ZIP, 7z, RAR …)': 'Pack and unpack archives (ZIP, 7z, RAR …)',
+    'USB-Stick': 'USB stick',
+    'USB-Stick beschreiben': 'Write USB stick',
+    'Bootfähige Sticks erstellen – z. B. zum Installieren von Arch Linux oder für einen Home-Assistant-Rechner. Windows-ISOs lassen sich so nicht einfach schreiben, dafür braucht es spezielle Werkzeuge.': "Create bootable sticks – e.g. to install Arch Linux or for a Home Assistant machine. Windows ISOs can't simply be written this way; that needs special tools.",
+    '1 · Abbild wählen': '1 · Choose image',
+    '2 · USB-Stick wählen': '2 · Choose USB stick',
+    '3 · Schreiben': '3 · Write',
+    'Abbild': 'Image',
+    'Arch Linux – aktuelle ISO (ca. 1,3 GB)': 'Arch Linux – current ISO (about 1.3 GB)',
+    'Home Assistant OS – PC / Mini-PC (x86-64)': 'Home Assistant OS – PC / mini PC (x86-64)',
+    'Home Assistant OS – Raspberry Pi 5': 'Home Assistant OS – Raspberry Pi 5',
+    'Home Assistant OS – Raspberry Pi 4': 'Home Assistant OS – Raspberry Pi 4',
+    'Home Assistant OS – Raspberry Pi 3 (64 Bit)': 'Home Assistant OS – Raspberry Pi 3 (64 bit)',
+    'Home Assistant OS – Home Assistant Green': 'Home Assistant OS – Home Assistant Green',
+    'Eigene Datei …': 'Own file …',
+    'Wird von mirror.pkgbuild.com geladen und mit der Prüfsumme der Arch-Webseite verglichen.': 'Downloaded from mirror.pkgbuild.com and compared with the checksum from the Arch website.',
+    'Offizielles Abbild von github.com/home-assistant/operating-system (neueste Version), mit Prüfsumme.': 'Official image from github.com/home-assistant/operating-system (latest version), with checksum.',
+    'Kein USB-Stick gefunden – Stick einstecken und ↻ klicken': 'No USB stick found – plug one in and click ↻',
+    'Alles auf dem Stick wird gelöscht. Es werden nur Wechseldatenträger angeboten – nie die Platte, auf der dein System liegt.': 'Everything on the stick will be erased. Only removable drives are offered – never the disk your system is on.',
+    'Nach dem Schreiben prüfen (liest den Stick zurück und vergleicht)': 'Verify after writing (reads the stick back and compares)',
+    'Auf Stick schreiben': 'Write to stick',
+    'Herunterladen und schreiben': 'Download and write',
+    'Stick überschreiben': 'Overwrite stick',
+    'Bitte zuerst eine Abbild-Datei wählen.': 'Please choose an image file first.',
+    'Diese Datei sieht nicht wie ein Abbild aus (.iso, .img, .img.xz, .img.gz).': "This file doesn't look like an image (.iso, .img, .img.xz, .img.gz).",
+    'Der Stick ist kleiner als das Abbild.': 'The stick is smaller than the image.',
+    'Bitte einen USB-Stick einstecken und auswählen.': 'Please plug in and select a USB stick.',
+    'Suche das aktuelle Abbild …': 'Looking for the current image …',
+    'Schreibe auf den Stick …': 'Writing to the stick …',
+    'Schließe das Schreiben ab (kann dauern) …': 'Finishing the write (may take a while) …',
+    'Prüfe den Stick …': 'Checking the stick …',
+    'Fertig – der Stick kann entfernt werden.': 'Done – the stick can be removed.',
+    'Vorgang abbrechen? Der Stick ist dann unvollständig beschrieben und nicht bootfähig.': 'Cancel? The stick will then be incompletely written and not bootable.',
+    'Stick fertig – du kannst ihn jetzt sicher entfernen.': 'Stick ready – you can now safely remove it.',
+    'Für diese Plattform wurde kein Abbild gefunden.': 'No image was found for this platform.',
+    'Die Prüfsumme des Downloads stimmt nicht – bitte erneut versuchen.': "The checksum of the download doesn't match – please try again.",
+    'Bootfähige USB-Sticks erstellen (Arch Linux, Home Assistant OS oder eigene Abbild-Datei).': 'Create bootable USB sticks (Arch Linux, Home Assistant OS or your own image file).',
+    'Bootfähige USB-Sticks mit Arch Linux, Home Assistant OS oder eigener Datei erstellen': 'Create bootable USB sticks with Arch Linux, Home Assistant OS or your own file',
     'Bei geöffnetem Fenster regelmäßig nach Tuxdex-Updates suchen, alle': 'While the window is open, check for Tuxdex updates regularly, every',
     'Sekunden (15 bis 86400)': 'seconds (15 to 86400)',
     'Gruppen': 'Groups',

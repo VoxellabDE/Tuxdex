@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.7
+Programme und USB-Sticks (Beta).
+
+- **Software → „Beliebte Programme“**: 23 Programme nach Kategorie zum direkten Installieren – Discord, Signal, Thunderbird, Obsidian, Super Productivity, KeePassXC, Bitwarden, VeraCrypt, Cryptomator, Brave, qBittorrent, FileZilla, LocalSend, OBS Studio, Spotify, fre:ac, Visual Studio Code, Wireshark, FreeCAD, KiCad, GNU Octave, Prism Launcher, PeaZip. Mit Kategorie-Auswahl, Suche, Quelle am Knopf (pacman/Flatpak), Fortschritt in % und danach „Starten“.
+- **Neues Modul „USB-Stick“**: bootfähige Sticks erstellen. Zur Auswahl **Arch Linux** (aktuelle ISO) und **Home Assistant OS** (PC, Raspberry Pi 5/4/3, Green) – oder eine **eigene Datei** (.iso, .img, .img.xz, .img.gz). Downloads werden mit der Prüfsumme geprüft, danach wird der Stick zurückgelesen und verglichen. Es werden nur Wechseldatenträger angeboten, nie die Platte mit dem System; vor dem Überschreiben gibt es eine deutliche Rückfrage.
+
 ## 1.5.6
 Einstellungen (Beta).
 
