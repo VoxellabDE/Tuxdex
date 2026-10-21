@@ -2,6 +2,11 @@
 
 English version of [CHANGELOG.md](CHANGELOG.md). Entries before 1.0.0 are only available in German.
 
+## 1.6.1.2
+Feedback button (beta).
+
+- The feedback button at the top is now **green** like the one in the Kernel module and no longer has an emoji.
+
 ## 1.6.1.1
 Feedback (beta).
 

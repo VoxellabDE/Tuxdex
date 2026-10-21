@@ -554,7 +554,7 @@ def module_enabled(key, settings=None):
 FONTS = {"sans": "Sans Serif", "mono": "Monospace"}
 
 APP_ID = "tuxdex"
-APP_VERSION = "1.6.1.1"
+APP_VERSION = "1.6.1.2"
 APP_STAGE = ""             # früher „alpha“ – das Namensschild kommt jetzt vom Kanal (Stabil ohne Zusatz, Beta mit „-beta“)
 
 
@@ -17932,7 +17932,7 @@ class MainWindow(QWidget):
                                     "Vor der ersten root-Aktion fragt Tuxdex einmal nach deiner Zustimmung.")
         tl.addWidget(self.alpha_badge)
         tl.addSpacing(6)
-        self.b_feedback = Button("💬 Feedback", "ghost", open_feedback,
+        self.b_feedback = Button("Feedback", "primary", open_feedback,
                                  "Fehler melden, Fragen stellen oder Rückmeldung zu Beta-Funktionen geben (GitHub)")
         tl.addWidget(self.b_feedback)
         tl.addStretch(1)
@@ -19392,7 +19392,6 @@ EN = {
     'makepkg (Paket pacman, Gruppe base-devel) wird benötigt.': 'makepkg (package pacman, group base-devel) is required.',
     'makepkg fehlt': 'makepkg missing',
     'Bauwerkzeuge fehlen': 'Build tools missing',
-    '💬 Feedback': '💬 Feedback',
     'Fehler melden, Fragen stellen oder Rückmeldung zu Beta-Funktionen geben (GitHub)': 'Report bugs, ask questions or give feedback on beta features (GitHub)',
     'Feedback geben': 'Give feedback',
     'Öffnet die Rückmeldeseite auf GitHub': 'Opens the feedback page on GitHub',

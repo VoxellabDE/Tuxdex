@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.1.2
+Feedback-Knopf (Beta).
+
+- Der Feedback-Knopf oben ist jetzt **grün** wie der im Kernel-Modul und hat kein Emoji mehr.
+
 ## 1.6.1.1
 Feedback (Beta).
 
