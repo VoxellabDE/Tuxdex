@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.4
+Benutzer-Gruppen (Beta).
+
+- **Gruppen zuweisen**: Die Häkchen in der Gruppenliste waren nicht sichtbar (gesetzt sah aus wie nicht gesetzt) – behoben.
+- **Übersicht**: neue Spalte „Gruppen“ als Aufklappliste – oben die Anzahl, darunter alle Gruppen des Benutzers (Hauptgruppe zuerst).
+
 ## 1.5.3
 Gruppenverwaltung (Beta).
 

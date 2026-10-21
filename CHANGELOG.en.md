@@ -2,6 +2,12 @@
 
 English version of [CHANGELOG.md](CHANGELOG.md). Entries before 1.0.0 are only available in German.
 
+## 1.5.4
+User groups (beta).
+
+- **Assign groups**: the checkmarks in the group list weren't visible (checked looked like unchecked) – fixed.
+- **Overview**: new "Groups" column as a drop-down – the count on top, below all groups of the user (primary group first).
+
 ## 1.5.3
 Group management (beta).
 

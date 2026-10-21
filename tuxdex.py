@@ -429,7 +429,7 @@ def module_enabled(key, settings=None):
 FONTS = {"sans": "Sans Serif", "mono": "Monospace"}
 
 APP_ID = "tuxdex"
-APP_VERSION = "1.5.3"
+APP_VERSION = "1.5.4"
 APP_STAGE = "alpha"        # Reifegrad – wird nur angezeigt, die Versionsnummer selbst bleibt ohne Zusatz
 
 
@@ -709,7 +709,7 @@ QListWidget#AppList::item { padding: 6px 6px; border-radius: 6px; }
 QTableWidget::indicator, QListWidget::indicator {
     width: 16px; height: 16px; border: 1.5px solid $line_strong; border-radius: 3px; background: $bg0;
 }
-QTableWidget::indicator:checked { background: $accent; border-color: $accent; image: url("$check"); }
+QTableWidget::indicator:checked, QListWidget::indicator:checked { background: $accent; border-color: $accent; image: url("$check"); }
 QPushButton#SysHint { background: transparent; color: $warn; border: 1px solid $warn; padding: 2px 10px;
     font-size: 9pt; }
 QPushButton#SysHint[tone="danger"] { color: $danger; border-color: $danger; }
@@ -5131,8 +5131,9 @@ class AddUserDialog(QDialog):
 
 
 class UsersTab(Page):
-    COLS = [("Benutzer", 120), ("Beschreibung", 230), ("Passwort geändert", 150), ("Speicher (Home)", 130),
-            ("RAM", 90), ("Aktive Zeit", 130), ("Letzter Login", 200)]
+    COLS = [("Benutzer", 120), ("Beschreibung", 200), ("Gruppen", 150), ("Passwort geändert", 150),
+            ("Speicher (Home)", 130), ("RAM", 90), ("Aktive Zeit", 130), ("Letzter Login", 200)]
+    C_NOTE, C_GROUPS, C_PW, C_SIZE, C_RAM, C_ACTIVE, C_LOGIN = 1, 2, 3, 4, 5, 6, 7
 
     def __init__(self, app):
         super().__init__()
@@ -5153,7 +5154,7 @@ class UsersTab(Page):
         self.tree.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.tree.setSelectionMode(QAbstractItemView.SingleSelection)
         self.tree.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.tree.verticalHeader().setDefaultSectionSize(32)
+        self.tree.verticalHeader().setDefaultSectionSize(40)
         hh = self.tree.horizontalHeader()
         hh.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         for i, (_, w) in enumerate(self.COLS):
@@ -5192,6 +5193,31 @@ class UsersTab(Page):
         it = QTableWidgetItem(text)
         self.tree.setItem(r, c, it)
 
+    def _user_groups(self, names):
+        """{benutzer: [gruppen]} – Hauptgruppe zuerst, danach alle weiteren Mitgliedschaften."""
+        import pwd
+        groups = list_groups()
+        by_gid = {g[1]: g[0] for g in groups}
+        res = {}
+        for n in names:
+            try:
+                prim = by_gid.get(pwd.getpwnam(n).pw_gid)
+            except KeyError:
+                prim = None
+            rest = sorted(g[0] for g in groups if n in g[2] and g[0] != prim)
+            res[n] = ([prim] if prim else []) + rest
+        return res
+
+    def _group_combo(self, r, groups):
+        """Aufklappliste statt langer Zeile: oben die Anzahl, darunter alle Gruppen (nur zum Ansehen)."""
+        cb = QComboBox()
+        cb.setMinimumHeight(30)
+        cb.addItem(f"{len(groups)} Gruppen")
+        cb.addItems(groups)
+        cb.setToolTip(", ".join(groups))
+        cb.activated.connect(lambda _=0, c=cb: c.setCurrentIndex(0))
+        self.tree.setCellWidget(r, self.C_GROUPS, cb)
+
     def _row_of(self, name):
         for r in range(self.tree.rowCount()):
             if self.tree.item(r, 0) and self.tree.item(r, 0).text() == name:
@@ -5225,13 +5251,15 @@ class UsersTab(Page):
             self.info[name] = (uid, home, shell, full)
             r = self.tree.rowCount()
             self.tree.insertRow(r)
-            for c, v in enumerate((name, notes.get(name, ""), "…", "…", "…", "…", "—")):
+            for c, v in enumerate((name, notes.get(name, ""), "", "…", "…", "…", "…", "—")):
                 self._set(r, c, v)
 
         ram = user_ram()
+        groups = self._user_groups(name for name in self.info)
         for name in self.info:
             r = self._row_of(name)
-            self._set(r, 4, fmt_bytes(ram.get(name, 0)))
+            self._set(r, self.C_RAM, fmt_bytes(ram.get(name, 0)))
+            self._group_combo(r, groups.get(name, []))
 
         def worker():
             try:
@@ -5265,7 +5293,7 @@ class UsersTab(Page):
                 if r < 0:
                     continue
                 if name not in sh:
-                    self._set(r, 2, "root nötig")
+                    self._set(r, self.C_PW, "root nötig")
                     continue
                 days, locked = sh[name]
                 if days is None:
@@ -5274,7 +5302,7 @@ class UsersTab(Page):
                     ago = today - days
                     txt = datetime.fromtimestamp(days * 86400).strftime("%d.%m.%Y") + \
                         (" (heute)" if ago <= 0 else f" (vor {ago} Tagen)")
-                self._set(r, 2, txt + (" · gesperrt" if locked else ""))
+                self._set(r, self.C_PW, txt + (" · gesperrt" if locked else ""))
         run_capture_async(["getent", "shadow"], cb_shadow, needs_sudo=True)
 
     def _apply_active(self, gen, act):
@@ -5283,14 +5311,14 @@ class UsersTab(Page):
         for name in self.info:
             r = self._row_of(name)
             if r >= 0:
-                self._set(r, 5, fmt_active(act.get(name, 0)) if act is not None else "—")
+                self._set(r, self.C_ACTIVE, fmt_active(act.get(name, 0)) if act is not None else "—")
 
     def _apply_size(self, gen, name, size, complete):
         if gen != self.gen:
             return
         r = self._row_of(name)
         if r >= 0:
-            self._set(r, 3, "—" if size is None else ("" if complete else "≥ ") + fmt_bytes(size))
+            self._set(r, self.C_SIZE, "—" if size is None else ("" if complete else "≥ ") + fmt_bytes(size))
 
     def refresh_with_auth(self):
         self.app.priv.ensure(self)
@@ -5306,7 +5334,7 @@ class UsersTab(Page):
             logins[uname] = rest if rest else "nie"
         for r in range(self.tree.rowCount()):
             name = self.tree.item(r, 0).text()
-            self._set(r, 6, logins.get(name, "unbekannt"))
+            self._set(r, self.C_LOGIN, logins.get(name, "unbekannt"))
 
     def _selected_user(self):
         r = self.tree.currentRow()
@@ -5425,7 +5453,7 @@ class UsersTab(Page):
             save_user_note(name, dlg.entry.text())
             r = self._row_of(name)
             if r >= 0:
-                self._set(r, 1, dlg.entry.text().strip())
+                self._set(r, self.C_NOTE, dlg.entry.text().strip())
 
 
 
@@ -16464,6 +16492,8 @@ EN = {
     'makepkg (Paket pacman, Gruppe base-devel) wird benötigt.': 'makepkg (package pacman, group base-devel) is required.',
     'makepkg fehlt': 'makepkg missing',
     'Bauwerkzeuge fehlen': 'Build tools missing',
+    'Gruppen': 'Groups',
+    '{} Gruppen': '{} groups',
     'Gruppen zuweisen …': 'Assign groups …',
     'Gruppen zuweisen': 'Assign groups',
     'Gruppe suchen …': 'Search group …',
