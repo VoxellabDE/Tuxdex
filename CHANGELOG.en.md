@@ -2,6 +2,15 @@
 
 English version of [CHANGELOG.md](CHANGELOG.md). Entries before 1.0.0 are only available in German.
 
+## 1.6.1.6
+
+- Tuxdex now starts in English by default (German can still be chosen in the settings).
+- The console installer `install.sh` is English; German with `--de` or `TUXDEX_LANG=de`.
+- In English mode pacman & co. also run in English (log output no longer German).
+- Fixed: the time in the user list ("216 Tage 2 Std.") is translated in English mode.
+- Fixed: Drivers showed "Packages missing" although everything was installed (replaced packages like `libva-mesa-driver` are now detected via "provides").
+- Fixed: the completion message after driver installation was half German in English mode.
+
 ## 1.6.1.5
 
 - The "Updates fail" diagnosis now checks every repo in pacman.conf (including CachyOS) and shows which mirrors are down – with a fix via `cachyos-rate-mirrors` or `reflector`.

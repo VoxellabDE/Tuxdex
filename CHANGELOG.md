@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.1.6
+
+- Tuxdex startet jetzt standardmäßig auf Englisch (Deutsch weiterhin in den Einstellungen wählbar).
+- Der Konsolen-Installer `install.sh` ist englisch; Deutsch mit `--de` oder `TUXDEX_LANG=de`.
+- Im englischen Modus laufen pacman & Co. ebenfalls englisch (Log-Ausgaben nicht mehr deutsch).
+- Behoben: Die Zeit in der Benutzerliste („216 Tage 2 Std.“) wird im englischen Modus übersetzt.
+- Behoben: Treiber zeigte „Pakete fehlen“, obwohl alles installiert war (ersetzte Pakete wie `libva-mesa-driver` werden jetzt über „provides“ erkannt).
+- Behoben: Abschlussmeldung nach der Treiber-Installation war im englischen Modus halb deutsch.
+
 ## 1.6.1.5
 
 - Diagnose „Updates schlagen fehl“ prüft jetzt jedes Repo aus der pacman.conf (auch CachyOS) und zeigt, welche Spiegel ausgefallen sind – mit Behebung per `cachyos-rate-mirrors` bzw. `reflector`.

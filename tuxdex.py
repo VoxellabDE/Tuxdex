@@ -449,12 +449,11 @@ class QTreeWidgetItem(QTreeWidgetItem):
 
 
 def init_language():
-    """Sprache aus den Einstellungen, sonst aus der Systemsprache (deutsch → de, alles andere → en)."""
+    """Sprache aus den Einstellungen, sonst Englisch."""
     global LANG
     lang = _load_json(os.path.join(os.path.expanduser("~/.config"), "tuxdex", "settings.json"), {}).get("lang")
     if lang not in ("de", "en"):
-        env = os.environ.get("LC_ALL") or os.environ.get("LC_MESSAGES") or os.environ.get("LANG") or ""
-        lang = "de" if env.lower().startswith("de") else "en"
+        lang = "en"           # Standard ist Englisch; Deutsch wählt man in den Einstellungen
     LANG = lang
     _install_i18n()          # immer einbauen: bei Deutsch tut tr() nichts, so geht der Wechsel auch ohne Neustart
 
@@ -554,7 +553,7 @@ def module_enabled(key, settings=None):
 FONTS = {"sans": "Sans Serif", "mono": "Monospace"}
 
 APP_ID = "tuxdex"
-APP_VERSION = "1.6.1.5"
+APP_VERSION = "1.6.1.6"
 APP_STAGE = ""             # früher „alpha“ – das Namensschild kommt jetzt vom Kanal (Stabil ohne Zusatz, Beta mit „-beta“)
 
 
@@ -1312,6 +1311,8 @@ class ProcessRun:
 
     def _work(self):
         env = {**os.environ, "COLUMNS": "110", "LINES": "40"}
+        if LANG == "en":
+            env["LC_ALL"] = "C.UTF-8"      # Ausgabe von pacman & Co. ebenfalls englisch
         try:
             self.proc = track(subprocess.Popen(
                 self.full_cmd, stdin=subprocess.PIPE if self.interactive else subprocess.DEVNULL,
@@ -4886,6 +4887,17 @@ def installed_pacman():
         return set()
 
 
+def unmet(names):
+    """Nur Pakete, die auch über „provides“ nicht erfüllt sind (z. B. ersetzte Pakete wie libva-mesa-driver)."""
+    if not names:
+        return []
+    try:
+        r = subprocess.run(["pacman", "-T"] + list(names), capture_output=True, text=True, timeout=15)
+        return r.stdout.split() if r.returncode in (0, 127) else list(names)
+    except Exception:
+        return list(names)
+
+
 def installed_flatpaks():
     if not which("flatpak"):
         return set()
@@ -5482,7 +5494,7 @@ def gpu_advice(gpu, pac, kernel, has_igpu):
                 f"{name}: Aktiv ist der freie Treiber „{driver or 'keiner'}“. Für Spiele, Videoschnitt und CUDA "
                 "brauchst du den NVIDIA-Treiber. Danach ist ein Neustart nötig.", pk, "")
     if vendor in ("1002", "1022"):
-        pk = [p for p in ("mesa", "vulkan-radeon", "libva-mesa-driver") if p not in pac]
+        pk = unmet([p for p in ("mesa", "vulkan-radeon", "libva-mesa-driver") if p not in pac])
         if driver == "amdgpu" and not pk:
             return ("ok", "Treiber aktiv", f"{name}: Der AMD-Treiber (amdgpu) mit Vulkan läuft.", None, "")
         if driver in ("amdgpu", "radeon") and pk:
@@ -5491,7 +5503,7 @@ def gpu_advice(gpu, pac, kernel, has_igpu):
         return ("warn", "Kein Treiber", f"{name}: Es ist kein Grafiktreiber aktiv.", ["mesa", "vulkan-radeon",
                                                                                       "libva-mesa-driver"], "")
     if vendor == "8086":
-        pk = [p for p in ("mesa", "vulkan-intel", "intel-media-driver") if p not in pac]
+        pk = unmet([p for p in ("mesa", "vulkan-intel", "intel-media-driver") if p not in pac])
         if driver in ("i915", "xe") and not pk:
             return ("ok", "Treiber aktiv", f"{name}: Der Intel-Treiber ({driver}) mit Vulkan läuft.", None, "")
         if driver in ("i915", "xe") and pk:
@@ -5671,7 +5683,8 @@ class DriversTab(Page):
 
         def done():
             self.busy = False
-            self.log.append_text("\nFertig. Nach Treiber-Installationen (Grafik, WLAN) ist oft ein Neustart nötig.\n")
+            self.log.append_text("\n")
+            self.log.append_text("Fertig. Nach Treiber-Installationen (Grafik, WLAN) ist oft ein Neustart nötig.\n")
             self.refresh()
         run_sequence(steps, self.log, on_all_done=done)
 
@@ -7656,8 +7669,8 @@ def fmt_active(sec):
         return "—"
     h, m = int(sec // 3600), int(sec // 60 % 60)
     if h >= 48:
-        return f"{h // 24} Tage {h % 24} Std."
-    return f"{h} Std. {m} Min."
+        return tr(f"{h // 24} Tage {h % 24} Std.")
+    return tr(f"{h} Std. {m} Min.")
 
 
 def user_ram():
@@ -19633,7 +19646,7 @@ EN = {
     'Bluetooth entsperren': 'Unblock Bluetooth',
     'Bluetooth-Dienst starten': 'Start Bluetooth service',
     'Drucksystem starten': 'Start printing system',
-    '\nFertig. Nach Treiber-Installationen (Grafik, WLAN) ist oft ein Neustart nötig.\n': '\nDone. After driver installations (graphics, Wi-Fi) a restart is often needed.\n',
+    'Fertig. Nach Treiber-Installationen (Grafik, WLAN) ist oft ein Neustart nötig.': 'Done. After driver installations (graphics, Wi-Fi) a restart is often needed.',
     'Alles eingerichtet': 'All set up',
     '{} brauchen Aufmerksamkeit': '{} need attention',
     'Was funktioniert nicht?': "What isn't working?",
@@ -19767,6 +19780,8 @@ EN = {
     'IPv6-Verbindung': 'IPv6 connection',
     'Dein System bekommt für github.com eine IPv6-Adresse, kommt darüber aber nicht durch. Daher schlagen Downloads (z. B. tuxdex.db) mit „bad address“ fehl. Lösung: IPv6 im Router/NetworkManager reparieren oder abschalten, oder pacman auf IPv4 zwingen (in /etc/pacman.conf unter [options]: XferCommand = /usr/bin/curl -4 -L -C - -f -o %o %u).': 'Your system gets an IPv6 address for github.com but can\'t connect over it. That is why downloads (e.g. tuxdex.db) fail with "bad address". Fix: repair or disable IPv6 in the router/NetworkManager, or force pacman to IPv4 (in /etc/pacman.conf under [options]: XferCommand = /usr/bin/curl -4 -L -C - -f -o %o %u).',
     'Platz auf /': 'Space on /',
+    '{} Tage {} Std.': '{} days {} h',
+    '{} Std. {} Min.': '{} h {} min',
     'Uhrzeit': 'Time',
     'Zeitabgleich einschalten': 'Turn on time sync',
     'Die Uhr ist nicht mit dem Internet abgeglichen. Falsche Zeit führt zu Zertifikats- und Signaturfehlern bei Updates.': "The clock isn't synchronised with the internet. A wrong time causes certificate and signature errors during updates.",
