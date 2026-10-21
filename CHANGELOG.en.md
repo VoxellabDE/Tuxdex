@@ -2,6 +2,11 @@
 
 English version of [CHANGELOG.md](CHANGELOG.md). Entries before 1.0.0 are only available in German.
 
+## 1.6.1.4
+Kernel module (beta).
+
+- English display: the sentence under the CPU governor was half German and "Aktuell" was wrongly translated as "Up to date" – fixed.
+
 ## 1.6.1.3
 Kernel module (beta).
 

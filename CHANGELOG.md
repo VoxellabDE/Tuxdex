@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.1.4
+Kernel-Modul (Beta).
+
+- Englische Anzeige: Der Satz unter dem CPU-Governor war halb deutsch und „Aktuell“ wurde falsch als „Up to date“ übersetzt – behoben.
+
 ## 1.6.1.3
 Kernel-Modul (Beta).
 

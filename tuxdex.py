@@ -554,7 +554,7 @@ def module_enabled(key, settings=None):
 FONTS = {"sans": "Sans Serif", "mono": "Monospace"}
 
 APP_ID = "tuxdex"
-APP_VERSION = "1.6.1.3"
+APP_VERSION = "1.6.1.4"
 APP_STAGE = ""             # früher „alpha“ – das Namensschild kommt jetzt vom Kanal (Stabil ohne Zusatz, Beta mit „-beta“)
 
 
@@ -7014,8 +7014,9 @@ class KernelTab(Page):
             self.gov_cb.setCurrentIndex(i)
         self.gov_cb.setEnabled(bool(avail))
         self.b_gov.setEnabled(bool(avail))
-        self.gov_note.setText((f"Aktuell: {cur}" + (f" · Treiber {drv}" if drv else "") + ". Die Einstellung gilt bis "
-                               "zum Neustart.") if avail else "Dieser Rechner stellt keinen CPU-Governor bereit.")
+        self.gov_note.setText((f"{tr('Aktueller Governor')}: {cur}" + (f" · {tr('CPU-Treiber')} {drv}" if drv else "")
+                               + ". " + tr("Die Einstellung gilt bis zum Neustart.")) if avail
+                              else "Dieser Rechner stellt keinen CPU-Governor bereit.")
         self.badge.set("warn" if warn else "ok", f"{warn} nicht im Bootmenü" if warn else "Alles in Ordnung")
 
     # ---- Aktionen --------------------------------------------------------------
@@ -19408,6 +19409,9 @@ EN = {
     'makepkg (Paket pacman, Gruppe base-devel) wird benötigt.': 'makepkg (package pacman, group base-devel) is required.',
     'makepkg fehlt': 'makepkg missing',
     'Bauwerkzeuge fehlen': 'Build tools missing',
+    'Aktueller Governor': 'Current governor',
+    'CPU-Treiber': 'CPU driver',
+    'Die Einstellung gilt bis zum Neustart.': 'The setting applies until the next restart.',
     'Fehler melden, Fragen stellen oder Rückmeldung zu Beta-Funktionen geben (GitHub)': 'Report bugs, ask questions or give feedback on beta features (GitHub)',
     'Feedback geben': 'Give feedback',
     'Öffnet die Rückmeldeseite auf GitHub': 'Opens the feedback page on GitHub',
