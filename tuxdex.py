@@ -413,7 +413,7 @@ MODULE_INFO = {
     "antivirus": "ClamAV-Virenscanner. Auf Linux-Desktops wenig nützlich – vor allem für Server und "
                  "Dateien, die an Windows-Rechner weitergehen.",
     "security": "Sicherheits-Check, Checkliste, Firewall, offene Ports und VPN.",
-    "users": "Benutzerkonten und Gruppen verwalten. Für Fortgeschrittene.",
+    "users": "Benutzer anlegen, Passwörter ändern, Speicher, aktive Zeit und Beschreibung. Für Fortgeschrittene.",
 }
 MODULES_CORE = {"update"}
 MODULES_OFF_BY_DEFAULT = {"swap", "antivirus", "users"}
@@ -429,7 +429,7 @@ def module_enabled(key, settings=None):
 FONTS = {"sans": "Sans Serif", "mono": "Monospace"}
 
 APP_ID = "tuxdex"
-APP_VERSION = "1.4.2"
+APP_VERSION = "1.5.0"
 APP_STAGE = "alpha"        # Reifegrad – wird nur angezeigt, die Versionsnummer selbst bleibt ohne Zusatz
 
 
@@ -4769,15 +4769,253 @@ class SetupTab(Page):
 # Modul: Benutzer
 # --------------------------------------------------------------------------
 
+USER_NOTES_FILE = os.path.join(os.path.expanduser("~/.config"), "tuxdex", "user-notes.json")
+USERNAME_RE = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
+_LAST_DATE_RE = re.compile(r"([A-Z][a-z]{2} [A-Z][a-z]{2} +\d+ \d\d:\d\d:\d\d \d{4})")
+_LAST_DUR_RE = re.compile(r"\((?:(\d+)\+)?(\d+):(\d+)\)\s*$")
+
+
+def parse_last_durations(text, now=None):
+    """{benutzer: sekunden} – Summe aller Sitzungen aus `last -F` (laufende Sitzungen bis jetzt)."""
+    now = now or datetime.now()
+    res = {}
+    for line in text.splitlines():
+        parts = line.split()
+        if not parts or parts[0] in ("reboot", "shutdown", "runlevel", "wtmp", "btmp"):
+            continue
+        m = _LAST_DUR_RE.search(line)
+        if m:
+            sec = (int(m.group(1) or 0) * 24 + int(m.group(2))) * 3600 + int(m.group(3)) * 60
+        elif "still logged in" in line:
+            d = _LAST_DATE_RE.search(line)
+            if not d:
+                continue
+            try:
+                sec = max(0, int((now - datetime.strptime(d.group(1), "%a %b %d %H:%M:%S %Y")).total_seconds()))
+            except ValueError:
+                continue
+        else:
+            continue
+        res[parts[0]] = res.get(parts[0], 0) + sec
+    return res
+
+
+def parse_shadow(text):
+    """{benutzer: (Tage seit 1970 der letzten Passwortänderung oder None, gesperrt)} aus `getent shadow`."""
+    res = {}
+    for line in text.splitlines():
+        f = line.split(":")
+        if len(f) < 3:
+            continue
+        try:
+            days = int(f[2]) if f[2] != "" else None
+        except ValueError:
+            days = None
+        res[f[0]] = (days, f[1].startswith(("!", "*")))
+    return res
+
+
+def fmt_active(sec):
+    if sec is None:
+        return "—"
+    h, m = int(sec // 3600), int(sec // 60 % 60)
+    if h >= 48:
+        return f"{h // 24} Tage {h % 24} Std."
+    return f"{h} Std. {m} Min."
+
+
+def user_ram():
+    """{benutzer: Bytes im Arbeitsspeicher} über alle laufenden Prozesse."""
+    res = {}
+    try:
+        out = subprocess.run(["ps", "-eo", "user:32=,rss="], capture_output=True, text=True, timeout=10).stdout
+    except Exception:
+        return res
+    for line in out.splitlines():
+        p = line.split()
+        if len(p) == 2 and p[1].isdigit():
+            res[p[0]] = res.get(p[0], 0) + int(p[1]) * 1024
+    return res
+
+
+def dir_size(path, use_sudo=False):
+    """(Bytes, vollständig) – du über den Ordner; ohne Leserechte ist die Zahl nur eine Untergrenze."""
+    cmd = (["sudo", "-n"] if use_sudo else []) + ["du", "-sb", "-x", "--", path]
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        return int(p.stdout.split()[0]), p.returncode == 0
+    except Exception:
+        return None, False
+
+
+def sudo_run(args, input_text=None, timeout=60):
+    """Führt `sudo -n args` aus (Sitzung muss vorher per PrivilegeManager.ensure bestehen). (rc, out, err)"""
+    try:
+        p = subprocess.run(["sudo", "-n"] + args, input=input_text, capture_output=True, text=True, timeout=timeout)
+        return p.returncode, p.stdout, p.stderr
+    except Exception as e:
+        return 1, "", str(e)
+
+
+def load_user_notes():
+    d = _load_json(USER_NOTES_FILE, {})
+    return d if isinstance(d, dict) else {}
+
+
+def save_user_note(name, text):
+    d = load_user_notes()
+    if text.strip():
+        d[name] = text.strip()
+    else:
+        d.pop(name, None)
+    _save_json(USER_NOTES_FILE, d)
+
+
+class PasswordPairDialog(QDialog):
+    """Zwei Passwortfelder; für „Benutzer hinzufügen“ und „Passwort ändern“."""
+
+    def __init__(self, parent, title, heading, hint=""):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        lay = QVBoxLayout(self)
+        lay.setSizeConstraint(QLayout.SetMinimumSize)
+        spacer = QWidget()
+        spacer.setFixedSize(400, 0)
+        lay.addWidget(spacer)
+        lay.setContentsMargins(32, 28, 32, 24)
+        lay.setSpacing(12)
+        lay.addWidget(Label(heading, "DialogTitle"))
+        if hint:
+            lay.addWidget(Label(hint, "Small", wrap=True))
+        self.pw1 = LineEdit(placeholder="Neues Passwort")
+        self.pw2 = LineEdit(placeholder="Passwort wiederholen")
+        for pw in (self.pw1, self.pw2):
+            pw.setEchoMode(QLineEdit.Password)
+        lay.addLayout(Field("Passwort", self.pw1))
+        lay.addLayout(Field("Wiederholen", self.pw2))
+        self.force = QCheckBox("Beim nächsten Anmelden ein neues Passwort wählen lassen")
+        lay.addWidget(self.force)
+        self.err = Label("", "Error", wrap=True)
+        lay.addWidget(self.err)
+        btns = QHBoxLayout()
+        btns.addStretch(1)
+        btns.addWidget(Button("Abbrechen", "ghost", self.reject))
+        ok = Button("Übernehmen", "primary", self._check)
+        ok.setDefault(True)
+        btns.addWidget(ok)
+        lay.addLayout(btns)
+        self.pw1.setFocus()
+
+    def _check(self):
+        if len(self.pw1.text()) < 8:
+            self.err.setText("Das Passwort sollte mindestens 8 Zeichen haben.")
+        elif self.pw1.text() != self.pw2.text():
+            self.err.setText("Die Passwörter stimmen nicht überein.")
+        else:
+            self.accept()
+
+
+class NoteDialog(QDialog):
+    def __init__(self, parent, name, current):
+        super().__init__(parent)
+        self.setWindowTitle("Beschreibung bearbeiten")
+        lay = QVBoxLayout(self)
+        lay.setSizeConstraint(QLayout.SetMinimumSize)
+        spacer = QWidget()
+        spacer.setFixedSize(420, 0)
+        lay.addWidget(spacer)
+        lay.setContentsMargins(32, 28, 32, 24)
+        lay.setSpacing(12)
+        lay.addWidget(Label(f"Wofür ist {name} da?", "DialogTitle"))
+        self.entry = LineEdit(current, "z. B. Büro-PC, Kinderkonto, Gaming …")
+        self.entry.setMaxLength(200)
+        lay.addLayout(Field("Beschreibung", self.entry))
+        btns = QHBoxLayout()
+        btns.addStretch(1)
+        btns.addWidget(Button("Abbrechen", "ghost", self.reject))
+        ok = Button("Speichern", "primary", self.accept)
+        ok.setDefault(True)
+        btns.addWidget(ok)
+        lay.addLayout(btns)
+        self.entry.selectAll()
+        self.entry.setFocus()
+
+
+class AddUserDialog(QDialog):
+    def __init__(self, parent, has_wheel):
+        super().__init__(parent)
+        self.setWindowTitle("Benutzer hinzufügen")
+        lay = QVBoxLayout(self)
+        lay.setSizeConstraint(QLayout.SetMinimumSize)
+        spacer = QWidget()
+        spacer.setFixedSize(460, 0)
+        lay.addWidget(spacer)
+        lay.setContentsMargins(32, 28, 32, 24)
+        lay.setSpacing(12)
+        lay.addWidget(Label("Benutzer hinzufügen", "DialogTitle"))
+        self.name = LineEdit(placeholder="z. B. anna", mono=True)
+        self.name.setMaxLength(32)
+        lay.addLayout(Field("Benutzername (klein geschrieben, ohne Leerzeichen)", self.name))
+        self.full = LineEdit(placeholder="z. B. Anna Beispiel")
+        lay.addLayout(Field("Vollständiger Name (optional)", self.full))
+        self.note = LineEdit(placeholder="z. B. Büro-PC, Kinderkonto, Gaming …")
+        lay.addLayout(Field("Wofür ist der Nutzer da? (optional)", self.note))
+        self.pw1 = LineEdit(placeholder="Passwort")
+        self.pw2 = LineEdit(placeholder="Passwort wiederholen")
+        for pw in (self.pw1, self.pw2):
+            pw.setEchoMode(QLineEdit.Password)
+        lay.addLayout(Field("Passwort", self.pw1))
+        lay.addLayout(Field("Wiederholen", self.pw2))
+        self.admin = QCheckBox("Administrator (darf sudo nutzen, Gruppe „wheel“)")
+        self.admin.setVisible(has_wheel)
+        lay.addWidget(self.admin)
+        self.force = QCheckBox("Beim ersten Anmelden ein neues Passwort wählen lassen")
+        lay.addWidget(self.force)
+        self.err = Label("", "Error", wrap=True)
+        lay.addWidget(self.err)
+        btns = QHBoxLayout()
+        btns.addStretch(1)
+        btns.addWidget(Button("Abbrechen", "ghost", self.reject))
+        ok = Button("Anlegen", "primary", self._check)
+        ok.setDefault(True)
+        btns.addWidget(ok)
+        lay.addLayout(btns)
+        self.name.setFocus()
+
+    def _check(self):
+        import pwd
+        n = self.name.text().strip()
+        if not USERNAME_RE.match(n):
+            self.err.setText("Der Benutzername darf nur aus a–z, 0–9, _ und - bestehen und muss mit einem "
+                             "Buchstaben beginnen.")
+            return
+        try:
+            pwd.getpwnam(n)
+            self.err.setText("Diesen Benutzer gibt es schon.")
+            return
+        except KeyError:
+            pass
+        if len(self.pw1.text()) < 8:
+            self.err.setText("Das Passwort sollte mindestens 8 Zeichen haben.")
+        elif self.pw1.text() != self.pw2.text():
+            self.err.setText("Die Passwörter stimmen nicht überein.")
+        else:
+            self.accept()
+
+
 class UsersTab(Page):
-    COLS = [("Benutzer", 140), ("UID", 70), ("Home", 180), ("Shell", 150), ("Letzter Login", 240)]
+    COLS = [("Benutzer", 120), ("Beschreibung", 230), ("Passwort geändert", 150), ("Speicher (Home)", 130),
+            ("RAM", 90), ("Aktive Zeit", 130), ("Letzter Login", 200)]
 
     def __init__(self, app):
         super().__init__()
         self.app = app
+        self.gen = 0            # Zähler, damit späte Ergebnisse eines alten Ladevorgangs verworfen werden
+        self.info = {}          # name -> (uid, home, shell)
 
         self.lay.addLayout(page_header(
             "Registrierte Benutzer",
+            Button("Benutzer hinzufügen …", "primary", self.add_user),
             Button("Aktualisieren (mit Login-Zeiten)", "ghost", self.refresh_with_auth)))
 
         p = Panel()
@@ -4786,6 +5024,7 @@ class UsersTab(Page):
         self.tree.verticalHeader().setVisible(False)
         self.tree.setShowGrid(False)
         self.tree.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.tree.setSelectionMode(QAbstractItemView.SingleSelection)
         self.tree.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.tree.verticalHeader().setDefaultSectionSize(32)
         hh = self.tree.horizontalHeader()
@@ -4793,48 +5032,137 @@ class UsersTab(Page):
         for i, (_, w) in enumerate(self.COLS):
             self.tree.setColumnWidth(i, w)
         hh.setStretchLastSection(True)
-        self.tree.setMinimumHeight(320)
+        self.tree.setMinimumHeight(280)
+        self.tree.itemSelectionChanged.connect(self._show_details)
         p.body.addWidget(self.tree)
-        p.body.addWidget(Label("Login-Zeiten benötigen root-Rechte – Klick auf „Aktualisieren“ fragt "
-                               "bei Bedarf einmal nach dem Passwort.", "Small", wrap=True))
+        self.details = Label("Benutzer auswählen, um Passwort oder Beschreibung zu ändern.", "Muted", wrap=True)
+        p.body.addWidget(self.details)
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        row.addWidget(Button("Passwort ändern …", "ghost", self.change_password))
+        row.addWidget(Button("Beschreibung bearbeiten …", "ghost", self.edit_note))
+        row.addStretch(1)
+        p.body.addLayout(row)
+        p.body.addWidget(Label("Passwort-Datum, Speicherplatz fremder Ordner und Login-Zeiten brauchen root-Rechte – "
+                               "Klick auf „Aktualisieren“ fragt bei Bedarf einmal nach dem Passwort. „Aktive "
+                               "Zeit“ ist die Summe aller Anmeldungen aus dem Systemprotokoll (wtmp), „RAM“ der "
+                               "Arbeitsspeicher aller laufenden Prozesse des Benutzers. Die Beschreibung speichert "
+                               "Tuxdex nur für sich (~/.config/tuxdex), sie ändert nichts am System.",
+                               "Small", wrap=True))
         self.lay.addWidget(p, 1)
+
+        out = Panel("Ausgabe")
+        self.log = LogView(110)
+        out.body.addWidget(self.log)
+        self.lay.addWidget(out)
 
         self.load_users()
 
+    # ---- Laden --------------------------------------------------------------
+
+    def _set(self, r, c, text):
+        it = QTableWidgetItem(text)
+        self.tree.setItem(r, c, it)
+
+    def _row_of(self, name):
+        for r in range(self.tree.rowCount()):
+            if self.tree.item(r, 0) and self.tree.item(r, 0).text() == name:
+                return r
+        return -1
+
     def load_users(self):
+        self.gen += 1
+        gen = self.gen
         self.tree.setRowCount(0)
+        self.info = {}
         try:
             with open("/etc/passwd") as f:
                 lines = f.readlines()
         except Exception:
             return
-
+        notes = load_user_notes()
         users = []
         for line in lines:
             parts = line.strip().split(":")
             if len(parts) < 7:
                 continue
-            name, _, uid, _, _, home, shell = parts[:7]
+            name, _, uid, _, gecos, home, shell = parts[:7]
             try:
                 uid_i = int(uid)
             except ValueError:
                 continue
             if 1000 <= uid_i < 60000 and "nologin" not in shell and "false" not in shell:
-                users.append((name, uid, home, shell))
-
-        for name, uid, home, shell in users:
+                users.append((name, uid, home, shell, gecos.split(",")[0]))
+        for name, uid, home, shell, full in users:
+            self.info[name] = (uid, home, shell, full)
             r = self.tree.rowCount()
             self.tree.insertRow(r)
-            for c, v in enumerate((name, uid, home, shell, "—")):
-                self.tree.setItem(r, c, QTableWidgetItem(v))
+            for c, v in enumerate((name, notes.get(name, ""), "…", "…", "…", "…", "—")):
+                self._set(r, c, v)
+
+        ram = user_ram()
+        for name in self.info:
+            r = self._row_of(name)
+            self._set(r, 4, fmt_bytes(ram.get(name, 0)))
+
+        def worker():
+            try:
+                last = subprocess.run(["last", "-F", "-w"], capture_output=True, text=True, timeout=20).stdout
+                act = parse_last_durations(last)
+            except Exception:
+                act = None
+            ui(lambda: self._apply_active(gen, act))
+            use_sudo = self.app.priv.is_authenticated_nonblocking()
+            for name, (uid, home, shell, full) in list(self.info.items()):
+                if gen != self.gen:
+                    return
+                size, complete = dir_size(home, use_sudo)
+                ui(lambda n=name, s=size, c=complete: self._apply_size(gen, n, s, c))
+        threading.Thread(target=worker, daemon=True).start()
 
         # Unaufgefordert (ohne Passwort-Dialog!) versuchen - klappt nur,
         # wenn bereits eine sudo-Sitzung aus einer anderen Aktion aktiv ist.
         def cb(rc, out, err):
-            if rc != 0:
-                return
-            self._apply_lastlog(out)
+            if rc == 0 and gen == self.gen:
+                self._apply_lastlog(out)
         run_capture_async(["lastlog"], cb, needs_sudo=True)
+
+        def cb_shadow(rc, out, err):
+            if gen != self.gen:
+                return
+            sh = parse_shadow(out) if rc == 0 else {}
+            today = int(time.time() // 86400)
+            for name in self.info:
+                r = self._row_of(name)
+                if r < 0:
+                    continue
+                if name not in sh:
+                    self._set(r, 2, "root nötig")
+                    continue
+                days, locked = sh[name]
+                if days is None:
+                    txt = "nie gesetzt"
+                else:
+                    ago = today - days
+                    txt = datetime.fromtimestamp(days * 86400).strftime("%d.%m.%Y") + \
+                        (" (heute)" if ago <= 0 else f" (vor {ago} Tagen)")
+                self._set(r, 2, txt + (" · gesperrt" if locked else ""))
+        run_capture_async(["getent", "shadow"], cb_shadow, needs_sudo=True)
+
+    def _apply_active(self, gen, act):
+        if gen != self.gen:
+            return
+        for name in self.info:
+            r = self._row_of(name)
+            if r >= 0:
+                self._set(r, 5, fmt_active(act.get(name, 0)) if act is not None else "—")
+
+    def _apply_size(self, gen, name, size, complete):
+        if gen != self.gen:
+            return
+        r = self._row_of(name)
+        if r >= 0:
+            self._set(r, 3, "—" if size is None else ("" if complete else "≥ ") + fmt_bytes(size))
 
     def refresh_with_auth(self):
         self.app.priv.ensure(self)
@@ -4850,7 +5178,103 @@ class UsersTab(Page):
             logins[uname] = rest if rest else "nie"
         for r in range(self.tree.rowCount()):
             name = self.tree.item(r, 0).text()
-            self.tree.setItem(r, 4, QTableWidgetItem(logins.get(name, "unbekannt")))
+            self._set(r, 6, logins.get(name, "unbekannt"))
+
+    def _selected_user(self):
+        r = self.tree.currentRow()
+        if r < 0 or not self.tree.item(r, 0):
+            show_info(self, "Benutzer", "Bitte zuerst einen Benutzer in der Liste auswählen.")
+            return None
+        return self.tree.item(r, 0).text()
+
+    def _show_details(self):
+        r = self.tree.currentRow()
+        if r < 0 or not self.tree.item(r, 0):
+            return
+        name = self.tree.item(r, 0).text()
+        uid, home, shell, full = self.info.get(name, ("?", "?", "?", ""))
+        groups = _cmd_out(["id", "-nG", name]).strip().replace(" ", ", ") or "—"
+        self.details.setText(f"{full + ' · ' if full else ''}UID {uid} · Home {home} · Shell {shell} · "
+                             f"Gruppen: {groups}")
+
+    # ---- Aktionen -----------------------------------------------------------
+
+    def _run_steps(self, steps, then=None):
+        """steps: [(Anzeige, args, input_text)] nacheinander als root; Passwörter erscheinen nie im Log."""
+        self.log.set_text("")
+
+        def worker():
+            ok = True
+            for label, args, inp in steps:
+                ui(lambda l=label: self.log.append_text(f"$ sudo {l}\n"))
+                rc, out, err = sudo_run(args, inp)
+                msg = (out + err).strip()
+                ui(lambda m=msg, r=rc: self.log.append_text((m + "\n" if m else "") + f"[Exit-Code {r}]\n"))
+                if rc != 0:
+                    ok = False
+                    break
+            ui(lambda: (then(ok) if then else None, self.load_users()))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def add_user(self):
+        has_wheel = bool(_cmd_out(["getent", "group", "wheel"]).strip())
+        dlg = AddUserDialog(self, has_wheel)
+        if dlg.exec() != QDialog.Accepted:
+            return
+        name = dlg.name.text().strip()
+        full = re.sub(r"[:,\n\r]", " ", dlg.full.text()).strip()
+        note = dlg.note.text().strip()
+        pw = dlg.pw1.text()
+        if not self.app.priv.ensure(self):
+            return
+        shell = "/bin/bash" if os.path.exists("/bin/bash") else "/bin/sh"
+        cmd = ["useradd", "-m", "-s", shell]
+        if full:
+            cmd += ["-c", full]
+        if dlg.admin.isChecked() and has_wheel:
+            cmd += ["-G", "wheel"]
+        cmd.append(name)
+        steps = [(" ".join(shlex.quote(c) for c in cmd), cmd, None),
+                 (f"chpasswd  # Passwort für {name}", ["chpasswd"], f"{name}:{pw}\n")]
+        if dlg.force.isChecked():
+            steps.append((f"chage -d 0 {name}", ["chage", "-d", "0", name], None))
+
+        def then(ok):
+            if ok:
+                save_user_note(name, note)
+                self.log.append_text(f"Benutzer {name} wurde angelegt.\n")
+                if dlg.admin.isChecked():
+                    self.log.append_text("Hinweis: sudo klappt für „wheel“ nur, wenn die Zeile „%wheel ALL=(ALL:ALL) "
+                                         "ALL“ in /etc/sudoers aktiv ist (visudo).\n")
+        self._run_steps(steps, then)
+
+    def change_password(self):
+        name = self._selected_user()
+        if not name:
+            return
+        dlg = PasswordPairDialog(self, "Passwort ändern", f"Neues Passwort für {name}",
+                                 "Das Passwort wird nicht gespeichert und erscheint nicht im Ausgabefeld.")
+        if dlg.exec() != QDialog.Accepted:
+            return
+        if not self.app.priv.ensure(self):
+            return
+        steps = [(f"chpasswd  # Passwort für {name}", ["chpasswd"], f"{name}:{dlg.pw1.text()}\n")]
+        if dlg.force.isChecked():
+            steps.append((f"chage -d 0 {name}", ["chage", "-d", "0", name], None))
+        self._run_steps(steps)
+
+    def edit_note(self):
+        name = self._selected_user()
+        if not name:
+            return
+        dlg = NoteDialog(self, name, load_user_notes().get(name, ""))
+        if dlg.exec() == QDialog.Accepted:
+            save_user_note(name, dlg.entry.text())
+            r = self._row_of(name)
+            if r >= 0:
+                self._set(r, 1, dlg.entry.text().strip())
+
+
 
 
 # --------------------------------------------------------------------------
@@ -14394,7 +14818,7 @@ class SettingsPage(Page):
             "tasks": "Prozesse, Leistung, Hardware- und Netzwerkinfos",
             "antivirus": "ClamAV: Signaturen, Scans, Quarantäne",
             "security": "Sicherheits-Check, offene Ports, Mullvad VPN, Firewall",
-            "users": "Benutzerkonten und letzte Anmeldung",
+            "users": "Benutzerkonten: anlegen, Passwort, Speicher, aktive Zeit, Beschreibung",
         }
         for i, (key, name, color) in enumerate(MODULES):
             row = QHBoxLayout()
@@ -15878,6 +16302,34 @@ EN = {
     'makepkg (Paket pacman, Gruppe base-devel) wird benötigt.': 'makepkg (package pacman, group base-devel) is required.',
     'makepkg fehlt': 'makepkg missing',
     'Bauwerkzeuge fehlen': 'Build tools missing',
+    'Benutzer hinzufügen …': 'Add user …',
+    'Benutzer hinzufügen': 'Add user',
+    'Passwort ändern …': 'Change password …',
+    'Beschreibung bearbeiten …': 'Edit description …',
+    'Beschreibung bearbeiten': 'Edit description',
+    'Passwort geändert': 'Password changed',
+    'Speicher (Home)': 'Storage (home)',
+    'RAM': 'RAM',
+    'Benutzer auswählen, um Passwort oder Beschreibung zu ändern.': 'Select a user to change the password or description.',
+    'Passwort-Datum, Speicherplatz fremder Ordner und Login-Zeiten brauchen root-Rechte – Klick auf „Aktualisieren“ fragt bei Bedarf einmal nach dem Passwort. „Aktive Zeit“ ist die Summe aller Anmeldungen aus dem Systemprotokoll (wtmp), „RAM“ der Arbeitsspeicher aller laufenden Prozesse des Benutzers. Die Beschreibung speichert Tuxdex nur für sich (~/.config/tuxdex), sie ändert nichts am System.': 'Password date, storage of other users\' folders and login times need root rights – clicking "Refresh" asks for the password once if needed. "Active time" is the sum of all logins from the system log (wtmp), "RAM" the memory of all running processes of the user. Tuxdex stores the description only for itself (~/.config/tuxdex); it changes nothing on the system.',
+    'Neues Passwort': 'New password',
+    'Wiederholen': 'Repeat',
+    'Beim nächsten Anmelden ein neues Passwort wählen lassen': 'Ask for a new password at the next login',
+    'Beim ersten Anmelden ein neues Passwort wählen lassen': 'Ask for a new password at the first login',
+    'Das Passwort sollte mindestens 8 Zeichen haben.': 'The password should have at least 8 characters.',
+    'Benutzername (klein geschrieben, ohne Leerzeichen)': 'User name (lower case, no spaces)',
+    'Vollständiger Name (optional)': 'Full name (optional)',
+    'Wofür ist der Nutzer da? (optional)': 'What is the user for? (optional)',
+    'z. B. Büro-PC, Kinderkonto, Gaming …': 'e.g. office PC, child account, gaming …',
+    'Administrator (darf sudo nutzen, Gruppe „wheel“)': 'Administrator (may use sudo, group "wheel")',
+    'root nötig': 'root needed',
+    'nie gesetzt': 'never set',
+    'Der Benutzername darf nur aus a–z, 0–9, _ und - bestehen und muss mit einem Buchstaben beginnen.': 'The user name may only contain a–z, 0–9, _ and - and must start with a letter.',
+    'Diesen Benutzer gibt es schon.': 'This user already exists.',
+    'Bitte zuerst einen Benutzer in der Liste auswählen.': 'Please select a user in the list first.',
+    'Das Passwort wird nicht gespeichert und erscheint nicht im Ausgabefeld.': 'The password is not stored and does not appear in the output field.',
+    'Neues Passwort für {}': 'New password for {}',
+    'Wofür ist {} da?': 'What is {} for?',
     'leer = alle · z. B. 22 oder 8000:8100': 'empty = all · e.g. 22 or 8000:8100',
     'leer = alle · z. B. 192.168.1.20 oder 10.0.0.0/24': 'empty = all · e.g. 192.168.1.20 or 10.0.0.0/24',
     'Bitte eine gültige IP-Adresse (z. B. 192.168.1.20) oder ein Netz (z. B. 10.0.0.0/24) angeben.': 'Please enter a valid IP address (e.g. 192.168.1.20) or a network (e.g. 10.0.0.0/24).',

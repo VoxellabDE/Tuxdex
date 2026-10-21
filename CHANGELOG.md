@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.5.0
+Benutzerverwaltung.
+
+- **Benutzer hinzufügen**: Name, vollständiger Name, Passwort, optional Administrator (Gruppe „wheel“) und „Passwort beim ersten Anmelden ändern“. Der Benutzername wird geprüft, das Passwort erscheint nie im Ausgabefeld.
+- **Passwort ändern** für jeden Benutzer, auf Wunsch mit Zwang zur Änderung beim nächsten Anmelden. Die Liste zeigt, **wann das Passwort zuletzt geändert wurde** (und ob das Konto gesperrt ist).
+- **Speicher je Benutzer**: Größe des Home-Ordners und Arbeitsspeicher aller laufenden Prozesse des Benutzers.
+- **Aktive Zeit**: Summe aller Anmeldungen aus dem Systemprotokoll (wtmp), laufende Sitzungen zählen mit.
+- **Beschreibung**: Wofür der Nutzer da ist (z. B. „Büro-PC“, „Kinderkonto“) – beim Anlegen oder später. Tuxdex speichert sie nur für sich unter `~/.config/tuxdex`, am System ändert sich nichts.
+
 ## 1.4.2
 Kleine Verbesserungen und Fehlerbehebungen.
 

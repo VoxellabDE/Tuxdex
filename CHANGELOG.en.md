@@ -2,6 +2,15 @@
 
 English version of [CHANGELOG.md](CHANGELOG.md). Entries before 1.0.0 are only available in German.
 
+## 1.5.0
+User management.
+
+- **Add user**: name, full name, password, optionally administrator (group "wheel") and "change password at first login". The user name is validated, the password never shows up in the output field.
+- **Change password** for any user, optionally forcing a change at the next login. The list shows **when the password was last changed** (and whether the account is locked).
+- **Storage per user**: size of the home folder and memory of all running processes of the user.
+- **Active time**: sum of all logins from the system log (wtmp); running sessions count too.
+- **Description**: what the user is for (e.g. "office PC", "child account") – when creating or later. Tuxdex stores it only for itself under `~/.config/tuxdex`; nothing changes on the system.
+
 ## 1.4.2
 Small improvements and bug fixes.
 

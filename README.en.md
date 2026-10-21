@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.4.2--alpha-2fb3a3">
+  <img alt="Version" src="https://img.shields.io/badge/version-1.5.0--alpha-2fb3a3">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-2fb3a3">
   <img alt="For Arch Linux" src="https://img.shields.io/badge/for-Arch%20Linux-1793d1">
   <img alt="Python" src="https://img.shields.io/badge/python-3.11%2B-3776ab">
@@ -68,7 +68,7 @@ Tuxdex is a **toolkit**: under **Settings → Modules** you choose which tools a
 | **Task manager** | Processes with program icons, CPU, RAM, disk I/O, energy estimate · performance tiles with details on click: CPU (clock, caches, virtualization), RAM (speed, slots, type), drives, GPU (clock, power, VRAM, PCIe), network, battery, fans · system: CPU/GPU name, mainboard, IP addresses, DNS · **autostart & boot time** · **version status** of graphics driver, microcode, BIOS, kernel, firmware |
 | **Antivirus** *(hidden at first)* | ClamAV is mainly meant for servers and of little use on Linux desktops – an own tool for desktop users is on the [roadmap](#roadmap). Front end for an already installed ClamAV (optional): update signatures, scan folders or the whole system – with **live progress** (files, data, speed, time left) and whether the scan is running or stuck · quarantine with restore |
 | **Security** | Security check (VPN, DNS, proxy, firewall, LUKS, Secure Boot, CPU microcode, swap encryption, kernel protection, updates, antivirus, open ports, SSH, known vulnerabilities) · **checklist for maintenance, privacy & performance** (package signatures, mirrors, sudo, log size, core dumps, shell history, TRIM, I/O scheduler, NTP, old kernel modules, package list …) · **DNS leak test & VPN/proxy detection** · **block/allow open ports with a button** · front end for an already installed **Mullvad VPN** (optional: account, location, kill switch, DNS filters) · ufw firewall with rules |
-| **Users** *(hidden at first)* | User accounts and last login |
+| **Users** *(hidden at first)* | **Add users**, **change passwords** (incl. date of the last change), **storage** and **memory** per user, **active time** (sum of logins), last login and a **description** of what the user is for |
 
 ## Roadmap
 
