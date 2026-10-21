@@ -279,6 +279,8 @@ def set_text_raw(widget, text, method="setText"):
 
 
 def _install_i18n():
+    if _TR_ORIG:                                  # schon eingebaut
+        return
     import PySide6.QtWidgets as W
 
     def wrap(cls, name):
@@ -348,8 +350,15 @@ def init_language():
         env = os.environ.get("LC_ALL") or os.environ.get("LC_MESSAGES") or os.environ.get("LANG") or ""
         lang = "de" if env.lower().startswith("de") else "en"
     LANG = lang
-    if LANG != "de":
-        _install_i18n()
+    _install_i18n()          # immer einbauen: bei Deutsch tut tr() nichts, so geht der Wechsel auch ohne Neustart
+
+
+def set_language(code):
+    """Sprache zur Laufzeit wechseln (danach Fenster neu aufbauen)."""
+    global LANG
+    LANG = code if code in ("de", "en") else "de"
+    _TR_CACHE.clear()
+    _install_i18n()
 
 
 # --------------------------------------------------------------------------
@@ -431,7 +440,7 @@ def module_enabled(key, settings=None):
 FONTS = {"sans": "Sans Serif", "mono": "Monospace"}
 
 APP_ID = "tuxdex"
-APP_VERSION = "1.5.13"
+APP_VERSION = "1.5.14"
 APP_STAGE = ""             # früher „alpha“ – das Namensschild kommt jetzt vom Kanal (Stabil ohne Zusatz, Beta mit „-beta“)
 
 
@@ -15730,9 +15739,8 @@ class SettingsPage(Page):
         st["lang"] = code
         save_settings(st)
         self.update_panel.settings["lang"] = code
-        if code != LANG and ask_confirm(self, "Sprache", "Tuxdex jetzt neu starten, damit die Sprache wechselt?",
-                                        "Neu starten"):
-            self.app.restart()
+        if code != LANG:
+            self.app.switch_language(code)       # baut das Fenster neu auf – kein Neustart nötig
 
     def _modules_panel(self):
         p = self.mod_panel = Panel("Module")
@@ -15808,7 +15816,7 @@ class SettingsPage(Page):
         lrow.addWidget(self.lang_seg)
         lrow.addStretch(1)
         langp.body.addLayout(lrow)
-        langp.body.addWidget(Label("Wirkt nach einem Neustart von Tuxdex.", "Hint", wrap=True))
+        langp.body.addWidget(Label("Wirkt sofort – das Fenster wird dabei neu aufgebaut.", "Hint", wrap=True))
         self.lay.addWidget(langp)
         self.lay.addWidget(self._modules_panel())
 
@@ -16259,6 +16267,33 @@ class MainWindow(QWidget):
         self.gear.setChecked(True)
         for t in self.tabs:
             t.set_selected(False)
+
+    def switch_language(self, code):
+        """Sprache sofort wechseln: neues Hauptfenster in der neuen Sprache an derselben Stelle öffnen, das alte
+        schließen. Läuft gerade ein Vorgang (Update, Backup, Scan …), wird nicht gewechselt, sondern beim nächsten
+        Start – sonst ginge dessen Anzeige verloren."""
+        busy = running_children()
+        if busy:
+            show_info(self, "Sprache", "Es läuft noch ein Vorgang. Die Sprache wird beim nächsten Start von Tuxdex "
+                      "gewechselt – oder jetzt, wenn der Vorgang fertig ist (Sprache dann noch einmal umschalten).")
+            return False
+        was_settings = self.stack.currentWidget() is self.settings_page
+        last = self._last_tab
+        geo = self.geometry()
+        set_language(code)
+        new = MainWindow()
+        new.setFocusPolicy(Qt.ClickFocus)
+        new.setGeometry(geo)
+        new.show()
+        new.setFocus()
+        if was_settings:
+            new.open_settings()
+        else:
+            new.select(last)
+        QApplication.instance()._tuxdex_window = new      # Referenz halten, sonst räumt Python das Fenster ab
+        self.hide()
+        self.deleteLater()
+        return True
 
     def refresh_version_labels(self):
         self.ver_label.setText(tr("Version") + f" {vlabel()}")
@@ -17350,6 +17385,8 @@ EN = {
     'makepkg (Paket pacman, Gruppe base-devel) wird benötigt.': 'makepkg (package pacman, group base-devel) is required.',
     'makepkg fehlt': 'makepkg missing',
     'Bauwerkzeuge fehlen': 'Build tools missing',
+    'Wirkt sofort – das Fenster wird dabei neu aufgebaut.': 'Takes effect immediately – the window is rebuilt.',
+    'Es läuft noch ein Vorgang. Die Sprache wird beim nächsten Start von Tuxdex gewechselt – oder jetzt, wenn der Vorgang fertig ist (Sprache dann noch einmal umschalten).': 'An operation is still running. The language changes at the next start of Tuxdex – or now once the operation has finished (then switch the language again).',
     'Entwicklungsstand': 'development build',
     'veraltet': 'outdated',
     'Beliebte Programme': 'Popular programs',
@@ -18320,6 +18357,7 @@ def main():
     apply_theme(app)
     app.aboutToQuit.connect(stop_children)      # auch beim Neustart nach einem Update
     win = MainWindow()
+    app._tuxdex_window = win
     win.setFocusPolicy(Qt.ClickFocus)
     win.show()
     win.setFocus()

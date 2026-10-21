@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.14
+Sprachwechsel ohne Neustart (Beta).
+
+- **DE | EN**: Die Sprache wechselt sofort – Tuxdex baut das Fenster in der neuen Sprache neu auf und bleibt an derselben Stelle (gleicher Tab, gleiche Fenstergröße und -position). Läuft gerade ein Vorgang (Update, Backup, Scan …), wird nicht gewechselt, damit dessen Anzeige nicht verloren geht; die Sprache gilt dann ab dem nächsten Start oder nach erneutem Umschalten.
+
 ## 1.5.13
 Beta-Kennzeichnung.
 

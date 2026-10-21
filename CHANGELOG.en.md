@@ -2,6 +2,11 @@
 
 English version of [CHANGELOG.md](CHANGELOG.md). Entries before 1.0.0 are only available in German.
 
+## 1.5.14
+Language switch without restart (beta).
+
+- **DE | EN**: the language changes immediately – Tuxdex rebuilds the window in the new language and stays in the same place (same tab, same window size and position). If an operation is running (update, backup, scan …), nothing is switched so its display isn't lost; the language then applies from the next start or after switching again.
+
 ## 1.5.13
 Beta label.
 
