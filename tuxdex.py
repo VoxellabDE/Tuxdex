@@ -104,15 +104,15 @@ def _show_fatal_error(title, message):
 
 
 try:
-    from PySide6.QtCore import QObject, Qt, Signal, Slot, QTimer, QSize, QRectF
+    from PySide6.QtCore import QObject, Qt, Signal, Slot, QTimer, QSize, QRectF, QEvent
     from PySide6.QtGui import (QColor, QFont, QFontDatabase, QPainter, QPainterPath, QPen, QTextCharFormat,
-                               QTextCursor, QIcon, QPixmap)
+                               QTextCursor, QIcon, QPixmap, QPalette)
     from PySide6.QtWidgets import (
         QApplication, QWidget, QFrame, QLabel, QPushButton, QHBoxLayout, QVBoxLayout,
         QGridLayout, QStackedWidget, QPlainTextEdit, QLineEdit, QCheckBox, QComboBox,
         QListWidget, QAbstractItemView, QTableWidget, QTableWidgetItem, QHeaderView,
         QTreeWidget, QTreeWidgetItem, QLayout,
-        QSlider, QDialog, QMessageBox, QScrollArea, QSizePolicy,
+        QSlider, QDialog, QMessageBox, QScrollArea, QSizePolicy, QFileDialog,
     )
 except Exception as e:
     _show_fatal_error(
@@ -429,7 +429,7 @@ def module_enabled(key, settings=None):
 FONTS = {"sans": "Sans Serif", "mono": "Monospace"}
 
 APP_ID = "tuxdex"
-APP_VERSION = "1.4.1"
+APP_VERSION = "1.4.2"
 APP_STAGE = "alpha"        # Reifegrad – wird nur angezeigt, die Versionsnummer selbst bleibt ohne Zusatz
 
 
@@ -776,7 +776,32 @@ def tuxdex_palette():
     return pal
 
 
+class DialogFlattener(QObject):
+    """Beim Öffnen jedes Dialogs die Beschriftungen auf die Dialogfläche setzen. Manche Desktop-Themes (KDE)
+    malen Texte und Symbole in Pop-ups sonst auf einen schwarzen Kasten."""
+
+    def eventFilter(self, obj, ev):
+        if ev.type() == QEvent.Show and isinstance(obj, QDialog) and not obj.property("tdx_flat") \
+                and not isinstance(obj, QFileDialog):
+            obj.setProperty("tdx_flat", True)
+            bg = COLORS["bg2"]
+            import PySide6.QtWidgets as _W      # Qt-eigene Klasse: QLabel heißt hier die Übersetzungs-Unterklasse
+            for lbl in obj.findChildren(_W.QLabel):
+                if lbl.property("tdx_flat") or lbl.objectName() in ("Badge",):
+                    continue
+                pal = lbl.palette()
+                for role in (QPalette.Window, QPalette.Base):
+                    pal.setColor(role, QColor(bg))
+                lbl.setPalette(pal)
+                lbl.setAutoFillBackground(True)
+                lbl.setStyleSheet(lbl.styleSheet() + f"background: {bg};")
+                lbl.setProperty("tdx_flat", True)
+        return False
+
+
 def apply_theme(app):
+    app._dialog_flattener = DialogFlattener(app)
+    app.installEventFilter(app._dialog_flattener)
     families = set(QFontDatabase.families())
 
     def pick(cands, fallback):
@@ -1696,6 +1721,42 @@ def ask_password(parent, title="Administrator-Passwort", error=None):
     return None
 
 
+class _CopyOverlay(QObject):
+    """Hält den „Kopieren“-Knopf oben rechts im Textfeld."""
+
+    def __init__(self, edit):
+        super().__init__(edit)
+        self.edit = edit
+        self.btn = Button("Kopieren", "ghost", self.copy, "Gesamte Ausgabe in die Zwischenablage")
+        self.btn.setParent(edit)
+        self.btn.setStyleSheet("padding: 3px 10px; font-size: 9pt;")
+        edit.installEventFilter(self)
+        self.place()
+
+    def copy(self):
+        QApplication.clipboard().setText(self.edit.toPlainText())
+        self.btn.setText(tr("Kopiert ✓"))
+        QTimer.singleShot(1500, lambda: self.btn.setText(tr("Kopieren")))
+
+    def place(self):
+        self.btn.adjustSize()
+        sb = self.edit.verticalScrollBar()
+        x = self.edit.width() - self.btn.width() - 8 - (sb.width() if sb.isVisible() else 0)
+        self.btn.move(max(0, x), 6)
+        self.btn.raise_()
+
+    def eventFilter(self, obj, ev):
+        if ev.type() in (QEvent.Resize, QEvent.Show):
+            self.place()
+        return False
+
+
+def attach_copy_button(edit):
+    """„Kopieren“-Knopf für ein Textfeld mit Konsolenausgabe (jede Ausgabe ohne Markieren kopierbar)."""
+    edit._copy_overlay = _CopyOverlay(edit)
+    return edit
+
+
 class PromptDialog(QDialog):
     """Rückfrage eines laufenden Prozesses (pacman/paru) als Fenster."""
 
@@ -1717,6 +1778,7 @@ class PromptDialog(QDialog):
         ctx.setFont(QFont(FONTS["mono"], 9))
         ctx.setMinimumHeight(180)
         ctx.moveCursor(QTextCursor.End)
+        attach_copy_button(ctx)
         lay.addWidget(ctx)
         q = Label(prompt.strip(), "Value", wrap=True)
         lay.addWidget(q)
@@ -4259,6 +4321,15 @@ def installed_flatpaks():
         return set()
 
 
+def power_profiles_available():
+    """Profile, die dieser Rechner wirklich kennt – „performance“ gibt es nur auf Geräten, deren Treiber es
+    anbietet (powerprofilesctl list)."""
+    if not which("powerprofilesctl"):
+        return set()
+    return set(re.findall(r"^[\s*]*([\w-]+):\s*$", _cmd_out(["powerprofilesctl", "list"]), re.M)) \
+        & {p[0] for p in POWER_PROFILES}
+
+
 def power_profile():
     return _cmd_out(["powerprofilesctl", "get"]).strip() if which("powerprofilesctl") else ""
 
@@ -4390,6 +4461,7 @@ class SetupTab(Page):
     def refresh(self):
         def worker():
             pac, fp, prof = installed_pacman(), installed_flatpaks(), power_profile()
+            self.power_avail = power_profiles_available()
             defaults, ml = default_apps_state(), multilib_enabled()
             ui(lambda: (self._apply_defaults(defaults), self._apply_games(pac, fp, ml), self._apply(pac, fp, prof)))
         threading.Thread(target=worker, daemon=True).start()
@@ -4412,6 +4484,9 @@ class SetupTab(Page):
         self.badge.set("ok" if done == len(BASICS) else "info", f"{done} von {len(BASICS)} Basics")
         ids = [p[0] for p in POWER_PROFILES]
         self.power_box.setVisible(prof in ids)
+        avail = getattr(self, "power_avail", set())
+        for i, pid in enumerate(ids):
+            self.power_seg.btns[i].setVisible(not avail or pid in avail)
         if prof in ids:
             self.power_seg.set(ids.index(prof))
         self.render_alternatives()
@@ -4686,7 +4761,7 @@ class SetupTab(Page):
 
         def cb(rc, out, err):
             self.app.set_status(f"Energieprofil: {POWER_PROFILES[idx][1]}." if rc == 0
-                                else f"Energieprofil ließ sich nicht setzen: {err.strip()}")
+                                else f"Energieprofil ließ sich nicht setzen: {err.strip().splitlines()[-1] if err.strip() else rc}")
         run_capture_async(["powerprofilesctl", "set", prof], cb)
 
 
@@ -9182,6 +9257,8 @@ class AntivirusTab(Page):
         self.b_auto = Button("Automatische Updates aktivieren", "ghost", self.enable_auto)
         for x in (self.b_fresh, self.b_auto):
             b.addWidget(x)
+        self.b_install = Button(install_text("pacman"), "primary", self.install_clamav)
+        b.addWidget(self.b_install)
         b.addStretch(1)
         st.body.addLayout(b)
         self.lay.addWidget(st)
@@ -9369,12 +9446,14 @@ class AntivirusTab(Page):
             x.setVisible(self.installed)
         self.scan_panel.setVisible(self.installed)
         self.found_panel.setVisible(self.installed)
+        self.b_install.setVisible(not self.installed)
         if not self.installed:
+            self.b_install.setText(install_text("pacman"))
             self.badge.set("off", "Nicht installiert")
             self._st_item(0, "ClamAV", "nicht installiert")
             self.st_note.setText(f'<span style="color:{COLORS["muted"]}">ClamAV ist nicht installiert. Tuxdex '
                                  f'funktioniert auch ohne. Sobald ClamAV auf dem System vorhanden ist, lässt es sich '
-                                 f'hier bedienen.</span>')
+                                 f'hier bedienen – oder unten gleich installieren.</span>')
             return
         # "ClamAV 1.4.1/27411/Wed Sep 25 08:34:07 2026"
         ver = res.get("version", "")
@@ -9427,6 +9506,24 @@ class AntivirusTab(Page):
         self.b_fresh.setProperty("variant", "primary" if (age_days is None or age_days > 3) else "ghost")
         repolish(self.b_fresh)
         self.st_note.setText("<br>".join(notes))
+
+    def install_clamav(self):
+        if not ask_confirm(self, "ClamAV installieren", "ClamAV installieren?\n\npacman: clamav", "Installieren (pacman)"):
+            return
+        if not self.app.priv.ensure(self):
+            return
+        self.log.set_text("$ sudo pacman -S --needed clamav\n")
+        busy = monotone(lambda v: self.b_install.setText(busy_text(v)))
+        self.b_install.setText(busy_text(0))
+
+        def done(rc):
+            self.log.append_text(f"[Exit-Code {rc}]\n")
+            if rc == 0:
+                self.log.append_text("ClamAV ist installiert. Als Nächstes „Signaturen aktualisieren“ und "
+                                     "„Automatische Updates aktivieren“.\n")
+            self.refresh_status()
+        run_streaming(["pacman", "-S", "--needed", "--noconfirm", "clamav"], self.log, needs_sudo=True,
+                      clear_first=False, interactive=True, on_done=done, on_percent=busy)
 
     def update_signatures(self):
         if not self.app.priv.ensure(self):
@@ -10383,6 +10480,7 @@ def show_text(parent, title, heading, text):
     box.setReadOnly(True)
     box.setFont(QFont(FONTS["mono"], 9))
     box.setMinimumSize(760, 360)
+    attach_copy_button(box)
     lay.addWidget(box)
     row = QHBoxLayout()
     row.addStretch(1)
@@ -10641,7 +10739,7 @@ class SecurityTab(Page):
         rl.setContentsMargins(0, 0, 0, 0)
         rl.setSpacing(8)
         self.rule_table = QTableWidget(0, 2)
-        self.rule_table.setHorizontalHeaderLabels(["NR.", "REGEL"])
+        self.rule_table.setHorizontalHeaderLabels(["NR.", "REGEL · NAME"])
         self.rule_table.verticalHeader().setVisible(False)
         self.rule_table.setShowGrid(False)
         self.rule_table.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -10654,6 +10752,7 @@ class SecurityTab(Page):
         add = QHBoxLayout()
         add.setSpacing(8)
         self.r_ip = LineEdit(placeholder="leer = alle · z. B. 192.168.1.20 oder 10.0.0.0/24", mono=True)
+        self.r_name = LineEdit(placeholder="z. B. SSH vom Laptop")
         self.r_port = LineEdit(placeholder="leer = alle · z. B. 22 oder 8000:8100", mono=True)
         self.r_proto = QComboBox()
         self.r_proto.addItems(["tcp", "udp", "tcp+udp"])
@@ -10661,6 +10760,7 @@ class SecurityTab(Page):
         self.r_act = QComboBox()
         self.r_act.addItems(["erlauben", "sperren"])
         self.r_act.setMinimumHeight(38)
+        add.addLayout(Field("Name (optional)", self.r_name), 1)
         add.addLayout(Field("Von IP-Adresse (optional)", self.r_ip), 1)
         add.addLayout(Field("Port", self.r_port), 1)
         add.addLayout(Field("Protokoll", self.r_proto))
@@ -11934,6 +12034,9 @@ class SecurityTab(Page):
                 spec += ["to", "any", "port", port]
                 if proto != "tcp+udp":
                     spec += ["proto", proto]
+        name = re.sub(r"[\x00-\x1f'\"\\]", "", self.r_name.text()).strip()[:60]
+        if name:
+            spec += ["comment", name]
         self._root(["ufw", act] + spec, then=lambda rc: self.fw_status())
 
     def fw_del_rule(self):

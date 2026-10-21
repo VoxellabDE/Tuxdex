@@ -2,6 +2,15 @@
 
 English version of [CHANGELOG.md](CHANGELOG.md). Entries before 1.0.0 are only available in German.
 
+## 1.4.2
+Small improvements and bug fixes.
+
+- **Firewall (ufw)**: rules get a name/label (stored as a ufw comment, shown in the rule list).
+- **Power profile**: only profiles the machine really supports are offered – "Performance" is missing on many devices and caused an error message.
+- **Prompts and text windows**: a "Copy" button for the whole output here too.
+- **Pop-ups**: labels and icons no longer sit on a black box (also on KDE).
+- **Antivirus**: ClamAV can be installed right in the tab (pacman), with progress in %.
+
 ## 1.4.1
 Bug fixes and small improvements.
 

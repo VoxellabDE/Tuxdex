@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.4.2
+Kleine Verbesserungen und Fehlerbehebungen.
+
+- **Firewall (ufw)**: Regeln bekommen einen Namen/eine Bezeichnung (als ufw-Kommentar, steht in der Regelliste).
+- **Energieprofil**: Es werden nur noch Profile angeboten, die der Rechner wirklich kennt – „Leistung“ fehlt auf vielen Geräten und führte zu einer Fehlermeldung.
+- **Rückfragen und Textfenster**: auch hier ein „Kopieren“-Knopf für die ganze Ausgabe.
+- **Pop-ups**: Beschriftungen und Symbole liegen nicht mehr auf einem schwarzen Kasten (auch unter KDE).
+- **Antivirus**: ClamAV lässt sich direkt im Tab installieren (pacman), mit Fortschritt in %.
+
 ## 1.4.1
 Fehlerbehebungen und kleine Verbesserungen.
 
