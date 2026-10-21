@@ -13995,6 +13995,28 @@ class UpdatePanel(QWidget):
         if not self._need_admin():
             self._prog_fail("Keine Admin-Rechte")
             return
+        missing = [t for t in ("fakeroot", "debugedit") if not which(t)]
+        if missing:
+            if not ask_confirm(self, "Bauwerkzeuge fehlen",
+                               f"Zum Bauen fehlt: {', '.join(missing)}.\n\nJetzt die Gruppe base-devel "
+                               "installieren?\n\npacman: base-devel", "Installieren (pacman)"):
+                self._prog_fail("Bauwerkzeuge fehlen")
+                return
+            self.log.show()
+            self.badge.set("info", "Installiere Bauwerkzeuge …")
+            self._prog(20, "Installiere base-devel …")
+            self.log.append_text("\n$ sudo pacman -S --needed base-devel\n")
+
+            def tools_done(rc):
+                self.log.append_text(f"[Exit-Code {rc}]\n")
+                if rc != 0:
+                    self.badge.set("danger", "Bauwerkzeuge fehlgeschlagen")
+                    self._prog_fail("Bauwerkzeuge fehlgeschlagen")
+                    return
+                self._build(src)
+            run_streaming(["pacman", "-S", "--needed", "--noconfirm", "base-devel"], self.log, needs_sudo=True,
+                          clear_first=False, interactive=True, on_done=tools_done)
+            return
         self.log.show()
         self.badge.set("info", "Baue Paket …")
         self._prog(28, "Baue Paket …")
@@ -15667,6 +15689,10 @@ EN = {
     'Mainboard unbekannt': 'Mainboard unknown',
     'makepkg (Paket pacman, Gruppe base-devel) wird benötigt.': 'makepkg (package pacman, group base-devel) is required.',
     'makepkg fehlt': 'makepkg missing',
+    'Bauwerkzeuge fehlen': 'Build tools missing',
+    'Bauwerkzeuge fehlgeschlagen': 'Build tools failed',
+    'Installiere Bauwerkzeuge …': 'Installing build tools …',
+    'Installiere base-devel …': 'Installing base-devel …',
     'manuell': 'manual',
     'Max. Geschwindigkeit': 'Max. speed',
     'Max. PCI-Express-Geschwindigkeit': 'Max. PCI Express speed',
