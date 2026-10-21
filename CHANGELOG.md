@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.17
+Standard-Apps (Beta).
+
+- **Einrichten → Standard-Apps**: Die Auswahl wurde bei vielen Systemen nicht wirksam, vor allem unter KDE. Dort hat die Datei `kde-mimeapps.list` Vorrang vor `mimeapps.list`, und `xdg-mime` schreibt nur in die zweite. Tuxdex trägt die Standard-App jetzt in alle relevanten Dateien ein (auch die der laufenden Oberfläche), nimmt sie aus den „Removed Associations“ und prüft danach, was wirklich gilt. Das Ergebnis steht direkt unter der Auswahl – auch eine Warnung, falls die Oberfläche es überschreibt.
+
 ## 1.5.16
 Umbenennung (Beta).
 

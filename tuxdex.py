@@ -440,7 +440,7 @@ def module_enabled(key, settings=None):
 FONTS = {"sans": "Sans Serif", "mono": "Monospace"}
 
 APP_ID = "tuxdex"
-APP_VERSION = "1.5.16"
+APP_VERSION = "1.5.17"
 APP_STAGE = ""             # früher „alpha“ – das Namensschild kommt jetzt vom Kanal (Stabil ohne Zusatz, Beta mit „-beta“)
 
 
@@ -4530,6 +4530,49 @@ def default_app(mime):
     return _cmd_out(["xdg-mime", "query", "default", mime]).strip() if which("xdg-mime") else ""
 
 
+def mimeapps_files():
+    """Dateien, in denen Standard-Apps stehen: ~/.config/mimeapps.list und – falls vorhanden – die Datei der
+    laufenden Oberfläche (z. B. kde-mimeapps.list). Die Oberflächen-Datei hat Vorrang; wer nur mimeapps.list
+    schreibt (xdg-mime default), sieht unter KDE oft keine Wirkung."""
+    cfg = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
+    files = [os.path.join(cfg, "mimeapps.list")]
+    for d in os.environ.get("XDG_CURRENT_DESKTOP", "").split(":"):
+        f = os.path.join(cfg, d.lower() + "-mimeapps.list")
+        if d and os.path.exists(f) and f not in files:
+            files.append(f)
+    return files
+
+
+def set_mime_default(ident, mimes):
+    """Schreibt ident als Standard für alle mimes in alle relevanten mimeapps-Dateien und nimmt es aus den
+    „Removed Associations“. Gibt eine Fehlermeldung oder None zurück."""
+    import configparser
+    err = None
+    for f in mimeapps_files():
+        cp = configparser.ConfigParser(interpolation=None, delimiters=("=",), strict=False)
+        cp.optionxform = str                      # Groß-/Kleinschreibung der MIME-Typen erhalten
+        try:
+            cp.read(f, encoding="utf-8")
+            if not cp.has_section("Default Applications"):
+                cp.add_section("Default Applications")
+            for m in mimes:
+                cp["Default Applications"][m] = ident + ";"
+                if cp.has_section("Removed Associations") and m in cp["Removed Associations"]:
+                    left = [x for x in cp["Removed Associations"][m].split(";") if x and x != ident]
+                    if left:
+                        cp["Removed Associations"][m] = ";".join(left) + ";"
+                    else:
+                        cp.remove_option("Removed Associations", m)
+            os.makedirs(os.path.dirname(f), exist_ok=True)
+            tmp = f + ".tuxdex-tmp"
+            with open(tmp, "w", encoding="utf-8") as fh:
+                cp.write(fh, space_around_delimiters=False)
+            os.replace(tmp, f)
+        except Exception as e:
+            err = f"{os.path.basename(f)}: {e}"
+    return err
+
+
 def default_apps_state():
     """{Kennung: (aktuelle desktop-id, [(Name, desktop-id)])}"""
     return {key: (default_app(mimes[0]), apps_for_mime(mimes[0])) for key, _, mimes in DEFAULT_APP_TYPES}
@@ -4786,6 +4829,8 @@ class SetupTab(Page):
         grid.setColumnStretch(1, 1)
         grid.setColumnStretch(3, 1)
         dp.body.addLayout(grid)
+        self.default_note = Label("", "Muted", wrap=True)
+        dp.body.addWidget(self.default_note)
         self.lay.addWidget(dp)
 
         gp = Panel("Spiele")
@@ -4932,19 +4977,44 @@ class SetupTab(Page):
         if not ident:
             return
         mimes = next(m for k, _, m in DEFAULT_APP_TYPES if k == key)
-        cmds = [["xdg-mime", "default", ident] + mimes]
-        if key == "browser" and which("xdg-settings"):
-            cmds.append(["xdg-settings", "set", "default-web-browser", ident])
+        name = cb.currentText()
 
         def worker():
-            ok = True
+            problems = []
+            # 1. direkt in die mimeapps-Dateien schreiben (auch kde-mimeapps.list & Co., die Vorrang haben)
+            err = set_mime_default(ident, mimes)
+            if err:
+                problems.append(err)
+            # 2. zusätzlich die Standardwerkzeuge – sie kennen oberflächenspezifische Einstellungen (z. B. KDE)
+            cmds = []
+            if which("xdg-mime"):
+                cmds.append(["xdg-mime", "default", ident] + mimes)
+            if key == "browser" and which("xdg-settings"):
+                cmds.append(["xdg-settings", "set", "default-web-browser", ident])
             for c in cmds:
                 try:
-                    ok = subprocess.run(c, capture_output=True, timeout=15).returncode == 0 and ok
-                except Exception:
-                    ok = False
-            ui(lambda: self.app.set_status(f"Standard für {cb.currentText()} gesetzt." if ok
-                                           else "Standard-App ließ sich nicht setzen."))
+                    r = subprocess.run(c, capture_output=True, text=True, timeout=20)
+                    if r.returncode != 0 and r.stderr.strip():
+                        problems.append(r.stderr.strip().splitlines()[-1])
+                except Exception as e:
+                    problems.append(str(e))
+            # 3. nachprüfen, was jetzt wirklich gilt
+            bad = [m for m in mimes if which("xdg-mime") and default_app(m) not in ("", ident)]
+            ok = not bad and not err
+
+            def done():
+                if bad:
+                    msg = (f"{name} wurde eingetragen, aber für {bad[0]} gilt weiter {default_app(bad[0])} – "
+                           "die Oberfläche überschreibt es. In den Systemeinstellungen prüfen.")
+                elif err:
+                    msg = f"Standard-App ließ sich nicht speichern: {err}"
+                else:
+                    msg = f"Standard für {name} gesetzt."
+                self.app.set_status(msg)
+                self.default_note.setText(msg)
+                self.default_note.setObjectName("Muted" if ok else "Warn")
+                repolish(self.default_note)
+            ui(done)
         threading.Thread(target=worker, daemon=True).start()
 
     def enable_multilib(self):
@@ -17435,6 +17505,7 @@ EN = {
     'makepkg (Paket pacman, Gruppe base-devel) wird benötigt.': 'makepkg (package pacman, group base-devel) is required.',
     'makepkg fehlt': 'makepkg missing',
     'Bauwerkzeuge fehlen': 'Build tools missing',
+    'Standard-App ließ sich nicht setzen.': 'Default app could not be set.',
     'Wirkt sofort – das Fenster wird dabei neu aufgebaut.': 'Takes effect immediately – the window is rebuilt.',
     'Es läuft noch ein Vorgang. Die Sprache wird beim nächsten Start von Tuxdex gewechselt – oder jetzt, wenn der Vorgang fertig ist (Sprache dann noch einmal umschalten).': 'An operation is still running. The language changes at the next start of Tuxdex – or now once the operation has finished (then switch the language again).',
     'Entwicklungsstand': 'development build',

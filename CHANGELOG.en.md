@@ -2,6 +2,11 @@
 
 English version of [CHANGELOG.md](CHANGELOG.md). Entries before 1.0.0 are only available in German.
 
+## 1.5.17
+Default apps (beta).
+
+- **Set up → Default apps**: the selection didn't take effect on many systems, especially under KDE. There, `kde-mimeapps.list` takes precedence over `mimeapps.list`, and `xdg-mime` only writes the latter. Tuxdex now writes the default app into all relevant files (including the one of the running desktop), removes it from the "Removed Associations" and then checks what really applies. The result is shown right below the selection – including a warning if the desktop overrides it.
+
 ## 1.5.16
 Renaming (beta).
 
