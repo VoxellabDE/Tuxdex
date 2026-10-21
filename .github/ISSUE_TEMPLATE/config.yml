@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Frage, Idee oder Feedback / Question, idea or feedback
+    url: https://github.com/VoxellabDE/Tuxdex/discussions
+    about: Für Fragen, Ideen und Beta-Feedback gibt es die Diskussionen / Questions, ideas and beta feedback go to Discussions
   - name: Sicherheitslücke melden / Report a security issue
     url: mailto:contact@voxellab.de
     about: Bitte nicht öffentlich posten, sondern per Mail / Please don't post publicly, send an email instead

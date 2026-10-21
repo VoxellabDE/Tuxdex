@@ -1,0 +1,49 @@
+title: "[Beta] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Deutsch:** Danke fürs Testen! Besonders wichtig sind Rückmeldungen zu den **neuen, noch nicht offiziell getesteten Modulen** (Treiber, Diagnose, Windows-Daten, Kernel). Teste bitte zuerst in einer **virtuellen Maschine (VM)** und lege vorher ein Backup an.
+        **English:** Thanks for testing! Feedback on the **new, not yet officially tested modules** (Drivers, Diagnosis, Windows data, Kernel) is especially important. Please test in a **virtual machine (VM)** first and make a backup beforehand.
+        Fehler mit klarem Ablauf bitte als [Issue](../issues/new/choose) melden. / Bugs with clear steps: please file an [issue](../issues/new/choose).
+  - type: dropdown
+    id: modul
+    attributes:
+      label: Modul / Module
+      options:
+        - Treiber / Drivers
+        - Diagnose / Diagnosis
+        - Windows-Daten / Windows data
+        - Kernel
+        - Flash-Stick
+        - Software (Beliebte Programme)
+        - Sonstiges / Other
+    validations:
+      required: true
+  - type: dropdown
+    id: ergebnis
+    attributes:
+      label: Hat es geklappt? / Did it work?
+      options:
+        - Ja, alles wie erwartet / Yes, as expected
+        - Teilweise / Partly
+        - Nein / No
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Was ist passiert? / What happened?
+      description: Gern mit Text aus dem Ausgabefeld (dort gibt es einen „Kopieren“-Knopf). / Feel free to include text from the output field (it has a "Copy" button).
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Tuxdex-Version / Tuxdex version
+      placeholder: z. B. 1.6.1-beta
+  - type: input
+    id: system
+    attributes:
+      label: System
+      placeholder: z. B. CachyOS, GRUB, KDE Plasma 6, VM oder echter Rechner / VM or real machine

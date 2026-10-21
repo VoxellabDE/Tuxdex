@@ -1,0 +1,26 @@
+title: "[Frage] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Deutsch:** Frag hier, wenn etwas unklar ist oder nicht klappt. Bitte vorher kurz in der [README](../blob/main/README.md) nachsehen.
+        **English:** Ask here if something is unclear or doesn't work. Please have a quick look at the [README](../blob/main/README.en.md) first.
+  - type: textarea
+    id: frage
+    attributes:
+      label: Deine Frage / Your question
+      description: Was möchtest du erreichen, und was passiert stattdessen? / What do you want to achieve, and what happens instead?
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Tuxdex-Version / Tuxdex version
+      description: Unten rechts in der Statusleiste oder in den Einstellungen. / Bottom right in the status bar or in the settings.
+      placeholder: z. B. 1.6.1-beta
+  - type: input
+    id: system
+    attributes:
+      label: System
+      description: Arch Linux, CachyOS, … und Desktop (KDE, GNOME, …) / and desktop
+      placeholder: z. B. CachyOS, KDE Plasma 6, Wayland

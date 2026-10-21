@@ -100,7 +100,7 @@ Ziele und Planung – was schon da ist und was als Nächstes kommt.
 - [x] Eigenes pacman-Repository, ohne AUR (1.1.0)
 - [x] Sicherheits-Review aller root-Aktionen (1.1.0)
 
-Ideen und Wünsche gern als [Issue](../../issues).
+Ideen und Wünsche gern in den [Diskussionen](../../discussions) oder als [Issue](../../issues).
 
 ## Screenshots
 
@@ -293,7 +293,7 @@ tools/                 Hilfsskripte (z. B. fehlende Übersetzungen finden)
 
 ## Mitmachen
 
-Fehler gefunden oder eine Idee? Gern ein [Issue](../../issues) oder einen Pull Request.
+Fehler gefunden oder eine Idee? Fehler bitte als [Issue](../../issues) melden, **Fragen, Ideen und Beta-Feedback** gern in den [Diskussionen](../../discussions) – dort kann jeder mitschreiben. Pull Requests sind willkommen.
 Bei Fehlern helfen die Datei `~/tuxdex_error.log` und die Angaben unter **Einstellungen → Technik** (Zahnrad unten links).
 
 Nach Änderungen an Dateien, die im `PKGBUILD` stehen, die Prüfsummen aktualisieren:

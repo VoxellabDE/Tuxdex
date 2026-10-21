@@ -1,0 +1,34 @@
+title: "[Idee] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Deutsch:** Was fehlt dir in Tuxdex? Beschreibe das **Problem** – nicht nur die Lösung.
+        **English:** What's missing in Tuxdex? Describe the **problem** – not just the solution.
+  - type: textarea
+    id: idee
+    attributes:
+      label: Deine Idee / Your idea
+    validations:
+      required: true
+  - type: textarea
+    id: nutzen
+    attributes:
+      label: Wofür brauchst du das? / What do you need it for?
+      description: Ein Beispiel aus deinem Alltag hilft am meisten. / An example from your daily use helps most.
+  - type: dropdown
+    id: modul
+    attributes:
+      label: Betrifft welches Modul? / Which module?
+      options:
+        - Updates
+        - Einrichten / Set up
+        - Treiber / Drivers
+        - Diagnose / Diagnosis
+        - Kernel
+        - Software / Flatpak
+        - Datenträger / Flash-Stick / Windows-Daten
+        - Speicher / Backup / Wiederherstellung
+        - Sicherheit / Antivirus / Benutzer
+        - Neues Modul / New module
+        - Sonstiges / Other

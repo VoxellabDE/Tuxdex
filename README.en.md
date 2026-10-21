@@ -100,7 +100,7 @@ Goals and plans – what's already there and what comes next.
 - [x] Own pacman repository, no AUR needed (1.1.0)
 - [x] Security review of all root actions (1.1.0)
 
-Ideas and wishes are welcome as an [issue](../../issues).
+Ideas and wishes are welcome in the [Discussions](../../discussions) or as an [issue](../../issues).
 
 ## Screenshots
 
@@ -295,7 +295,7 @@ tools/                 Helper scripts (e.g. finding untranslated texts)
 
 ## Contributing
 
-Found a bug or have an idea? An [issue](../../issues) or pull request is welcome.
+Found a bug or have an idea? Please report bugs as an [issue](../../issues); **questions, ideas and beta feedback** are welcome in the [Discussions](../../discussions) – everyone can join in. Pull requests are welcome.
 For bugs, the file `~/tuxdex_error.log` and the details under **Settings → Technology** (gear at the bottom left) help.
 
 After changing files listed in the `PKGBUILD`, update the checksums:
