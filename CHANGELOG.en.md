@@ -2,6 +2,11 @@
 
 English version of [CHANGELOG.md](CHANGELOG.md). Entries before 1.0.0 are only available in German.
 
+## 1.6.1.8
+
+- Task manager → Performance: the network tile shows the current download speed and **which connection** (e.g. wlan0, Wi-Fi) carries the internet traffic, also with a VPN.
+- New: **Power consumption** tile with the current power in watts – from the battery (whole device) or, without a battery, from the processor (RAPL, if readable).
+
 ## 1.6.1.7
 
 - New: support for **yay** alongside paru (AUR updates, AUR install, build cache). If both are installed, paru is used.

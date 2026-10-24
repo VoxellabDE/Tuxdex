@@ -553,7 +553,7 @@ def module_enabled(key, settings=None):
 FONTS = {"sans": "Sans Serif", "mono": "Monospace"}
 
 APP_ID = "tuxdex"
-APP_VERSION = "1.6.1.7"
+APP_VERSION = "1.6.1.8"
 APP_STAGE = ""             # früher „alpha“ – das Namensschild kommt jetzt vom Kanal (Stabil ohne Zusatz, Beta mit „-beta“)
 
 
@@ -10640,6 +10640,19 @@ def battery_extra(name):
             "limit": num("charge_control_end_threshold")}
 
 
+def rapl_energy():
+    """(Mikrojoule gesamt, Überlauf-Grenze) der CPU-Pakete aus powercap/RAPL oder None (nicht lesbar/vorhanden)."""
+    base, total, wrap = "/sys/class/powercap", 0, 0
+    try:
+        for d in os.listdir(base):
+            if re.fullmatch(r"intel-rapl:\d+", d) or re.fullmatch(r"amd-rapl:\d+", d):
+                total += int(_first_line(f"{base}/{d}/energy_uj"))
+                wrap += int(_first_line(f"{base}/{d}/max_energy_range_uj") or 0)
+    except (OSError, ValueError):
+        return None
+    return (total, wrap) if wrap else None
+
+
 def net_counters():
     """{iface: (rx_bytes, tx_bytes)}"""
     out = {}
@@ -11566,6 +11579,8 @@ class TaskTab(Page):
         self.prev_ticks = {}
         self.prev_io = {}
         self.prev_net = None
+        self.prev_netif = {}
+        self.prev_rapl = None
         self.prev_disk = None
         self.data = {}
         self.busy = False
@@ -11665,6 +11680,7 @@ class TaskTab(Page):
         self.t_disk = StatTile("Datenträger", maxval=None)
         self.t_bat = StatTile("Akku")
         self.t_swap = StatTile("Swap")
+        self.t_pwr = StatTile("Energieverbrauch")
         self.t_sys = StatTile("System")
         self.t_sys.spark.hide()
         self.perf_tiles = {"cpu": self.t_cpu, "ram": self.t_ram, "gpu": self.t_gpu, "net": self.t_net,
@@ -11672,6 +11688,7 @@ class TaskTab(Page):
         for i, (kind, t) in enumerate(self.perf_tiles.items()):
             t.make_clickable(lambda k=kind: self.toggle_detail(k))
             ll.addWidget(t, i // 3, i % 3)
+        ll.addWidget(self.t_pwr, len(self.perf_tiles) // 3, len(self.perf_tiles) % 3)
         for c in range(3):
             ll.setColumnStretch(c, 1)
         self.detail = DetailPanel(lambda: self.toggle_detail(None), self._detail_device)
@@ -11962,7 +11979,8 @@ class TaskTab(Page):
                 "t": time.time(), "total": total, "idle": idle, "procs": procs, "mem": meminfo(),
                 "load": _read("/proc/loadavg").split()[:3],
                 "up": float((_read("/proc/uptime").split() or ["0"])[0]),
-                "net": net_counters(), "disk": disk_counters(), "bat": batteries(),
+                "net": net_counters(), "route": internet_route_dev(), "rapl": rapl_energy(),
+                "disk": disk_counters(), "bat": batteries(),
                 "temps": temperatures(), "mhz": cpu_mhz(), "gpus": gpus() if want_gpu else None,
             }
             ui(lambda: self._update(snap))
@@ -12016,17 +12034,38 @@ class TaskTab(Page):
                             (st - sf) / st * 100)
         else:
             self.t_swap.set("aus", "kein Swap aktiv", 0)
-        # Netzwerk
+        # Netzwerk: Geschwindigkeit auf der Schnittstelle, über die der Internetverkehr gerade läuft
         net = {k: v for k, v in s["net"].items() if k != "lo"}
-        rx = sum(v[0] for v in net.values())
-        tx = sum(v[1] for v in net.values())
-        if self.prev_net:
-            drx, dtx = max(0, rx - self.prev_net[0]) / secs, max(0, tx - self.prev_net[1]) / secs
+        rates = {k: (max(0, v[0] - self.prev_netif[k][0]) / secs, max(0, v[1] - self.prev_netif[k][1]) / secs)
+                 for k, v in net.items() if k in self.prev_netif}
+        self.prev_netif = dict(net)
+        if rates:
+            dev = s["route"] if s["route"] in rates else max(rates, key=lambda k: sum(rates[k]))
+            drx, dtx = rates[dev]
             txt = f"↓ {fmt_bytes(drx)}/s"
-            sub = f"↑ {fmt_bytes(dtx)}/s · gesamt ↓ {fmt_bytes(rx)} ↑ {fmt_bytes(tx)}"
+            via = tr(f"über {dev} ({iface_kind(dev)})")
+            others = sum(sum(r) for k, r in rates.items() if k != dev)
+            sub = f"{via} · ↑ {fmt_bytes(dtx)}/s" + (" · " + tr(f"weitere {fmt_bytes(others)}/s") if others > 1024 else "")
             self.t_net.set(txt, sub, drx + dtx)
-            self.m_net.set(txt, f"↑ {fmt_bytes(dtx)}/s", drx + dtx)
-        self.prev_net = (rx, tx)
+            self.m_net.set(txt, f"↑ {fmt_bytes(dtx)}/s · {dev}", drx + dtx)
+        # Energieverbrauch: Akku-Leistung, sonst CPU-Pakete per RAPL
+        watts, src = None, ""
+        bats = s["bat"][0]
+        if bats and bats[0]["watts"] is not None and bats[0]["status"] in ("Discharging", "Charging"):
+            watts = bats[0]["watts"]
+            src = tr("Akku entlädt – Verbrauch des ganzen Geräts") if bats[0]["status"] == "Discharging" \
+                else tr("Akku lädt – Ladeleistung")
+        rapl = s["rapl"]
+        if watts is None and rapl and self.prev_rapl:
+            d = rapl[0] - self.prev_rapl[0]
+            if d < 0:
+                d += rapl[1]
+            watts, src = d / 1e6 / secs, tr("nur Prozessor (RAPL), ohne Grafikkarte und Bildschirm")
+        self.prev_rapl = rapl
+        if watts is not None:
+            self.t_pwr.set(f"{watts:.1f} W", src, min(100, watts))
+        elif rapl is None:
+            self.t_pwr.set("—", tr("nicht messbar: kein Akku, und die CPU-Messung (RAPL) ist nicht lesbar"), None)
         # Datenträger
         rd, wr = s["disk"]
         if self.prev_disk:
@@ -19790,6 +19829,13 @@ EN = {
     'IPv6-Verbindung': 'IPv6 connection',
     'Dein System bekommt für github.com eine IPv6-Adresse, kommt darüber aber nicht durch. Daher schlagen Downloads (z. B. tuxdex.db) mit „bad address“ fehl. Lösung: IPv6 im Router/NetworkManager reparieren oder abschalten, oder pacman auf IPv4 zwingen (in /etc/pacman.conf unter [options]: XferCommand = /usr/bin/curl -4 -L -C - -f -o %o %u).': 'Your system gets an IPv6 address for github.com but can\'t connect over it. That is why downloads (e.g. tuxdex.db) fail with "bad address". Fix: repair or disable IPv6 in the router/NetworkManager, or force pacman to IPv4 (in /etc/pacman.conf under [options]: XferCommand = /usr/bin/curl -4 -L -C - -f -o %o %u).',
     'Platz auf /': 'Space on /',
+    'Energieverbrauch': 'Power consumption',
+    'über {} ({})': 'via {} ({})',
+    'weitere {}/s': 'other {}/s',
+    'Akku entlädt – Verbrauch des ganzen Geräts': 'Battery discharging – consumption of the whole device',
+    'Akku lädt – Ladeleistung': 'Battery charging – charging power',
+    'nur Prozessor (RAPL), ohne Grafikkarte und Bildschirm': 'processor only (RAPL), without graphics card and screen',
+    'nicht messbar: kein Akku, und die CPU-Messung (RAPL) ist nicht lesbar': 'not measurable: no battery, and the CPU measurement (RAPL) is not readable',
     '{} Tage {} Std.': '{} days {} h',
     '{} Std. {} Min.': '{} h {} min',
     'Uhrzeit': 'Time',

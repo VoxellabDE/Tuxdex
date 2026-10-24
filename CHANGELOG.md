@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.1.8
+
+- Taskmanager → Leistung: Die Netzwerk-Kachel zeigt die aktuelle Download-Geschwindigkeit und **über welche Verbindung** (z. B. wlan0, WLAN) der Internetverkehr läuft, auch bei VPN.
+- Neu: Kachel **Energieverbrauch** mit der aktuellen Leistung in Watt – vom Akku (ganzes Gerät) oder, ohne Akku, vom Prozessor (RAPL, falls lesbar).
+
 ## 1.6.1.7
 
 - Neu: Unterstützung für **yay** neben paru (AUR-Updates, AUR-Installation, Build-Cache). Ist beides installiert, wird paru verwendet.
