@@ -553,7 +553,7 @@ def module_enabled(key, settings=None):
 FONTS = {"sans": "Sans Serif", "mono": "Monospace"}
 
 APP_ID = "tuxdex"
-APP_VERSION = "1.6.1.9"
+APP_VERSION = "1.6.1.10"
 APP_STAGE = ""             # früher „alpha“ – das Namensschild kommt jetzt vom Kanal (Stabil ohne Zusatz, Beta mit „-beta“)
 
 
@@ -12097,7 +12097,8 @@ class TaskTab(Page):
             st_txt = BAT_STATUS.get(b["status"], b["status"])
             sub = [st_txt]
             if b["watts"] is not None:
-                sub.append(f"{b['watts']:.1f} W")
+                sign = {"Charging": "+", "Discharging": "−"}.get(b["status"], "")
+                sub.append(f"{sign}{b['watts']:.1f} W")
             if b["hours"]:
                 h, m = int(b["hours"]), int((b["hours"] % 1) * 60)
                 sub.append(("noch " if b["status"] == "Discharging" else "voll in ") + f"{h}:{m:02d} h")

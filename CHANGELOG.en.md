@@ -2,6 +2,10 @@
 
 English version of [CHANGELOG.md](CHANGELOG.md). Entries before 1.0.0 are only available in German.
 
+## 1.6.1.10
+
+- Battery tile: the power now shows a sign – **+** while charging (energy flows into the battery), **−** while discharging.
+
 ## 1.6.1.9
 
 - Fixed: the module selection (Settings → Modules) was sometimes lost because the update check overwrote it with an old copy of the settings. Module selection and beta consent are now only saved when changed on purpose; the file is also written safely (atomically).

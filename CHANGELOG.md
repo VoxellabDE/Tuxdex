@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.6.1.10
+
+- Akku-Kachel: Die Leistung zeigt jetzt ein Vorzeichen – **+** beim Laden (Energie fließt in den Akku), **−** beim Entladen.
+
 ## 1.6.1.9
 
 - Behoben: Die Modul-Auswahl (Einstellungen → Module) ging manchmal verloren, weil die Update-Prüfung mit einer alten Kopie der Einstellungen darüber schrieb. Modul-Auswahl und Beta-Zustimmung werden jetzt nur noch beim Ändern selbst gespeichert; die Datei wird zudem sicher (atomar) geschrieben.
