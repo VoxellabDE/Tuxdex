@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.1.9
+
+- Behoben: Die Modul-Auswahl (Einstellungen → Module) ging manchmal verloren, weil die Update-Prüfung mit einer alten Kopie der Einstellungen darüber schrieb. Modul-Auswahl und Beta-Zustimmung werden jetzt nur noch beim Ändern selbst gespeichert; die Datei wird zudem sicher (atomar) geschrieben.
+- Energieverbrauch: Beim Laden zeigt die Kachel nicht mehr die Ladeleistung (die steht beim Akku), sondern den Prozessor-Verbrauch oder „nicht messbar“.
+
 ## 1.6.1.8
 
 - Taskmanager → Leistung: Die Netzwerk-Kachel zeigt die aktuelle Download-Geschwindigkeit und **über welche Verbindung** (z. B. wlan0, WLAN) der Internetverkehr läuft, auch bei VPN.

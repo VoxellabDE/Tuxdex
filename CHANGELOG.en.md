@@ -2,6 +2,11 @@
 
 English version of [CHANGELOG.md](CHANGELOG.md). Entries before 1.0.0 are only available in German.
 
+## 1.6.1.9
+
+- Fixed: the module selection (Settings → Modules) was sometimes lost because the update check overwrote it with an old copy of the settings. Module selection and beta consent are now only saved when changed on purpose; the file is also written safely (atomically).
+- Power consumption: while charging, the tile no longer shows the charging power (that is under Battery) but the processor consumption or "not measurable".
+
 ## 1.6.1.8
 
 - Task manager → Performance: the network tile shows the current download speed and **which connection** (e.g. wlan0, Wi-Fi) carries the internet traffic, also with a VPN.

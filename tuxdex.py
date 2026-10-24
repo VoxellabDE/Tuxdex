@@ -553,7 +553,7 @@ def module_enabled(key, settings=None):
 FONTS = {"sans": "Sans Serif", "mono": "Monospace"}
 
 APP_ID = "tuxdex"
-APP_VERSION = "1.6.1.8"
+APP_VERSION = "1.6.1.9"
 APP_STAGE = ""             # früher „alpha“ – das Namensschild kommt jetzt vom Kanal (Stabil ohne Zusatz, Beta mit „-beta“)
 
 
@@ -12051,10 +12051,9 @@ class TaskTab(Page):
         # Energieverbrauch: Akku-Leistung, sonst CPU-Pakete per RAPL
         watts, src = None, ""
         bats = s["bat"][0]
-        if bats and bats[0]["watts"] is not None and bats[0]["status"] in ("Discharging", "Charging"):
+        if bats and bats[0]["watts"] is not None and bats[0]["status"] == "Discharging":
             watts = bats[0]["watts"]
-            src = tr("Akku entlädt – Verbrauch des ganzen Geräts") if bats[0]["status"] == "Discharging" \
-                else tr("Akku lädt – Ladeleistung")
+            src = tr("Akku entlädt – Verbrauch des ganzen Geräts")
         rapl = s["rapl"]
         if watts is None and rapl and self.prev_rapl:
             d = rapl[0] - self.prev_rapl[0]
@@ -12064,6 +12063,8 @@ class TaskTab(Page):
         self.prev_rapl = rapl
         if watts is not None:
             self.t_pwr.set(f"{watts:.1f} W", src, min(100, watts))
+        elif bats and bats[0]["status"] in ("Charging", "Full") and rapl is None:
+            self.t_pwr.set("—", tr("am Netzteil: Der Gesamtverbrauch ist nicht messbar, die Ladeleistung steht beim Akku"), None)
         elif rapl is None:
             self.t_pwr.set("—", tr("nicht messbar: kein Akku, und die CPU-Messung (RAPL) ist nicht lesbar"), None)
         # Datenträger
@@ -12727,8 +12728,10 @@ def _load_json(path, default):
 def _save_json(path, data):
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w") as f:
+        tmp = path + ".tmp"
+        with open(tmp, "w") as f:           # erst daneben schreiben, dann ersetzen: nie eine halbe Datei
             json.dump(data, f, indent=1)
+        os.replace(tmp, path)
     except Exception:
         pass
 
@@ -17097,12 +17100,15 @@ def load_settings():
     return s
 
 
-def save_settings(s):
-    cur = _load_json(SETTINGS_FILE, {})
+def save_settings(s, force=()):
+    """Speichert Einstellungen. Alte Kopien (z. B. self.settings des Update-Prüfers) dürfen Zustimmung und
+    Modul-Auswahl nie überschreiben – die ändert nur, wer sie ausdrücklich in `force` nennt."""
+    disk = _load_json(SETTINGS_FILE, {})
+    cur = dict(disk)
     cur.update(s)
-    for k in ("alpha_accepted", "alpha_version"):      # Zustimmung nie durch einen älteren Stand überschreiben
-        if k in _load_json(SETTINGS_FILE, {}):
-            cur[k] = _load_json(SETTINGS_FILE, {})[k]
+    for k in ("alpha_accepted", "alpha_version", "modules"):
+        if k in disk and k not in force:
+            cur[k] = disk[k]
     _save_json(SETTINGS_FILE, cur)
 
 
@@ -18483,7 +18489,7 @@ class MainWindow(QWidget):
         mods = dict(st.get("modules", {}))
         mods[key] = bool(on)
         st["modules"] = mods
-        save_settings(st)
+        save_settings(st, force=("modules",))
         i = [m[0] for m in MODULES].index(key)
         self.tabs[i].setVisible(bool(on))
         if not on and self._last_tab == i:
@@ -19830,6 +19836,7 @@ EN = {
     'Dein System bekommt für github.com eine IPv6-Adresse, kommt darüber aber nicht durch. Daher schlagen Downloads (z. B. tuxdex.db) mit „bad address“ fehl. Lösung: IPv6 im Router/NetworkManager reparieren oder abschalten, oder pacman auf IPv4 zwingen (in /etc/pacman.conf unter [options]: XferCommand = /usr/bin/curl -4 -L -C - -f -o %o %u).': 'Your system gets an IPv6 address for github.com but can\'t connect over it. That is why downloads (e.g. tuxdex.db) fail with "bad address". Fix: repair or disable IPv6 in the router/NetworkManager, or force pacman to IPv4 (in /etc/pacman.conf under [options]: XferCommand = /usr/bin/curl -4 -L -C - -f -o %o %u).',
     'Platz auf /': 'Space on /',
     'Energieverbrauch': 'Power consumption',
+    'am Netzteil: Der Gesamtverbrauch ist nicht messbar, die Ladeleistung steht beim Akku': 'on mains power: total consumption can\'t be measured, the charging power is shown under Battery',
     'über {} ({})': 'via {} ({})',
     'weitere {}/s': 'other {}/s',
     'Akku entlädt – Verbrauch des ganzen Geräts': 'Battery discharging – consumption of the whole device',
