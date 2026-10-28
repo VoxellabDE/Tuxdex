@@ -553,7 +553,7 @@ def module_enabled(key, settings=None):
 FONTS = {"sans": "Sans Serif", "mono": "Monospace"}
 
 APP_ID = "tuxdex"
-APP_VERSION = "1.6.1.10"
+APP_VERSION = "1.6.1.11"
 APP_STAGE = ""             # früher „alpha“ – das Namensschild kommt jetzt vom Kanal (Stabil ohne Zusatz, Beta mit „-beta“)
 
 
@@ -6005,7 +6005,7 @@ def diag_disk():
     return f
 
 
-def pacman_repos():
+def pacman_conf_repos():
     """Repos aus /etc/pacman.conf (auch Include-Dateien) mit dem ersten Server: [(repo, url)]."""
     out, repo = [], None
     arch_vars = {"$arch_v3": "x86_64_v3", "$arch_v4": "x86_64_v4", "$arch": "x86_64"}
@@ -6065,7 +6065,7 @@ def diag_repos():
     """Prüft jedes Repo aus pacman.conf: antwortet der Spiegel, ist die Datenbank aktuell, klappt IPv6?"""
     import socket
     f = []
-    repos = pacman_repos()
+    repos = pacman_conf_repos()
     bad = []
     for repo, base in repos:
         if base.startswith("http") and not url_ok(f"{base.rstrip('/')}/{repo}.db"):
@@ -9428,7 +9428,7 @@ class StorageTab(Page):
             v = Label(fmt_bytes(val), "Value")
             v.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
             self.pie_legend.addWidget(v, i, 2)
-            base = total if title == "Frei" else used
+            base = total      # alle Prozentwerte beziehen sich auf die ganze Platte
             pct = Label(f"{val / base * 100:.0f} %" if base else "—", "Muted")
             pct.setMinimumWidth(48)
             pct.setAlignment(Qt.AlignRight | Qt.AlignVCenter)

@@ -2,6 +2,11 @@
 
 English version of [CHANGELOG.md](CHANGELOG.md). Entries before 1.0.0 are only available in German.
 
+## 1.6.1.11
+
+- Fixed: Software → "AUR / foreign packages" (and "Programs") showed the error "'list' object has no attribute 'get'". Cause was a duplicate function name since 1.6.1.5.
+- Storage: all percentages in the chart now refer to the whole disk (before, categories referred to the used space and "Free" to the disk, which didn't add up).
+
 ## 1.6.1.10
 
 - Battery tile: the power now shows a sign – **+** while charging (energy flows into the battery), **−** while discharging.

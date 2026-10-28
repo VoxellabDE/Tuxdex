@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.1.11
+
+- Behoben: Software → „AUR / Fremd-Pakete“ (und „Programme“) zeigte den Fehler „'list' object has no attribute 'get'“. Ursache war ein doppelter Funktionsname seit 1.6.1.5.
+- Speicher: Alle Prozentwerte im Diagramm beziehen sich jetzt auf die ganze Platte (vorher Kategorien auf den belegten Platz, „Frei“ auf die Platte – das passte nicht zusammen).
+
 ## 1.6.1.10
 
 - Akku-Kachel: Die Leistung zeigt jetzt ein Vorzeichen – **+** beim Laden (Energie fließt in den Akku), **−** beim Entladen.
