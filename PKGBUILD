@@ -7,7 +7,7 @@ pkgdesc="Grafische Systemverwaltung für Arch Linux: Updates, Software, Backup, 
 arch=('any')
 url="https://github.com/VoxellabDE/Tuxdex"
 license=('GPL-3.0-or-later')
-depends=('python' 'pyside6' 'sudo' 'util-linux' 'iproute2' 'pciutils' 'hwdata' 'pacman-contrib' 'ttf-ibm-plex' 'rsync')
+depends=('python' 'pyside6' 'qt6-svg' 'sudo' 'util-linux' 'iproute2' 'pciutils' 'hwdata' 'pacman-contrib' 'ttf-ibm-plex' 'rsync')
 optdepends=(
     'paru: AUR-Pakete aktualisieren und installieren'
     'flatpak: Flatpak-Apps verwalten'

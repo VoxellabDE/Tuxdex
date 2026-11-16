@@ -19,12 +19,16 @@ jobs:
     runs-on: ubuntu-latest
     container: archlinux:base-devel
     steps:
-      - name: Pakete installieren
-        run: |
-          pacman -Syu --noconfirm --needed git python pyside6 python-pytest ruff shellcheck \
-            pciutils hwdata iproute2 pacman-contrib
+      - name: Werkzeuge installieren
+        run: pacman -Syu --noconfirm --needed git python-pytest ruff shellcheck
 
       - uses: actions/checkout@v4
+
+      - name: Abhängigkeiten aus dem PKGBUILD installieren
+        # genau die Pakete, die auch beim Nutzer installiert werden – fehlt eine Abhängigkeit, fällt es hier auf
+        run: |
+          source ./PKGBUILD
+          pacman -S --noconfirm --needed "${depends[@]}"
 
       - name: Linter (ruff)
         run: ruff check .
