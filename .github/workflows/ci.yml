@@ -1,0 +1,47 @@
+# Prüft jeden Push und jeden Pull Request: Linter, Versions-/Prüfsummen-Abgleich, Tests und Paketbau.
+# Läuft in einem Arch-Container – also mit genau den Paketen (PySide6, pacman), die Nutzer haben.
+name: CI
+
+on:
+  push:
+    branches: [main, beta, develop]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - name: Pakete installieren
+        run: |
+          pacman -Syu --noconfirm --needed git python pyside6 python-pytest ruff shellcheck \
+            pciutils hwdata iproute2 pacman-contrib
+
+      - uses: actions/checkout@v4
+
+      - name: Linter (ruff)
+        run: ruff check .
+
+      - name: Installer prüfen (shellcheck)
+        run: shellcheck install.sh
+
+      - name: Version, Badges, Changelogs und Prüfsummen
+        run: python tools/release.py check
+
+      - name: Tests (Logik + jedes Modul einmal aufbauen)
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest
+
+      - name: Paket bauen (makepkg prüft die Prüfsummen wie beim Nutzer)
+        run: |
+          useradd -m builder
+          chown -R builder "$GITHUB_WORKSPACE"
+          su builder -c "cd '$GITHUB_WORKSPACE' && makepkg -d -f --noconfirm"

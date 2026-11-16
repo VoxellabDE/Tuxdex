@@ -1,0 +1,13 @@
+# Nur Werkzeug-Einstellungen – Tuxdex wird als pacman-Paket gebaut (siehe PKGBUILD), nicht mit pip.
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+# F = pyflakes (doppelte/undefinierte Namen, unbenutzte Variablen), E9 = Syntaxfehler,
+# B006/B008 = veränderliche Standardwerte, PLE = sichere Fehler aus pylint
+select = ["F", "E9", "B006", "PLE"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

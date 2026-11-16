@@ -112,7 +112,7 @@ try:
     from PySide6.QtWidgets import (
         QApplication, QWidget, QFrame, QLabel, QPushButton, QHBoxLayout, QVBoxLayout,
         QGridLayout, QStackedWidget, QPlainTextEdit, QLineEdit, QCheckBox, QComboBox,
-        QListWidget, QListWidgetItem, QAbstractItemView, QTableWidget, QTableWidgetItem, QHeaderView,
+        QListWidget, QListWidgetItem, QAbstractItemView, QTableWidget, QTableWidgetItem,
         QTreeWidget, QTreeWidgetItem, QLayout,
         QSlider, QDialog, QMessageBox, QScrollArea, QSizePolicy, QFileDialog,
     )
@@ -5934,7 +5934,6 @@ def diag_graphics():
 def diag_boot():
     f = []
     total = _cmd_out(["systemd-analyze", "time"], 10).strip()
-    m = re.search(r"=\s*([\d.]+)(min|s)(?:\s*([\d.]+)s)?", total)
     if total:
         secs = None
         t = re.search(r"=\s*(?:(\d+)min\s*)?([\d.]+)s", total)
@@ -6023,7 +6022,6 @@ def pacman_conf_repos():
         m = re.match(r"\[(.+)\]$", line)
         if m:
             repo = None if m.group(1) == "options" else m.group(1)
-            first = None
             continue
         if not repo or "=" not in line:
             continue
@@ -7189,7 +7187,6 @@ class KernelTab(Page):
     def remove(self, pkg):
         f = self.facts or {}
         pk = [pkg, pkg + "-headers"]
-        installed = {k["pkg"] for k in f.get("installed", [])}
         mod = [p for p in (pkg + "-nvidia-open", pkg + "-nvidia", pkg + "-zfs") if _cmd_out(["pacman", "-Qq", p]).strip()]
         pk += mod
         if not ask_confirm(self, "Kernel entfernen", f"{pkg} entfernen?\n\npacman: {', '.join(pk)}\n\nDer laufende Kernel "
@@ -16131,7 +16128,7 @@ class BackupJob:
             p_tar = self._popen(tar, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             threading.Thread(target=lambda: errs.extend(p_tar.stderr.read().decode(errors="replace").splitlines()),
                              daemon=True).start()
-            stages, src = [], None
+            stages = []
             if prog:
                 p_c = self._popen([prog] + levels.get(self.cfg.get("level"), []) + popts, stdin=subprocess.PIPE,
                                   stdout=subprocess.PIPE)
@@ -18648,7 +18645,6 @@ EN = {
     'Kein passendes Programm installiert': 'No matching program installed',
     'Nicht festgelegt': 'Not set',
     'Standard für {} gesetzt.': 'Default set to {}.',
-    'Standard-App ließ sich nicht setzen.': "Couldn't set the default app.",
     'Steam mit Proton startet die meisten Windows-Spiele. Spiele mit Kernel-Anti-Cheat wie Valorant, League of Legends oder Fortnite laufen unter Linux aber nicht – vor dem Kauf auf areweanticheatyet.com oder protondb.com nachsehen.': "Steam with Proton runs most Windows games. Games with kernel anti-cheat like Valorant, League of Legends or Fortnite don't run on Linux, though – check areweanticheatyet.com or protondb.com before buying.",
     'Steam und Wine aus den Arch-Paketquellen brauchen die 32-Bit-Unterstützung (multilib). Ohne sie installiert Tuxdex Steam von Flathub.': 'Steam and Wine from the Arch repositories need 32-bit support (multilib). Without it, Tuxdex installs Steam from Flathub.',
     '32-Bit-Unterstützung einschalten': 'Turn on 32-bit support',
@@ -20019,7 +20015,6 @@ EN = {
     'Normale Benutzergruppe': 'Normal user group',
     'Systemprotokolle lesen': 'Read system logs',
     'Automatische Updates deaktivieren': 'Disable automatic updates',
-    'Automatische Updates': 'Automatic updates',
     'Ausschalten': 'Turn off',
     'Automatische Signatur-Updates ausschalten?\n\nDie Virensignaturen veralten dann, bis du sie von Hand aktualisierst.': 'Turn off automatic signature updates?\n\nThe virus signatures will become outdated until you update them by hand.',
     'Benutzer hinzufügen …': 'Add user …',
@@ -20303,7 +20298,6 @@ EN = {
     'Rechnername': 'Hostname',
     'Rechte zurücksetzen': 'Reset permissions',
     'Rechte ändern gilt für dich (Benutzer-Einstellung, kein Passwort nötig) und wirkt beim <b>nächsten Start</b> der App.': 'Changing permissions applies to you (user setting, no password needed) and takes effect the <b>next time</b> the app starts.',
-    'reflector installieren': 'Install reflector',
     'reflector sucht die schnellsten aktuellen.': 'reflector finds the fastest current ones.',
     'reflector.timer hält die Liste aktuell.': 'reflector.timer keeps the list up to date.',
     'Regel': 'Rule',
@@ -20753,7 +20747,6 @@ EN = {
     '{} System-Update · {} wichtig': '{} system update · {} important',
     '{} System-Updates': '{} system updates',
     '{} System-Updates · {} wichtig': '{} system updates · {} important',
-    '{} Tage alt': '{} days old',
     '{} Threads': '{} threads',
     '{} Treffer': '{} hits',
     '{} Updates': '{} updates',

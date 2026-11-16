@@ -26,7 +26,12 @@ say() { printf '\033[1;36m==>\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31m%s\033[0m %s\n' "$(t Error: Fehler:)" "$*" >&2; exit 1; }
 
 command -v pacman >/dev/null || die "$(t "This is not an Arch system (pacman missing). Tuxdex only runs on Arch Linux and Arch-based systems." "Dies ist kein Arch-System (pacman fehlt). Tuxdex läuft nur auf Arch Linux und Arch-basierten Systemen.")"
-[ "$(id -u)" -eq 0 ] && SUDO="" || { command -v sudo >/dev/null || die "$(t "sudo is missing – run as root or install sudo." "sudo fehlt – als root ausführen oder sudo installieren.")"; SUDO="sudo"; }
+if [ "$(id -u)" -eq 0 ]; then
+    SUDO=""
+else
+    command -v sudo >/dev/null || die "$(t "sudo is missing – run as root or install sudo." "sudo fehlt – als root ausführen oder sudo installieren.")"
+    SUDO="sudo"
+fi
 
 if [ "$DE" -eq 1 ]; then
 cat <<MSG
