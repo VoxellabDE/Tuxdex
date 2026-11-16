@@ -184,3 +184,91 @@ def test_module_names_are_translated(tx):
     finally:
         tx.set_language("de")
     assert not missing, "Modulnamen ohne englische Übersetzung: " + ", ".join(missing)
+
+
+# ---- Protokoll ----------------------------------------------------------------
+
+def test_log_scrubs_home_and_rotates(tx, tmp_path, monkeypatch):
+    log = tmp_path / "tuxdex.log"
+    monkeypatch.setattr(tx, "LOG_FILE", str(log))
+    monkeypatch.setattr(tx, "LOG_MAX_BYTES", 200)
+    home = os.path.expanduser("~")
+    tx.log_event(f"Datei {home}/geheim.txt")
+    assert home not in log.read_text() and "~/geheim.txt" in log.read_text()
+    tx.log_event("x" * 300)
+    tx.log_event("nach der Grenze")
+    assert (tmp_path / "tuxdex.log.1").exists()            # alte Datei wurde aufgehoben
+    assert "nach der Grenze" in log.read_text() and "geheim" not in log.read_text()
+
+
+def test_log_error_records_traceback(tx, tmp_path, monkeypatch):
+    log = tmp_path / "tuxdex.log"
+    monkeypatch.setattr(tx, "LOG_FILE", str(log))
+    try:
+        raise ValueError("kaputt")
+    except ValueError as e:
+        tx.log_error("Testfall", e)
+    text = log.read_text()
+    assert "FEHLER in Testfall" in text and "ValueError: kaputt" in text
+
+
+def test_report_summary_has_version_and_no_home(tx):
+    text = tx.report_summary()
+    assert f"Tuxdex: {tx.APP_VERSION}" in text and "Kernel:" in text
+    assert os.path.expanduser("~") not in text
+
+
+def test_log_caught_separates_bugs_from_expected_failures(tx, tmp_path, monkeypatch):
+    log = tmp_path / "tuxdex.log"
+    monkeypatch.setattr(tx, "LOG_FILE", str(log))
+    monkeypatch.setattr(tx, "_LOG_SEEN", set())
+    for _ in range(3):                       # derselbe Fehler dreimal → nur ein Eintrag
+        try:
+            [].get("x")                      # genau der Fehler aus 1.6.1.5 (Liste statt Wörterbuch)
+        except Exception:
+            tx.log_caught("SoftwareTab.refresh_list.worker")
+    try:
+        open("/gibt/es/nicht")
+    except Exception:
+        tx.log_caught("irgendwo")
+    text = log.read_text()
+    assert text.count("FEHLER in SoftwareTab.refresh_list.worker") == 1 and "AttributeError" in text
+    assert "Störung in irgendwo: FileNotFoundError" in text and "FEHLER in irgendwo" not in text
+
+
+def test_corrupt_settings_file_is_reported(tx, tmp_path, monkeypatch):
+    log = tmp_path / "tuxdex.log"
+    monkeypatch.setattr(tx, "LOG_FILE", str(log))
+    monkeypatch.setattr(tx, "_LOG_SEEN", set())
+    bad = tmp_path / "settings.json"
+    bad.write_text("{kaputt")
+    assert tx._load_json(str(bad), {"x": 1}) == {"x": 1}
+    assert tx._load_json(str(tmp_path / "fehlt.json"), 5) == 5          # fehlende Datei ist normal
+    text = log.read_text()
+    assert "_load_json(settings.json)" in text and "fehlt.json" not in text
+
+
+# ---- Aufteilung in mehrere Dateien --------------------------------------------
+
+def test_catalog_file_is_loaded_and_packaged(tx):
+    assert len(tx.EN) > 2000, "tuxdex_i18n.py wurde nicht geladen"
+    root = os.path.dirname(os.path.abspath(tx.__file__))
+    pkgbuild = open(os.path.join(root, "PKGBUILD"), encoding="utf-8").read()
+    for name in tx.SCRIPT_SIBLINGS:
+        assert os.path.isfile(os.path.join(root, name))
+        # steht die Datei nicht im PKGBUILD, fehlt sie nach der Installation und nach jedem Update
+        assert f"        {name}\n" in pkgbuild, f"{name} fehlt in source=()"
+        assert f'install -Dm644 {name} "$pkgdir/usr/lib/$pkgname/{name}"' in pkgbuild, f"{name} wird nicht installiert"
+
+
+def test_log_caught_drops_command_arguments(tx, tmp_path, monkeypatch):
+    import subprocess
+    log = tmp_path / "tuxdex.log"
+    monkeypatch.setattr(tx, "LOG_FILE", str(log))
+    monkeypatch.setattr(tx, "_LOG_SEEN", set())
+    try:
+        raise subprocess.TimeoutExpired(["mullvad", "account", "login", "1234567890123456"], 5)
+    except Exception:
+        tx.log_caught("SecurityTab.login")
+    text = log.read_text()
+    assert "Störung in SecurityTab.login: TimeoutExpired: mullvad" in text and "1234567890123456" not in text

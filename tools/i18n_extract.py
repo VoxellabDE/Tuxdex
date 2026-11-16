@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 PyloGER (Voxellab)
-"""Sammelt alle Oberflächentexte aus tuxdex.py und zeigt, welche im englischen Katalog (EN = {...}) fehlen.
+"""Sammelt alle Oberflächentexte aus tuxdex.py und zeigt, welche im englischen Katalog (tuxdex_i18n.py) fehlen.
 
     python3 tools/i18n_extract.py            → Anzahl fehlender Texte
     python3 tools/i18n_extract.py --json     → fehlende Texte als JSON (zum Übersetzen)
@@ -14,6 +14,7 @@ import re
 import sys
 
 SRC = "tuxdex.py"
+CATALOG = "tuxdex_i18n.py"      # der Katalog liegt in einer eigenen Datei
 
 # Texte, die nie angezeigt werden oder nicht übersetzt werden dürfen (Befehle, Pfade, Regex, Schlüssel …)
 CODE_RE = re.compile(r"^(\$ |sudo |pacman |paru |flatpak |systemctl |journalctl |[/~.][\w./-]*$|[a-z_.-][\w.-]*$|\^|#!)"
@@ -79,7 +80,7 @@ def catalog(src):
 
 def main():
     src = open(SRC, encoding="utf-8").read()
-    cat = catalog(src)
+    cat = catalog(open(CATALOG, encoding="utf-8").read())
     seen, missing = set(), []
     for t in templates(src):
         k = t.strip()

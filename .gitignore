@@ -23,3 +23,6 @@ venv/
 *.swp
 *~
 .DS_Store
+
+# --- erzeugte AUR-Fassung (tools/release.py aur) ---
+/packaging/

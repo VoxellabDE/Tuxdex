@@ -5,6 +5,11 @@
 set -euo pipefail
 
 SERVER="https://github.com/VoxellabDE/Tuxdex/releases/latest/download"
+RAW="https://raw.githubusercontent.com/VoxellabDE/Tuxdex/main"
+# Fingerabdruck des Schlüssels, mit dem die Pakete signiert sind (setzt tools/release.py key).
+# Leer = Pakete sind noch nicht signiert; dann vertraut pacman allein der HTTPS-Verbindung zu GitHub.
+KEY_FPR=""
+if [ -n "$KEY_FPR" ]; then SIGLEVEL="Required DatabaseOptional"; else SIGLEVEL="Optional TrustAll"; fi
 CONF="${TUXDEX_PACMAN_CONF:-/etc/pacman.conf}"
 YES=0
 DRY=0
@@ -71,6 +76,10 @@ if grep -q '^\[tuxdex\]' "$CONF"; then
         say "$(t "Old repository address found – fixing it" "Alte Repository-Adresse gefunden – wird korrigiert")"
         run $SUDO cp -a "$CONF" "$CONF.tuxdex.bak"
         run $SUDO sed -i 's#github.com/PyloGER/Tuxdex#github.com/VoxellabDE/Tuxdex#g' "$CONF"
+    elif [ -n "$KEY_FPR" ] && sed -n '/^\[tuxdex\]/,/^\[/p' "$CONF" | grep -q 'TrustAll'; then
+        say "$(t "Packages are signed now – switching the repository to signature checks" "Pakete sind jetzt signiert – Repository wird auf Signaturprüfung umgestellt")"
+        run $SUDO cp -a "$CONF" "$CONF.tuxdex.bak"
+        run $SUDO sed -i "/^\[tuxdex\]/,/^\[/ s/^SigLevel.*/SigLevel = $SIGLEVEL/" "$CONF"
     else
         say "$(t "Repository is already configured" "Repository ist schon eingetragen")"
     fi
@@ -78,9 +87,9 @@ else
     say "$(t "Adding repository" "Repository wird eingetragen")"
     run $SUDO cp -a "$CONF" "$CONF.tuxdex.bak"
     if [ "$DRY" -eq 1 ]; then
-        echo "  (dry run) would append:"; printf '  [tuxdex]\n  SigLevel = Optional TrustAll\n  Server = %s\n' "$SERVER"
+        echo "  (dry run) would append:"; printf '  [tuxdex]\n  SigLevel = %s\n  Server = %s\n' "$SIGLEVEL" "$SERVER"
     else
-        printf '\n[tuxdex]\nSigLevel = Optional TrustAll\nServer = %s\n' "$SERVER" | $SUDO tee -a "$CONF" >/dev/null
+        printf '\n[tuxdex]\nSigLevel = %s\nServer = %s\n' "$SIGLEVEL" "$SERVER" | $SUDO tee -a "$CONF" >/dev/null
     fi
 fi
 
@@ -108,6 +117,19 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP" "${PACCONF:-}"' EXIT
 PKG="$TMP/tuxdex.pkg.tar.zst"
 curl -4 -fL --retry 3 -o "$PKG" "$PKG_URL" || die "$(t "Download failed." "Download fehlgeschlagen.")"
+if [ -n "$KEY_FPR" ]; then
+    # Signierte Pakete: Schlüssel holen, gegen den festen Fingerabdruck prüfen, pacman bekannt machen, Paket prüfen
+    say "$(t "Checking the package signature" "Paket-Signatur wird geprüft")"
+    curl -4 -fsSL -o "$TMP/key.asc" "$RAW/tuxdex-signing-key.asc" || die "$(t "Could not download the signing key." "Der Signaturschlüssel ließ sich nicht laden.")"
+    GOT_FPR="$(gpg --batch --show-keys --with-colons "$TMP/key.asc" 2>/dev/null | awk -F: '$1=="fpr"{print $10; exit}')"
+    [ "$GOT_FPR" = "$KEY_FPR" ] || die "$(t "The signing key does not match the expected fingerprint – nothing was installed." "Der Signaturschlüssel passt nicht zum erwarteten Fingerabdruck – nichts wurde installiert.")"
+    curl -4 -fL --retry 3 -o "$PKG.sig" "$PKG_URL.sig" || die "$(t "The package has no signature – nothing was installed." "Das Paket hat keine Signatur – nichts wurde installiert.")"
+    run $SUDO pacman-key --add "$TMP/key.asc"
+    run $SUDO pacman-key --lsign-key "$KEY_FPR"
+    if [ "$DRY" -eq 0 ]; then
+        pacman-key --verify "$PKG.sig" "$PKG" >/dev/null 2>&1 || die "$(t "Invalid package signature – nothing was installed." "Ungültige Paket-Signatur – nichts wurde installiert.")"
+    fi
+fi
 say "$(t "Installing Tuxdex" "Tuxdex wird installiert")"
 if [ -n "$PACCONF" ]; then
     run $SUDO pacman --config "$PACCONF" -U --needed "$PKG"

@@ -6,12 +6,13 @@ on:
   push:
     branches: [main, beta, develop]
   pull_request:
+  workflow_call:        # der Release-Workflow ruft diese Prüfungen auf – ohne grüne Tests kein Release
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}     # Release ruft CI auf: eigene Gruppe, damit sich die Läufe nicht gegenseitig abbrechen
   cancel-in-progress: true
 
 jobs:
@@ -49,3 +50,16 @@ jobs:
           useradd -m builder
           chown -R builder "$GITHUB_WORKSPACE"
           su builder -c "cd '$GITHUB_WORKSPACE' && makepkg -d -f --noconfirm"
+
+      - name: Paket-Inhalt prüfen
+        # Jede Datei, die tuxdex.py zur Laufzeit neben sich erwartet, muss im Paket liegen
+        run: |
+          pkg=$(ls tuxdex-*.pkg.tar.zst | head -n1)
+          for f in usr/lib/tuxdex/tuxdex.py usr/lib/tuxdex/tuxdex_i18n.py usr/bin/tuxdex; do
+            tar -tf "$pkg" "$f" >/dev/null || { echo "::error::$f fehlt im Paket"; exit 1; }
+          done
+
+      - name: AUR-Fassung erzeugen und gegen makepkg prüfen
+        run: |
+          su builder -c "cd '$GITHUB_WORKSPACE' && python tools/release.py aur"
+          su builder -c "cd '$GITHUB_WORKSPACE/packaging/aur' && makepkg --printsrcinfo > /tmp/srcinfo && diff -u /tmp/srcinfo .SRCINFO"

@@ -17,7 +17,12 @@ permissions:
   contents: write
 
 jobs:
+  # Erst alle Prüfungen (Linter, Tests, Paketbau) – schlägt eine fehl, entsteht kein Release.
+  ci:
+    uses: ./.github/workflows/ci.yml
+
   release:
+    needs: ci
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.v.outputs.version }}
@@ -82,7 +87,19 @@ jobs:
           # nur Paketieren – Laufzeit-Abhängigkeiten (PySide6 …) werden hier nicht gebraucht
           su builder -c "cd '$GITHUB_WORKSPACE' && makepkg -d -f --noconfirm"
 
-      - name: Signieren (optional, wenn der Schlüssel als Secret hinterlegt ist)
+      - name: Signatur-Status prüfen
+        run: |
+          fpr=$(sed -n 's/^KEY_FPR="\(.*\)"/\1/p' install.sh)
+          if [ -n "$fpr" ] && [ "$HAS_KEY" != "true" ]; then
+            # Installer und App verlangen dann eine Signatur – ein unsigniertes Paket würde niemand mehr installieren können
+            echo "::error::Im Repository ist ein Signaturschlüssel hinterlegt, aber das Secret PACMAN_GPG_KEY fehlt."
+            exit 1
+          fi
+          if [ "$HAS_KEY" != "true" ]; then
+            echo "::warning::Das Paket wird NICHT signiert (Secret PACMAN_GPG_KEY fehlt) – siehe docs/SIGNING.md."
+          fi
+
+      - name: Signieren (wenn der Schlüssel als Secret hinterlegt ist)
         if: ${{ env.HAS_KEY == 'true' }}
         env:
           GPG_KEY: ${{ secrets.PACMAN_GPG_KEY }}
@@ -90,6 +107,14 @@ jobs:
           echo "$GPG_KEY" | gpg --batch --import
           for f in *.pkg.tar.zst; do gpg --batch --yes --detach-sign --no-armor "$f"; done
           echo "SIGN=--sign" >> "$GITHUB_ENV"
+          # Die Signatur muss von genau dem Schlüssel stammen, den Installer und App erwarten
+          fpr=$(sed -n 's/^KEY_FPR="\(.*\)"/\1/p' install.sh)
+          if [ -n "$fpr" ]; then
+            for f in *.pkg.tar.zst; do
+              gpg --batch --status-fd 1 --verify "$f.sig" "$f" | grep -q "VALIDSIG .* $fpr\$" \
+                || { echo "::error::$f ist nicht mit dem hinterlegten Schlüssel $fpr signiert."; exit 1; }
+            done
+          fi
 
       - name: Repo-Datenbank anlegen
         run: |

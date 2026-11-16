@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.6.2
+
+**Sicherheitsnetz**
+- Behoben: Auf einem frischen Arch stürzte Tuxdex beim Start ab, weil `qt6-svg` nicht als Abhängigkeit eingetragen war. Gefunden hat das die neue automatische Prüfung beim ersten Lauf.
+- Neu: Jeder Stand wird automatisch in einem frischen Arch-Container geprüft – Linter, über 40 Tests (jedes Modul wird einmal in beiden Sprachen aufgebaut) und der Paketbau. Ohne grüne Prüfungen entsteht kein Release mehr.
+
+**Fehlersuche**
+- Neu: **Einstellungen → Fehlersuche** mit „Protokoll öffnen“ und „Systeminfos kopieren“. Das Protokoll (`~/.cache/tuxdex/tuxdex.log`) hält unbehandelte Fehler und fehlgeschlagene Befehle fest – ohne Passwörter, der Benutzername wird durch `~` ersetzt. Die frühere Datei `~/tuxdex_error.log` im Home-Ordner entfällt.
+- „Feedback“ legt die Systeminfos (Version, Distribution, Kernel, Desktop) gleich in die Zwischenablage.
+- Fehler, die bisher still verschluckt wurden, landen jetzt im Protokoll – etwa wenn Einstellungen nicht gespeichert werden können oder die Einstellungsdatei beschädigt ist.
+
+**Signaturen (vorbereitet)**
+- Installer, pacman-Repository und Aktualisierung können Paket-Signaturen prüfen. Aktiv wird das, sobald der Signaturschlüssel veröffentlicht ist; bis dahin ändert sich nichts. Der stabile Kanal installiert dann nur noch Pakete mit gültiger Signatur.
+- Aktualisierung aus einem **fremden** GitHub-Repository fragt jetzt jedes Mal ausdrücklich nach, weil dessen Code mit root-Rechten installiert wird.
+
+**Unter der Haube**
+- Der englische Sprachkatalog liegt in einer eigenen Datei (`tuxdex_i18n.py`); `tuxdex.py` ist dadurch rund 17 % kleiner.
+- Aufgeräumt: unbenutzte Variablen und doppelte Katalog-Einträge entfernt.
+
 ## 1.6.1.11
 
 - Behoben: Software → „AUR / Fremd-Pakete“ (und „Programme“) zeigte den Fehler „'list' object has no attribute 'get'“. Ursache war ein doppelter Funktionsname seit 1.6.1.5.

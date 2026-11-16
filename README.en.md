@@ -11,11 +11,12 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.6.1.11--beta-2fb3a3">
+  <img alt="Version" src="https://img.shields.io/badge/version-1.6.2--beta-2fb3a3">
   <img alt="License" src="https://img.shields.io/badge/license-GPL--3.0-2fb3a3">
   <img alt="For Arch Linux" src="https://img.shields.io/badge/for-Arch%20Linux-1793d1">
   <img alt="Python" src="https://img.shields.io/badge/python-3.11%2B-3776ab">
   <img alt="Qt" src="https://img.shields.io/badge/GUI-PySide6%20%2F%20Qt%206-41cd52">
+  <a href="https://github.com/VoxellabDE/Tuxdex/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/VoxellabDE/Tuxdex/actions/workflows/ci.yml/badge.svg?branch=main"></a>
   <img alt="AI made with Claude" src="https://img.shields.io/badge/AI%20made-with%20Claude-d97757">
 </p>
 
@@ -44,7 +45,7 @@ Every command runs **visibly** in the output box, so you always see what's happe
 
 Tuxdex isn't meant for pros who do everything in the terminal – but it's still handy as a quick overview.
 
-**Language:** English and German. Tuxdex follows your system language; you can switch under **Settings (gear at the bottom left) → Language**.
+**Language:** English and German. Tuxdex starts in English; switch to German under **Settings (gear at the bottom left) → Language**.
 
 <p align="center">
   <img src="docs/readme/modules.png" alt="The modules of Tuxdex" width="100%">
@@ -136,7 +137,7 @@ Open a terminal, paste this line, press Enter:
 curl -fsSL https://raw.githubusercontent.com/VoxellabDE/Tuxdex/main/install.sh | bash
 ```
 
-The installer explains what it does and asks once. It adds the repository, updates your system and installs Tuxdex. Afterwards you'll find **Tuxdex** in the application menu. You can read the script [here](install.sh) first; `--dry-run` only shows what would happen without changing anything.
+The installer explains what it does and asks once. It adds the repository, downloads the package from the latest release and installs it – without forcing a system update first. If IPv6 doesn't work on your connection, it falls back to IPv4 automatically. Afterwards you'll find **Tuxdex** in the application menu. You can read the script [here](install.sh) first; `--dry-run` only shows what would happen without changing anything.
 
 Prefer step by step? Then use the following sections.
 
@@ -161,7 +162,7 @@ After that, new Tuxdex versions arrive as usual with `sudo pacman -Syu`.
 > [!NOTE]
 > **Moved:** the repository now lives at **VoxellabDE/Tuxdex**. If your `/etc/pacman.conf` still says `github.com/PyloGER/Tuxdex`, change the `Server` line as shown above (the old address only redirects temporarily).
 
-`SigLevel = Optional TrustAll` means: the packages are not (yet) signed with a dedicated key, pacman trusts the HTTPS connection to GitHub. As soon as signatures are available, this section will explain how to import the key.
+`SigLevel = Optional TrustAll` means: the packages are not yet signed with a dedicated key, pacman trusts the HTTPS connection to GitHub. Support for signed packages is in place (installer, pacman repository and updater then verify the signature) – what changes and how to import the key is described in [docs/SIGNING.md](docs/SIGNING.md) (German).
 
 ### Build it yourself
 
@@ -243,7 +244,7 @@ Examples (backup on 27 Sep 2026 at 10:15):
 
 ## Dependencies
 
-**Required** (`makepkg -si` installs them automatically): `python`, `pyside6`, `sudo`, `util-linux`, `iproute2`, `pciutils`, `hwdata`, `pacman-contrib`, `ttf-ibm-plex`, `rsync`
+**Required** (`makepkg -si` installs them automatically): `python`, `pyside6`, `qt6-svg`, `sudo`, `util-linux`, `iproute2`, `pciutils`, `hwdata`, `pacman-contrib`, `ttf-ibm-plex`, `rsync`
 
 **Optional**, depending on the features you use. Tuxdex also runs without these packages – if one is missing, only the matching area is inactive. Tuxdex doesn't install ClamAV and Mullvad itself; install them yourself if you want to use them.
 
@@ -280,7 +281,8 @@ Programs from "Setup" (Steam, Lutris, fonts, codecs …) are only installed when
 ## Project structure
 
 ```
-tuxdex.py              The complete application (one file, incl. the English catalog)
+tuxdex.py              The application
+tuxdex_i18n.py         English language catalog (data only)
 tuxdex                 Start script for /usr/bin
 tuxdex.desktop         Application menu entry
 install.sh             One-command installer (adds the repository and installs)
@@ -288,25 +290,26 @@ tuxdex.svg, *.png      App icon in all sizes
 PKGBUILD               Build recipe for makepkg / pacman
 CHANGELOG.md           Changes per version (German)
 CHANGELOG.en.md        Changes per version (English, shown by the updater in English)
-docs/                  Screenshots, README graphics and logo variants
-tools/                 Helper scripts (e.g. finding untranslated texts)
-.github/workflows/     Creates a GitHub release and the pacman repository for every new version on main
+tests/                 Automated tests (start-up test of all modules, logic, signatures)
+tools/                 Helper scripts (release, untranslated texts, screenshots)
+docs/                  Architecture, release process, signing, screenshots and graphics
+.github/workflows/     CI on every push; release and pacman repository for every new version on main
 ```
 
 ## Contributing
 
 Found a bug or have an idea? Please report bugs as an [issue](../../issues); **questions, ideas and beta feedback** are welcome in the [Discussions](../../discussions) – everyone can join in. Pull requests are welcome.
-For bugs, the file `~/tuxdex_error.log` and the details under **Settings → Technology** (gear at the bottom left) help.
 
-After changing files listed in the `PKGBUILD`, update the checksums:
+**For bugs**, the log helps: **Settings → Troubleshooting → Open log** (`~/.cache/tuxdex/tuxdex.log`, no passwords, user name replaced by `~`). "Copy system info" puts version, distribution, kernel and desktop on the clipboard.
+
+**For developers:** [CONTRIBUTING.md](CONTRIBUTING.md) covers setup and checks, [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) the structure, [docs/RELEASE.md](docs/RELEASE.md) the release process with checklist (the docs are in German). In short:
 
 ```bash
-updpkgsums   # from pacman-contrib
+ruff check . && python -m pytest     # linter and tests – also run in CI
+tools/release.py check               # version, badges, changelogs and checksums agree
 ```
 
 **Branches:** development happens in `develop`. What should be tested goes to `beta` (beta channel in the updater), finished versions go to `main` – that automatically creates the GitHub release and the pacman package. Please open pull requests against `develop`.
-
-New or changed interface texts need an English translation in the `EN` catalog at the end of `tuxdex.py`. `python3 tools/i18n_extract.py` lists the missing ones.
 
 ## Background
 

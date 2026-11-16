@@ -2,6 +2,25 @@
 
 English version of [CHANGELOG.md](CHANGELOG.md). Entries before 1.0.0 are only available in German.
 
+## 1.6.2
+
+**Safety net**
+- Fixed: on a fresh Arch install Tuxdex crashed at start-up because `qt6-svg` was not listed as a dependency. The new automatic check found this on its first run.
+- New: every change is checked automatically in a fresh Arch container – linter, more than 40 tests (each module is built once in both languages) and the package build. No release is created without green checks.
+
+**Troubleshooting**
+- New: **Settings → Troubleshooting** with "Open log" and "Copy system info". The log (`~/.cache/tuxdex/tuxdex.log`) records unhandled errors and failed commands – no passwords, and the user name is replaced by `~`. The former file `~/tuxdex_error.log` in the home folder is gone.
+- "Feedback" now puts the system info (version, distribution, kernel, desktop) on the clipboard.
+- Errors that used to be swallowed silently now reach the log – for example when settings can't be saved or the settings file is damaged.
+
+**Signatures (prepared)**
+- Installer, pacman repository and updater can verify package signatures. This becomes active once the signing key is published; until then nothing changes. The stable channel will then only install packages with a valid signature.
+- Updating from a **third-party** GitHub repository now asks explicitly every time, because its code is installed with root privileges.
+
+**Under the hood**
+- The English language catalog lives in its own file (`tuxdex_i18n.py`); `tuxdex.py` is about 17 % smaller.
+- Cleanup: removed unused variables and duplicate catalog entries.
+
 ## 1.6.1.11
 
 - Fixed: Software → "AUR / foreign packages" (and "Programs") showed the error "'list' object has no attribute 'get'". Cause was a duplicate function name since 1.6.1.5.

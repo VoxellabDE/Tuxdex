@@ -7,12 +7,15 @@
     tools/release.py sums             berechnet die sha256sums im PKGBUILD neu
     tools/release.py bump 1.6.2       setzt die Version überall, legt Changelog-Abschnitte an, rechnet Prüfsummen
     tools/release.py bump 1.6.2 --stable    wie oben, aber Badge ohne „-beta“ (für ein Release auf main)
+    tools/release.py key schluessel.asc     hinterlegt den öffentlichen Signaturschlüssel (siehe docs/SIGNING.md)
+    tools/release.py aur              erzeugt packaging/aur/PKGBUILD und .SRCINFO für das AUR (siehe docs/RELEASE.md)
 
 Nach `bump` die beiden Changelog-Abschnitte ausfüllen und zum Schluss noch einmal `sums` und `check` laufen lassen.
 """
 import hashlib
 import os
 import re
+import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -116,6 +119,86 @@ def bump(ver, stable):
     print(f"{old} → {ver}. Jetzt die Changelog-Abschnitte ausfüllen, dann: tools/release.py sums && tools/release.py check")
 
 
+def set_key(path):
+    """Öffentlichen Signaturschlüssel hinterlegen: Datei ins Repo, Fingerabdruck in tuxdex.py und install.sh."""
+    with open(path, encoding="ascii") as f:
+        armored = f.read().strip() + "\n"
+    if "BEGIN PGP PUBLIC KEY BLOCK" not in armored or "PRIVATE KEY" in armored:
+        raise SystemExit("Abbruch: Das ist kein öffentlicher Schlüssel (gpg --armor --export <ID>). "
+                         "Den privaten Schlüssel niemals ins Repository legen.")
+    out = subprocess.run(["gpg", "--batch", "--show-keys", "--with-colons", path], capture_output=True, text=True)
+    fprs = [l.split(":")[9] for l in out.stdout.splitlines() if l.startswith("fpr:")]
+    pubs = [l for l in out.stdout.splitlines() if l.startswith("pub:")]
+    if out.returncode != 0 or len(pubs) != 1 or not fprs:
+        raise SystemExit("Abbruch: Die Datei muss genau einen öffentlichen Schlüssel enthalten.")
+    fpr = fprs[0]
+    write("tuxdex-signing-key.asc", armored)
+    code, n1 = re.subn(r'^SIGNING_KEY_FPR = ".*"$', f'SIGNING_KEY_FPR = "{fpr}"', read("tuxdex.py"), count=1, flags=re.M)
+    code, n2 = re.subn(r'^SIGNING_KEY = (""".*?"""|"")$', lambda _m: 'SIGNING_KEY = """' + armored + '"""',
+                       code, count=1, flags=re.M | re.S)
+    sh, n3 = re.subn(r'^KEY_FPR=".*"$', f'KEY_FPR="{fpr}"', read("install.sh"), count=1, flags=re.M)
+    if (n1, n2, n3) != (1, 1, 1):
+        raise SystemExit("Abbruch: SIGNING_KEY_FPR/SIGNING_KEY in tuxdex.py oder KEY_FPR in install.sh nicht gefunden")
+    write("tuxdex.py", code)
+    write("install.sh", sh)
+    sums()
+    print(f"Schlüssel {fpr} hinterlegt. Vor dem Commit prüfen, dass der Fingerabdruck zu deinem Schlüssel passt:\n"
+          f"  gpg --fingerprint {fpr[-16:]}")
+
+
+AUR_REPO = "VoxellabDE/Tuxdex"
+
+
+def _pkgbuild_arrays(path):
+    """Felder des PKGBUILD so, wie bash sie sieht: {name: [werte]}."""
+    script = ('source "$1"; for v in pkgname pkgver pkgrel epoch pkgdesc url; do printf "%s\\t%s\\n" "$v" "${!v}"; done; '
+              'for a in arch license depends optdepends conflicts replaces source sha256sums; do '
+              'declare -n ref="$a"; for x in "${ref[@]}"; do printf "%s\\t%s\\n" "$a" "$x"; done; done')
+    out = subprocess.run(["bash", "-c", script, "bash", path], capture_output=True, text=True, check=True).stdout
+    fields = {}
+    for line in out.splitlines():
+        k, _, v = line.partition("\t")
+        fields.setdefault(k, []).append(v)
+    return fields
+
+
+def aur():
+    """AUR-Fassung des PKGBUILD: dieselben Dateien und Prüfsummen, aber geladen vom Release-Tag auf GitHub."""
+    problems = check()
+    if problems:
+        raise SystemExit("Abbruch – erst in Ordnung bringen:\n" + "\n".join("  " + p for p in problems))
+    pkgbuild = read("PKGBUILD")
+    names = pkg_sources(pkgbuild)
+    remote = "\n".join(f'        "$pkgname-$pkgver-{n}::$_raw/{n}"' for n in names)
+    new, n = re.subn(r"^source=\((.*?)\)", lambda _m: "source=(\n" + remote + ")", pkgbuild, count=1, flags=re.S | re.M)
+    files = " ".join(names)
+    prepare = (f"_raw=\"https://raw.githubusercontent.com/{AUR_REPO}/v$pkgver\"\n"
+               f"_files=({files})\n")
+    new, n2 = re.subn(r"^source=\(", lambda _m: prepare + "source=(", new, count=1, flags=re.M)
+    step = ("prepare() {\n"
+            "    # Dateien tragen im Download-Ordner die Version im Namen – hier wieder unter ihrem eigentlichen Namen\n"
+            "    for f in \"${_files[@]}\"; do cp \"$srcdir/$pkgname-$pkgver-$f\" \"$srcdir/$f\"; done\n"
+            "}\n\n")
+    new, n3 = re.subn(r"^package\(\) \{", lambda _m: step + "package() {", new, count=1, flags=re.M)
+    if (n, n2, n3) != (1, 1, 1):
+        raise SystemExit("Abbruch: PKGBUILD hat nicht den erwarteten Aufbau (source=(), package())")
+    os.makedirs(os.path.join(ROOT, "packaging", "aur"), exist_ok=True)
+    write("packaging/aur/PKGBUILD", new)
+    f = _pkgbuild_arrays(os.path.join(ROOT, "packaging", "aur", "PKGBUILD"))
+    one = lambda k: f.get(k, [""])[0]
+    lines = [f"pkgbase = {one('pkgname')}", f"\tpkgdesc = {one('pkgdesc')}", f"\tpkgver = {one('pkgver')}",
+             f"\tpkgrel = {one('pkgrel')}"]
+    if one("epoch"):
+        lines.append(f"\tepoch = {one('epoch')}")
+    lines.append(f"\turl = {one('url')}")
+    for key in ("arch", "license", "depends", "optdepends", "conflicts", "replaces", "source", "sha256sums"):
+        lines += [f"\t{key} = {v}" for v in f.get(key, [])]
+    lines += ["", f"pkgname = {one('pkgname')}", ""]
+    write("packaging/aur/.SRCINFO", "\n".join(lines))
+    print(f"packaging/aur/ für Version {one('pkgver')} erzeugt. Erst veröffentlichen, wenn das Release v{one('pkgver')} "
+          "auf GitHub existiert – die Dateien werden von diesem Tag geladen.")
+
+
 def main(argv):
     cmd = argv[1] if len(argv) > 1 else ""
     if cmd == "check":
@@ -127,6 +210,12 @@ def main(argv):
         return 1 if problems else 0
     if cmd == "sums":
         sums()
+        return 0
+    if cmd == "aur":
+        aur()
+        return 0
+    if cmd == "key" and len(argv) > 2:
+        set_key(argv[2])
         return 0
     if cmd == "bump" and len(argv) > 2:
         bump(argv[2], "--stable" in argv[3:])
